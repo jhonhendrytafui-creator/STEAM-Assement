@@ -5,7 +5,7 @@ import { createBrowserClient } from '@supabase/ssr';
 import {
     Star, LogOut, Database, PenSquare, FileCheck,
     Plus, Trash2, Link as LinkIcon, Calculator,
-    FlaskConical, Paintbrush, Globe, Cpu, Wrench, BookOpen, Calendar, Save, X
+    FlaskConical, Paintbrush, Globe, Cpu, Wrench, BookOpen, Calendar, Save, X, Users
 } from 'lucide-react';
 
 // Define the subjects available for Key Concepts
@@ -35,6 +35,11 @@ export default function StudentDashboardPage() {
     const [themesList, setThemesList] = useState<{ id: string, theme_name: string }[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
+    // Team Members & Project Data State
+    const [teamMembers, setTeamMembers] = useState<{ full_name: string; email: string }[]>([]);
+    const [projectData, setProjectData] = useState<any | null>(null);
+    const [studentInfo, setStudentInfo] = useState<{ class_name: string; group_number: number } | null>(null);
+
     // Logbook State
     const [logbooks, setLogbooks] = useState<any[]>([]);
     const [showLogbookForm, setShowLogbookForm] = useState(false);
@@ -54,27 +59,58 @@ export default function StudentDashboardPage() {
             if (user?.email) {
                 setUserEmail(user.email);
 
-                // Fetch group_id via the students table directly to avoid profiles RLS recursion
-                const { data: studentData } = await supabase
-                    .from('students')
-                    .select('group_id, profiles!inner(email)')
-                    .eq('profiles.email', user.email)
+                // 1. Fetch this student's info from student_master
+                const { data: myInfo } = await supabase
+                    .from('student_master')
+                    .select('full_name, class_name, group_number')
+                    .eq('email', user.email)
                     .single();
 
-                // safely grab group_id if it exists
-                let idForGroup = null;
-                if (studentData?.group_id) {
-                    idForGroup = studentData.group_id;
-                    setGroupId(idForGroup);
+                if (myInfo) {
+                    setStudentInfo({ class_name: myInfo.class_name, group_number: myInfo.group_number });
+
+                    // 2. Fetch team members who share the same class_name and group_number
+                    const { data: members } = await supabase
+                        .from('student_master')
+                        .select('full_name, email')
+                        .eq('class_name', myInfo.class_name)
+                        .eq('group_number', myInfo.group_number);
+
+                    if (members) setTeamMembers(members);
                 }
 
-                // Fetch themes 
-                const { data: fetchedThemes } = await supabase.from('themes').select('*');
-                if (fetchedThemes && fetchedThemes.length > 0) {
-                    setThemesList(fetchedThemes);
-                    setTheme(fetchedThemes[0].id);
-                } else {
-                    // Fallback dummy themes if DB is empty
+                // 3. Try to get group_id from the students table (may not exist if backend was reset)
+                let idForGroup = null;
+                try {
+                    const { data: studentData } = await supabase
+                        .from('students')
+                        .select('group_id, profiles!inner(email)')
+                        .eq('profiles.email', user.email)
+                        .single();
+                    if (studentData?.group_id) {
+                        idForGroup = studentData.group_id;
+                        setGroupId(idForGroup);
+                    }
+                } catch (e) {
+                    // students/profiles table might not exist or be empty, that's ok
+                    console.log('Could not fetch group_id from students table:', e);
+                }
+
+                // 4. Fetch themes
+                try {
+                    const { data: fetchedThemes } = await supabase.from('themes').select('*');
+                    if (fetchedThemes && fetchedThemes.length > 0) {
+                        setThemesList(fetchedThemes);
+                        setTheme(fetchedThemes[0].id);
+                    } else {
+                        setThemesList([
+                            { id: '1', theme_name: 'Sistem Keberlanjutan Lingkungan' },
+                            { id: '2', theme_name: 'Inovasi Teknologi Tepat Guna' },
+                            { id: '3', theme_name: 'Kesenian Berbasis Digital' }
+                        ]);
+                        setTheme('1');
+                    }
+                } catch (e) {
                     setThemesList([
                         { id: '1', theme_name: 'Sistem Keberlanjutan Lingkungan' },
                         { id: '2', theme_name: 'Inovasi Teknologi Tepat Guna' },
@@ -83,16 +119,33 @@ export default function StudentDashboardPage() {
                     setTheme('1');
                 }
 
-                // Fetch Logbooks if group_id exists
+                // 5. Fetch project data if group_id exists
                 if (idForGroup) {
-                    const { data: fetchedLogs } = await supabase
-                        .from('logbooks')
-                        .select('*')
-                        .eq('group_id', idForGroup)
-                        .order('entry_date', { ascending: false })
-                        .order('created_at', { ascending: false });
+                    try {
+                        const { data: fetchedProject } = await supabase
+                            .from('projects')
+                            .select('*')
+                            .eq('group_id', idForGroup)
+                            .single();
+                        if (fetchedProject) setProjectData(fetchedProject);
+                    } catch (e) {
+                        console.log('No project found or projects table missing:', e);
+                    }
+                }
 
-                    if (fetchedLogs) setLogbooks(fetchedLogs);
+                // 6. Fetch Logbooks if group_id exists
+                if (idForGroup) {
+                    try {
+                        const { data: fetchedLogs } = await supabase
+                            .from('logbooks')
+                            .select('*')
+                            .eq('group_id', idForGroup)
+                            .order('entry_date', { ascending: false })
+                            .order('created_at', { ascending: false });
+                        if (fetchedLogs) setLogbooks(fetchedLogs);
+                    } catch (e) {
+                        console.log('Logbooks fetch failed:', e);
+                    }
                 }
             }
             setLoading(false);
@@ -266,22 +319,26 @@ export default function StudentDashboardPage() {
             <main className="max-w-6xl mx-auto p-4 sm:p-6 lg:p-8 flex flex-col md:flex-row gap-8">
 
                 {/* Sidebar / Tabs */}
-                <aside className="w-full md:w-64 shrink-0 space-y-2 md:sticky md:top-24 h-fit">
+                <aside
+                    className="w-full md:w-64 shrink-0 flex flex-row md:flex-col gap-2 md:gap-0 md:space-y-2 overflow-x-auto md:overflow-visible pb-2 md:pb-0 sticky top-20 md:top-24 h-fit z-40 bg-[#1c1b14] pt-2 md:pt-0"
+                    style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                >
+                    <style dangerouslySetInnerHTML={{ __html: `aside::-webkit-scrollbar { display: none; }` }} />
                     {[
                         { id: 'data', label: 'My Project Data', icon: Database },
+                        { id: 'submit', label: 'Submit a Project', icon: PenSquare },
                         { id: 'logbook', label: 'My Logbook', icon: BookOpen },
-                        { id: 'submit', label: 'Project Submission', icon: PenSquare },
                         { id: 'result', label: 'Assessment Result', icon: FileCheck },
                     ].map((tab) => (
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id)}
-                            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium text-sm border ${activeTab === tab.id
+                            className={`flex-shrink-0 md:w-full flex items-center justify-center md:justify-start gap-2 md:gap-3 px-4 py-3 rounded-xl transition-all font-medium text-sm border whitespace-nowrap ${activeTab === tab.id
                                 ? 'bg-[#292314] text-amber-500 border-amber-500/50 shadow-lg shadow-amber-900/10'
                                 : 'bg-[#1a1811] text-slate-400 hover:bg-[#25221b] hover:text-amber-400 border-amber-900/20'
                                 }`}
                         >
-                            <tab.icon className="w-5 h-5" />
+                            <tab.icon className="w-4 h-4 md:w-5 md:h-5" />
                             {tab.label}
                         </button>
                     ))}
@@ -292,14 +349,116 @@ export default function StudentDashboardPage() {
 
                     {/* TAB 1: MY PROJECT DATA */}
                     {activeTab === 'data' && (
-                        <div className="bg-[#1a1811] border border-amber-900/20 rounded-2xl p-6 sm:p-8 shadow-2xl">
-                            <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
-                                <Database className="text-amber-500" />
-                                My Project Data
-                            </h2>
-                            <div className="bg-[#1c1b14] border border-slate-800 rounded-xl p-8 text-center">
-                                <p className="text-slate-400">Loading project data...</p>
-                                <p className="text-xs text-slate-500 mt-2">If you havent submitted a project, this area will be empty.</p>
+                        <div className="space-y-6">
+                            {/* Team Members Card */}
+                            <div className="bg-[#1a1811] border border-amber-900/20 rounded-2xl p-6 sm:p-8 shadow-2xl">
+                                <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-3">
+                                    <Users className="text-amber-500 w-5 h-5" />
+                                    Team Members
+                                    {studentInfo && (
+                                        <span className="ml-auto text-xs bg-amber-900/30 text-amber-400 px-3 py-1 rounded-full border border-amber-500/20">
+                                            {studentInfo.class_name} — Group {studentInfo.group_number}
+                                        </span>
+                                    )}
+                                </h2>
+                                {teamMembers.length > 0 ? (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        {teamMembers.map((member, i) => (
+                                            <div
+                                                key={i}
+                                                className={`flex items-center gap-3 bg-[#1c1b14] border rounded-xl px-4 py-3 transition-all ${member.email === userEmail
+                                                    ? 'border-amber-500/50 shadow-lg shadow-amber-900/10'
+                                                    : 'border-slate-800 hover:border-slate-700'
+                                                    }`}
+                                            >
+                                                <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${member.email === userEmail
+                                                    ? 'bg-gradient-to-br from-amber-500 to-amber-600 text-[#1a160d]'
+                                                    : 'bg-slate-800 text-slate-400'
+                                                    }`}>
+                                                    {member.full_name?.charAt(0).toUpperCase()}
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <p className={`text-sm font-medium truncate ${member.email === userEmail ? 'text-amber-400' : 'text-slate-200'
+                                                        }`}>
+                                                        {member.full_name}
+                                                        {member.email === userEmail && (
+                                                            <span className="ml-2 text-[10px] bg-amber-500/20 text-amber-500 px-1.5 py-0.5 rounded-full">You</span>
+                                                        )}
+                                                    </p>
+                                                    <p className="text-xs text-slate-500 truncate">{member.email}</p>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="bg-[#1c1b14] border border-slate-800 rounded-xl p-6 text-center">
+                                        <p className="text-slate-500 text-sm">No team information found. Make sure your email is registered in the student database.</p>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Project Data Card */}
+                            <div className="bg-[#1a1811] border border-amber-900/20 rounded-2xl p-6 sm:p-8 shadow-2xl">
+                                <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-3">
+                                    <Database className="text-amber-500 w-5 h-5" />
+                                    Project Details
+                                </h2>
+
+                                {projectData ? (
+                                    <div className="space-y-4">
+                                        <div className="bg-[#1c1b14] border border-slate-800 rounded-xl p-5">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <span className="text-xs text-slate-500 uppercase tracking-wider">Title</span>
+                                                <span className={`ml-auto text-xs px-2.5 py-0.5 rounded-full font-medium ${projectData.status === 'approved'
+                                                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                                    : projectData.status === 'revision'
+                                                        ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+                                                        : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                                                    }`}>
+                                                    {projectData.status || 'pending'}
+                                                </span>
+                                            </div>
+                                            <p className="text-lg font-semibold text-white">{projectData.title}</p>
+                                        </div>
+                                        {projectData.abstract && (
+                                            <div className="bg-[#1c1b14] border border-slate-800 rounded-xl p-5">
+                                                <span className="text-xs text-slate-500 uppercase tracking-wider">Abstract</span>
+                                                <p className="text-sm text-slate-300 mt-1 whitespace-pre-line">{projectData.abstract}</p>
+                                            </div>
+                                        )}
+                                        {projectData.google_doc_url && (
+                                            <div className="bg-[#1c1b14] border border-slate-800 rounded-xl p-5">
+                                                <span className="text-xs text-slate-500 uppercase tracking-wider">Google Doc</span>
+                                                <a
+                                                    href={projectData.google_doc_url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="flex items-center gap-2 text-sm text-amber-400 hover:text-amber-300 mt-1 transition-colors"
+                                                >
+                                                    <LinkIcon className="w-4 h-4" />
+                                                    Open Document
+                                                </a>
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div className="bg-[#1c1b14] border border-dashed border-slate-700 rounded-xl p-10 text-center flex flex-col items-center justify-center">
+                                        <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mb-4">
+                                            <PenSquare className="w-7 h-7 text-amber-500" />
+                                        </div>
+                                        <h3 className="text-lg font-bold text-slate-300 mb-2">No Project Submitted Yet</h3>
+                                        <p className="text-slate-500 text-sm max-w-sm mx-auto mb-6">
+                                            Your team hasn&apos;t submitted a project yet. Start by filling out the submission form with your project details.
+                                        </p>
+                                        <button
+                                            onClick={() => setActiveTab('submit')}
+                                            className="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-[#1a160d] font-bold py-3 px-8 rounded-xl flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-amber-900/20"
+                                        >
+                                            <PenSquare className="w-5 h-5" />
+                                            Submit a Project
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}
