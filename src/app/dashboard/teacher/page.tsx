@@ -5,7 +5,7 @@ import { createBrowserClient } from '@supabase/ssr';
 import {
     GraduationCap, LogOut, LayoutDashboard, BarChart2,
     ClipboardCheck, Users, FileText, CheckCircle2,
-    X, AlertTriangle, LinkIcon, TrendingUp, BookOpen, Star, FolderOpen, History
+    X, AlertTriangle, LinkIcon, TrendingUp, BookOpen, Star, FolderOpen, History, Sparkles
 } from 'lucide-react';
 
 const ACADEMIC_YEAR = '2025/2026';
@@ -295,6 +295,44 @@ export default function TeacherDashboardPage() {
     const [assessStatus, setAssessStatus] = useState<string>('');
     const [assessComment, setAssessComment] = useState<string>('');
     const [isSubmittingScore, setIsSubmittingScore] = useState(false);
+    const [isAutoAssessing, setIsAutoAssessing] = useState(false);
+
+    const handleAutoAssess = async () => {
+        if (!assessProject || !assessCategory) return;
+        setIsAutoAssessing(true);
+        showToast('Gemini AI is analyzing the project...', 'info');
+
+        try {
+            const cat = assessmentCategories.find(c => c.id === assessCategory);
+            const dims = rubricDimensions.filter(d => d.category_id === assessCategory);
+            const inds = rubricIndicators.filter(i => dims.some(d => d.id === i.dimension_id));
+
+            const response = await fetch('/api/ai-assess', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    project: assessProject,
+                    categoryName: cat?.name || 'Unknown Category',
+                    indicators: inds.map(i => ({ id: i.id, description: i.description }))
+                })
+            });
+
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.error || 'Failed to auto-assess');
+            }
+
+            if (data.scores) setCurrentScores(data.scores);
+            if (data.teacher_comment) setAssessComment(data.teacher_comment);
+            if (data.suggested_status) setAssessStatus(data.suggested_status);
+
+            showToast('AI Assessment complete! Please review.', 'success');
+        } catch (error: any) {
+            showToast(error.message, 'error');
+        } finally {
+            setIsAutoAssessing(false);
+        }
+    };
 
     const availableAssessClasses = Array.from(new Set(allStudents.filter(s => String(s.class_name).split('.')[0] === assessGrade).map(s => s.class_name))).sort();
     const availableAssessGroups = Array.from(new Set(allStudents.filter(s => s.class_name === assessClass).map(s => s.group_number))).sort((a, b) => a - b);
@@ -1262,10 +1300,18 @@ export default function TeacherDashboardPage() {
                                                     </div>
 
                                                     {/* Submit Button */}
-                                                    <div className="flex justify-end pt-4">
+                                                    <div className="flex justify-end gap-3 pt-4">
+                                                        <button
+                                                            onClick={handleAutoAssess}
+                                                            disabled={isAutoAssessing || isSubmittingScore}
+                                                            className="flex items-center gap-2 bg-[#1c1b2e] border border-indigo-500/30 text-indigo-400 px-6 py-3.5 rounded-xl font-bold hover:bg-indigo-900/40 hover:text-indigo-300 transition-all shadow-xl shadow-indigo-900/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                        >
+                                                            {isAutoAssessing ? 'AI is Thinking...' : 'Auto-Assess with Gemini'}
+                                                            {!isAutoAssessing && <Sparkles className="w-5 h-5" />}
+                                                        </button>
                                                         <button
                                                             onClick={submitAssessment}
-                                                            disabled={isSubmittingScore}
+                                                            disabled={isSubmittingScore || isAutoAssessing}
                                                             className="flex items-center gap-2 bg-gradient-to-r from-amber-600 to-amber-500 text-[#1a1811] px-8 py-3.5 rounded-xl font-bold hover:from-amber-500 hover:to-amber-400 transition-all shadow-xl shadow-amber-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
                                                         >
                                                             {isSubmittingScore ? 'Saving Assessment...' : 'Save Assessment'}
