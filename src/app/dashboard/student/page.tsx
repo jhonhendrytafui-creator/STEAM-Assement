@@ -1,0 +1,1347 @@
+'use client';
+
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { createBrowserClient } from '@supabase/ssr';
+import {
+    Star, LogOut, Database, PenSquare, FileCheck,
+    Plus, Trash2, Link as LinkIcon, Calculator,
+    FlaskConical, Paintbrush, Globe, Cpu, Wrench, BookOpen, Calendar, Save, X, Users,
+    TrendingUp, Award, ChevronDown, CheckCircle2, AlertTriangle, XCircle, Info
+} from 'lucide-react';
+
+// ─── Toast Notification System ────────────────────────
+type ToastType = 'success' | 'error' | 'warning' | 'info';
+interface ToastData {
+    id: number;
+    message: string;
+    type: ToastType;
+}
+
+const TOAST_ICONS = {
+    success: CheckCircle2,
+    error: XCircle,
+    warning: AlertTriangle,
+    info: Info,
+};
+
+const TOAST_STYLES = {
+    success: 'border-emerald-500/50 bg-emerald-950/80 text-emerald-300',
+    error: 'border-red-500/50 bg-red-950/80 text-red-300',
+    warning: 'border-amber-500/50 bg-amber-950/80 text-amber-300',
+    info: 'border-blue-500/50 bg-blue-950/80 text-blue-300',
+};
+
+function ToastContainer({ toasts, onDismiss }: { toasts: ToastData[]; onDismiss: (id: number) => void }) {
+    return (
+        <div className="fixed top-4 right-4 z-[100] flex flex-col gap-3 max-w-sm w-full pointer-events-none">
+            {toasts.map((toast) => {
+                const Icon = TOAST_ICONS[toast.type];
+                return (
+                    <div
+                        key={toast.id}
+                        className={`pointer-events-auto flex items-start gap-3 px-4 py-3 rounded-xl border backdrop-blur-md shadow-2xl animate-[slideIn_0.3s_ease-out] ${TOAST_STYLES[toast.type]}`}
+                    >
+                        <Icon className="w-5 h-5 shrink-0 mt-0.5" />
+                        <p className="text-sm flex-1 font-medium">{toast.message}</p>
+                        <button onClick={() => onDismiss(toast.id)} className="shrink-0 opacity-60 hover:opacity-100 transition-opacity">
+                            <X className="w-4 h-4" />
+                        </button>
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
+// ─── Confirm Dialog ───────────────────────────────────
+function ConfirmDialog({
+    open,
+    title,
+    message,
+    confirmLabel = 'Delete',
+    onConfirm,
+    onCancel,
+}: {
+    open: boolean;
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    onConfirm: () => void;
+    onCancel: () => void;
+}) {
+    if (!open) return null;
+    return (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+            <div className="bg-[#1a1811] border border-amber-900/40 rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl">
+                <div className="flex items-center gap-3 mb-3">
+                    <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center">
+                        <AlertTriangle className="w-5 h-5 text-red-400" />
+                    </div>
+                    <h3 className="text-lg font-bold text-white">{title}</h3>
+                </div>
+                <p className="text-slate-400 text-sm mb-6 ml-[52px]">{message}</p>
+                <div className="flex justify-end gap-3">
+                    <button
+                        onClick={onCancel}
+                        className="px-4 py-2 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition-colors text-sm font-medium"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        onClick={onConfirm}
+                        className="px-4 py-2 rounded-lg bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 transition-colors text-sm font-bold"
+                    >
+                        {confirmLabel}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// Define the subjects available for Key Concepts
+const SUBJECTS = [
+    { id: 'mathematics', label: 'Mathematics', icon: Calculator },
+    { id: 'physics', label: 'Physics', icon: FlaskConical },
+    { id: 'biology', label: 'Biology', icon: Globe },
+    { id: 'chemistry', label: 'Chemistry', icon: FlaskConical },
+    { id: 'technology', label: 'Technology', icon: Cpu },
+    { id: 'engineering', label: 'Engineering', icon: Wrench },
+    { id: 'arts', label: 'Arts', icon: Paintbrush },
+];
+
+// Current academic year
+const ACADEMIC_YEAR = '2025/2026';
+
+// Type definitions
+interface StudentInfo {
+    full_name: string;
+    class_name: string;
+    group_number: number;
+    email: string;
+}
+
+interface TeamMember {
+    full_name: string;
+    email: string;
+}
+
+interface ProjectData {
+    id: string;
+    title: string;
+    abstract: string;
+    google_doc_url: string;
+    status: string;
+    theme_id: string;
+}
+
+interface LogbookEntry {
+    id: string;
+    student_email: string;
+    entry_date: string;
+    task: string;
+    result: string;
+    feedback: string | null;
+    created_at: string;
+}
+
+interface Theme {
+    id: string;
+    theme_name: string;
+}
+
+interface AssessmentCategory {
+    id: string;
+    code: string;
+    name: string;
+    rubric_type: string;
+    sort_order: number;
+}
+
+interface RubricDimension {
+    id: string;
+    category_id: string;
+    name: string;
+    sort_order: number;
+}
+
+interface RubricIndicator {
+    id: string;
+    dimension_id: string;
+    description: string;
+    sort_order: number;
+}
+
+interface AssessmentScoreEntry {
+    id: string;
+    indicator_id: string;
+    score: number;
+    assessed_at: string;
+}
+
+export default function StudentDashboardPage() {
+    const [activeTab, setActiveTab] = useState('data');
+    const [loading, setLoading] = useState(true);
+    const [userEmail, setUserEmail] = useState<string | null>(null);
+
+    // Student & group info
+    const [studentInfo, setStudentInfo] = useState<StudentInfo | null>(null);
+    const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+
+    // Project
+    const [projectData, setProjectData] = useState<ProjectData | null>(null);
+
+    // Form State for Project Submission
+    const [title, setTitle] = useState('');
+    const [theme, setTheme] = useState('');
+    const [problem, setProblem] = useState('');
+    const [solution, setSolution] = useState('');
+    const [docUrl, setDocUrl] = useState('');
+    const [keyConcepts, setKeyConcepts] = useState([{ subject: 'matematika', concept: '' }]);
+    const [themesList, setThemesList] = useState<Theme[]>([]);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // Logbook State
+    const [logbooks, setLogbooks] = useState<LogbookEntry[]>([]);
+    const [showLogbookForm, setShowLogbookForm] = useState(false);
+    const [newLogDate, setNewLogDate] = useState(new Date().toISOString().split('T')[0]);
+    const [newLogTask, setNewLogTask] = useState('');
+    const [newLogResult, setNewLogResult] = useState('');
+    const [isSubmittingLog, setIsSubmittingLog] = useState(false);
+
+    // Assessment Data
+    const [assessmentCategories, setAssessmentCategories] = useState<AssessmentCategory[]>([]);
+    const [rubricDimensions, setRubricDimensions] = useState<RubricDimension[]>([]);
+    const [rubricIndicators, setRubricIndicators] = useState<RubricIndicator[]>([]);
+    const [assessmentScores, setAssessmentScores] = useState<AssessmentScoreEntry[]>([]);
+    const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+
+    // Toast & Dialog State
+    const [toasts, setToasts] = useState<ToastData[]>([]);
+    const toastIdRef = useRef(0);
+    const [confirmDialog, setConfirmDialog] = useState<{
+        open: boolean;
+        title: string;
+        message: string;
+        confirmLabel?: string;
+        onConfirm: () => void;
+    }>({ open: false, title: '', message: '', onConfirm: () => { } });
+
+    const showToast = useCallback((message: string, type: ToastType = 'info') => {
+        const id = ++toastIdRef.current;
+        setToasts(prev => [...prev, { id, message, type }]);
+        setTimeout(() => {
+            setToasts(prev => prev.filter(t => t.id !== id));
+        }, 4000);
+    }, []);
+
+    const dismissToast = useCallback((id: number) => {
+        setToasts(prev => prev.filter(t => t.id !== id));
+    }, []);
+
+    const showConfirm = useCallback((title: string, message: string, onConfirm: () => void, confirmLabel = 'Delete') => {
+        setConfirmDialog({ open: true, title, message, confirmLabel, onConfirm });
+    }, []);
+
+    const closeConfirm = useCallback(() => {
+        setConfirmDialog(prev => ({ ...prev, open: false }));
+    }, []);
+
+    const supabase = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
+
+    const fetchData = useCallback(async () => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user?.email) {
+            setLoading(false);
+            return;
+        }
+
+        setUserEmail(user.email);
+
+        // 1. Fetch student info from student_master
+        const { data: myInfo } = await supabase
+            .from('student_master')
+            .select('full_name, class_name, group_number, email')
+            .eq('email', user.email)
+            .eq('academic_year', ACADEMIC_YEAR)
+            .single();
+
+        if (!myInfo) {
+            setLoading(false);
+            return;
+        }
+
+        setStudentInfo(myInfo);
+
+        // Extract grade from class_name (e.g., '7.1' -> '7', '10.3' -> '10')
+        const grade = myInfo.class_name.split('.')[0];
+
+        // 2. Fetch team members (same class + group + year)
+        const { data: members } = await supabase
+            .from('student_master')
+            .select('full_name, email')
+            .eq('class_name', myInfo.class_name)
+            .eq('group_number', myInfo.group_number)
+            .eq('academic_year', ACADEMIC_YEAR);
+
+        if (members) setTeamMembers(members);
+
+        // 3. Fetch themes for this student's grade
+        const { data: fetchedThemes } = await supabase
+            .from('themes')
+            .select('id, theme_name')
+            .eq('grade', grade)
+            .eq('academic_year', ACADEMIC_YEAR);
+
+        if (fetchedThemes && fetchedThemes.length > 0) {
+            setThemesList(fetchedThemes);
+            setTheme(fetchedThemes[0].id);
+        }
+
+        // 4. Fetch project for this group
+        const { data: fetchedProject } = await supabase
+            .from('projects')
+            .select('*')
+            .eq('class_name', myInfo.class_name)
+            .eq('group_number', myInfo.group_number)
+            .eq('academic_year', ACADEMIC_YEAR)
+            .single();
+
+        if (fetchedProject) setProjectData(fetchedProject);
+
+        // 5. Fetch logbooks for this group (all members' entries)
+        const { data: fetchedLogs } = await supabase
+            .from('logbooks')
+            .select('*')
+            .eq('class_name', myInfo.class_name)
+            .eq('group_number', myInfo.group_number)
+            .eq('academic_year', ACADEMIC_YEAR)
+            .order('entry_date', { ascending: false })
+            .order('created_at', { ascending: false });
+
+        if (fetchedLogs) setLogbooks(fetchedLogs);
+
+        // 6. Fetch assessment categories, dimensions, indicators, and scores
+        const { data: cats } = await supabase
+            .from('assessment_categories')
+            .select('*')
+            .order('sort_order');
+        if (cats) {
+            setAssessmentCategories(cats);
+            if (cats.length > 0) setSelectedCategory(cats[0].id);
+        }
+
+        const { data: dims } = await supabase
+            .from('rubric_dimensions')
+            .select('*')
+            .order('sort_order');
+        if (dims) setRubricDimensions(dims);
+
+        const { data: inds } = await supabase
+            .from('rubric_indicators')
+            .select('*')
+            .order('sort_order');
+        if (inds) setRubricIndicators(inds);
+
+        const { data: scrs } = await supabase
+            .from('assessment_scores')
+            .select('id, indicator_id, score, assessed_at')
+            .eq('class_name', myInfo.class_name)
+            .eq('group_number', myInfo.group_number)
+            .eq('academic_year', ACADEMIC_YEAR);
+        if (scrs) setAssessmentScores(scrs);
+
+        setLoading(false);
+    }, [supabase]);
+
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
+
+    // ─── Key Concepts Handlers ─────────────────────────
+    const addConcept = () => {
+        setKeyConcepts([...keyConcepts, { subject: 'matematika', concept: '' }]);
+    };
+
+    const removeConcept = (index: number) => {
+        setKeyConcepts(keyConcepts.filter((_, i) => i !== index));
+    };
+
+    const updateConcept = (index: number, field: 'subject' | 'concept', value: string) => {
+        const newConcepts = [...keyConcepts];
+        newConcepts[index][field] = value;
+        setKeyConcepts(newConcepts);
+    };
+
+    // ─── Logbook Submit ────────────────────────────────
+    const handleLogbookSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!userEmail || !studentInfo || isSubmittingLog) return;
+
+        setIsSubmittingLog(true);
+
+        const { data, error } = await supabase.from('logbooks').insert([
+            {
+                class_name: studentInfo.class_name,
+                group_number: studentInfo.group_number,
+                academic_year: ACADEMIC_YEAR,
+                student_email: userEmail,
+                entry_date: newLogDate,
+                task: newLogTask,
+                result: newLogResult
+            }
+        ]).select();
+
+        setIsSubmittingLog(false);
+
+        if (error) {
+            console.error("Error inserting logbook:", error);
+            showToast("Failed to submit logbook entry. Please try again.", 'error');
+        } else if (data) {
+            setLogbooks([data[0], ...logbooks]);
+            setNewLogTask('');
+            setNewLogResult('');
+            setNewLogDate(new Date().toISOString().split('T')[0]);
+            setShowLogbookForm(false);
+            showToast('Logbook entry saved successfully!', 'success');
+        }
+    };
+
+    // ─── Logbook Delete ────────────────────────────────
+    const handleLogbookDelete = async (logId: string) => {
+        showConfirm(
+            'Delete Entry',
+            'Are you sure you want to delete this logbook entry? This action cannot be undone.',
+            async () => {
+                closeConfirm();
+                const { error } = await supabase
+                    .from('logbooks')
+                    .delete()
+                    .eq('id', logId)
+                    .eq('student_email', userEmail!);
+
+                if (error) {
+                    console.error('Error deleting logbook:', error);
+                    showToast('Failed to delete logbook entry.', 'error');
+                } else {
+                    setLogbooks(logbooks.filter(l => l.id !== logId));
+                    showToast('Logbook entry deleted.', 'success');
+                }
+            }
+        );
+    };
+
+    // ─── Project Submit ────────────────────────────────
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!userEmail || !studentInfo || isSubmitting) return;
+
+        setIsSubmitting(true);
+
+        // Strict validation: all fields must be filled
+        if (!title.trim()) {
+            showToast('Please enter a project title.', 'warning');
+            setIsSubmitting(false);
+            return;
+        }
+        if (!theme) {
+            showToast('Please select a theme.', 'warning');
+            setIsSubmitting(false);
+            return;
+        }
+        if (!problem.trim()) {
+            showToast('Please describe the problem.', 'warning');
+            setIsSubmitting(false);
+            return;
+        }
+        if (!solution.trim()) {
+            showToast('Please describe the solution.', 'warning');
+            setIsSubmitting(false);
+            return;
+        }
+        if (keyConcepts.some(c => !c.concept.trim())) {
+            showToast('Please fill in all key concepts.', 'warning');
+            setIsSubmitting(false);
+            return;
+        }
+        if (!docUrl.trim()) {
+            showToast('Please provide a Google Docs URL.', 'warning');
+            setIsSubmitting(false);
+            return;
+        }
+
+        // URL validation
+        if (!docUrl.includes('docs.google.com')) {
+            showToast('Please provide a valid Google Docs URL.', 'error');
+            setIsSubmitting(false);
+            return;
+        }
+
+        // Check if the Google Doc is public (always enforced)
+        try {
+            const docCheck = await fetch('/api/check-doc', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: docUrl })
+            });
+            const checkResult = await docCheck.json();
+
+            if (!checkResult.isPublic) {
+                showToast(checkResult.error || 'The Google Doc is not publicly accessible. Please set sharing to "Anyone with the link".', 'error');
+                setIsSubmitting(false);
+                return;
+            }
+        } catch (err) {
+            console.error(err);
+            showToast('Failed to verify Google Doc access. Please make sure the URL is correct and try again.', 'error');
+            setIsSubmitting(false);
+            return;
+        }
+
+        const combinedAbstract = JSON.stringify({
+            problem,
+            solution,
+            keyConcepts
+        });
+
+        const { data, error } = await supabase.from('projects').insert([
+            {
+                class_name: studentInfo.class_name,
+                group_number: studentInfo.group_number,
+                academic_year: ACADEMIC_YEAR,
+                theme_id: theme || null,
+                title: title,
+                abstract: combinedAbstract,
+                status: 'pending',
+                google_doc_url: docUrl
+            }
+        ]).select();
+
+        setIsSubmitting(false);
+
+        if (error) {
+            console.error(error);
+            showToast('Error submitting project: ' + error.message, 'error');
+        } else if (data) {
+            showToast('Project submitted successfully!', 'success');
+            setProjectData(data[0]);
+            setActiveTab('data');
+            setTitle('');
+            setProblem('');
+            setSolution('');
+            setDocUrl('');
+            setKeyConcepts([{ subject: 'mathematics', concept: '' }]);
+        }
+    };
+
+    // ─── Helper: Get member name from email ─────────────
+    const getMemberName = (email: string) => {
+        const member = teamMembers.find(m => m.email === email);
+        return member?.full_name || email;
+    };
+
+    // ─── Loading State ─────────────────────────────────
+    if (loading) return (
+        <div className="min-h-screen bg-[#1c1b14] flex items-center justify-center">
+            <div className="flex flex-col items-center gap-4">
+                <div className="w-10 h-10 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+                <p className="text-slate-500 text-sm">Loading your dashboard...</p>
+            </div>
+        </div>
+    );
+
+    return (
+        <div className="min-h-screen bg-[#1c1b14] text-[#d4d4d4] font-sans">
+            {/* Toast Notifications */}
+            <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+
+            {/* Confirm Dialog */}
+            <ConfirmDialog
+                open={confirmDialog.open}
+                title={confirmDialog.title}
+                message={confirmDialog.message}
+                confirmLabel={confirmDialog.confirmLabel}
+                onConfirm={confirmDialog.onConfirm}
+                onCancel={closeConfirm}
+            />
+
+            {/* Navbar */}
+            <nav className="bg-[#1a1811] border-b border-amber-900/40 px-6 py-4 flex justify-between items-center sticky top-0 z-50">
+                <div className="flex items-center gap-3">
+                    <Star className="text-amber-400 w-6 h-6" fill="currentColor" strokeWidth={0} />
+                    <span className="font-bold text-xl text-transparent bg-clip-text bg-gradient-to-r from-amber-100 to-amber-500">
+                        PAHOA STEAM
+                    </span>
+                    <span className="ml-2 bg-amber-900/30 text-amber-400 text-xs px-3 py-1 rounded-full border border-amber-500/20 hidden sm:inline-block">
+                        Student Portal
+                    </span>
+                </div>
+
+                <div className="flex items-center gap-4">
+                    <div className="text-sm text-slate-400 hidden sm:block">{userEmail}</div>
+                    <button
+                        onClick={() => supabase.auth.signOut().then(() => window.location.href = '/')}
+                        className="flex items-center gap-2 text-slate-400 hover:text-red-400 transition-colors text-sm px-3 py-1.5 rounded-lg hover:bg-red-950/30"
+                    >
+                        <LogOut className="w-4 h-4" />
+                        <span className="hidden sm:inline">Logout</span>
+                    </button>
+                </div>
+            </nav>
+
+            {/* Not registered warning */}
+            {!studentInfo && (
+                <div className="max-w-6xl mx-auto p-4 sm:p-6 lg:p-8">
+                    <div className="bg-amber-900/20 border border-amber-500/30 rounded-2xl p-8 text-center">
+                        <Users className="w-12 h-12 text-amber-500 mx-auto mb-4" />
+                        <h2 className="text-xl font-bold text-white mb-2">Not Registered in Any Group</h2>
+                        <p className="text-slate-400 max-w-md mx-auto">
+                            Your email ({userEmail}) is not found in the student database for the academic year {ACADEMIC_YEAR}. Please contact your teacher to be added to a group.
+                        </p>
+                    </div>
+                </div>
+            )}
+
+            {/* Main Layout (only if registered) */}
+            {studentInfo && (
+                <main className="max-w-6xl mx-auto p-4 sm:p-6 lg:p-8 flex flex-col md:flex-row gap-8">
+
+                    {/* Sidebar / Tabs */}
+                    <aside
+                        className="w-full md:w-64 shrink-0 flex flex-row md:flex-col gap-2 md:gap-0 md:space-y-2 overflow-x-auto md:overflow-visible pb-2 md:pb-0 sticky top-20 md:top-24 h-fit z-40 bg-[#1c1b14] pt-2 md:pt-0"
+                        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                    >
+                        <style dangerouslySetInnerHTML={{ __html: `aside::-webkit-scrollbar { display: none; }` }} />
+
+                        {/* Group Info Card (Desktop) */}
+                        <div className="hidden md:flex flex-col bg-[#1a1811] border border-amber-900/30 rounded-xl px-4 py-3 mb-3">
+                            <span className="text-xs text-slate-500 uppercase tracking-wider">Your Group</span>
+                            <span className="text-amber-400 font-bold text-lg">
+                                {studentInfo.class_name} — Group {studentInfo.group_number}
+                            </span>
+                            <span className="text-xs text-slate-500 mt-0.5">{ACADEMIC_YEAR}</span>
+                        </div>
+
+                        {[
+                            { id: 'data', label: 'My Project Data', icon: Database },
+                            { id: 'submit', label: 'Submit a Project', icon: PenSquare },
+                            { id: 'logbook', label: 'My Logbook', icon: BookOpen },
+                            { id: 'result', label: 'Assessment Result', icon: FileCheck },
+                        ].map((tab) => (
+                            <button
+                                key={tab.id}
+                                onClick={() => setActiveTab(tab.id)}
+                                className={`flex-shrink-0 md:w-full flex items-center justify-center md:justify-start gap-2 md:gap-3 px-4 py-3 rounded-xl transition-all font-medium text-sm border whitespace-nowrap ${activeTab === tab.id
+                                    ? 'bg-[#292314] text-amber-500 border-amber-500/50 shadow-lg shadow-amber-900/10'
+                                    : 'bg-[#1a1811] text-slate-400 hover:bg-[#25221b] hover:text-amber-400 border-amber-900/20'
+                                    }`}
+                            >
+                                <tab.icon className="w-4 h-4 md:w-5 md:h-5" />
+                                {tab.label}
+                            </button>
+                        ))}
+                    </aside>
+
+                    {/* Tab Content Area */}
+                    <div className="flex-1 min-h-[500px]">
+
+                        {/* ═══════════════════════════════════════════ */}
+                        {/* TAB 1: MY PROJECT DATA                     */}
+                        {/* ═══════════════════════════════════════════ */}
+                        {activeTab === 'data' && (
+                            <div className="space-y-6">
+                                {/* Team Members Card */}
+                                <div className="bg-[#1a1811] border border-amber-900/20 rounded-2xl p-6 sm:p-8 shadow-2xl">
+                                    <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-3">
+                                        <Users className="text-amber-500 w-5 h-5" />
+                                        Team Members
+                                        <span className="ml-auto text-xs bg-amber-900/30 text-amber-400 px-3 py-1 rounded-full border border-amber-500/20 sm:hidden">
+                                            {studentInfo.class_name} — G{studentInfo.group_number}
+                                        </span>
+                                    </h2>
+                                    {teamMembers.length > 0 ? (
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                            {teamMembers.map((member, i) => (
+                                                <div
+                                                    key={i}
+                                                    className={`flex items-center gap-3 bg-[#1c1b14] border rounded-xl px-4 py-3 transition-all ${member.email === userEmail
+                                                        ? 'border-amber-500/50 shadow-lg shadow-amber-900/10'
+                                                        : 'border-slate-800 hover:border-slate-700'
+                                                        }`}
+                                                >
+                                                    <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${member.email === userEmail
+                                                        ? 'bg-gradient-to-br from-amber-500 to-amber-600 text-[#1a160d]'
+                                                        : 'bg-slate-800 text-slate-400'
+                                                        }`}>
+                                                        {member.full_name?.charAt(0).toUpperCase()}
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                        <p className={`text-sm font-medium truncate ${member.email === userEmail ? 'text-amber-400' : 'text-slate-200'
+                                                            }`}>
+                                                            {member.full_name}
+                                                            {member.email === userEmail && (
+                                                                <span className="ml-2 text-[10px] bg-amber-500/20 text-amber-500 px-1.5 py-0.5 rounded-full">You</span>
+                                                            )}
+                                                        </p>
+                                                        <p className="text-xs text-slate-500 truncate">{member.email}</p>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="bg-[#1c1b14] border border-slate-800 rounded-xl p-6 text-center">
+                                            <p className="text-slate-500 text-sm">No team members found.</p>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Project Data Card */}
+                                <div className="bg-[#1a1811] border border-amber-900/20 rounded-2xl p-6 sm:p-8 shadow-2xl">
+                                    <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-3">
+                                        <Database className="text-amber-500 w-5 h-5" />
+                                        Project Details
+                                    </h2>
+
+                                    {projectData ? (
+                                        <div className="space-y-4">
+                                            <div className="bg-[#1c1b14] border border-slate-800 rounded-xl p-5">
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <span className="text-xs text-slate-500 uppercase tracking-wider">Title</span>
+                                                    <span className={`ml-auto text-xs px-2.5 py-0.5 rounded-full font-medium ${projectData.status === 'approved'
+                                                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                                        : projectData.status === 'revision'
+                                                            ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+                                                            : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                                                        }`}>
+                                                        {projectData.status || 'pending'}
+                                                    </span>
+                                                </div>
+                                                <p className="text-lg font-semibold text-white">{projectData.title}</p>
+                                            </div>
+                                            {projectData.abstract && (() => {
+                                                try {
+                                                    const parsed = JSON.parse(projectData.abstract);
+                                                    return (
+                                                        <div className="space-y-4">
+                                                            <div className="bg-[#1c1b14] border border-slate-800 rounded-xl p-5">
+                                                                <span className="text-xs text-slate-500 uppercase tracking-wider">Problem</span>
+                                                                <p className="text-sm text-slate-300 mt-1 whitespace-pre-line">{parsed.problem}</p>
+                                                            </div>
+                                                            <div className="bg-[#1c1b14] border border-slate-800 rounded-xl p-5">
+                                                                <span className="text-xs text-slate-500 uppercase tracking-wider">Proposed Solution</span>
+                                                                <p className="text-sm text-slate-300 mt-1 whitespace-pre-line">{parsed.solution}</p>
+                                                            </div>
+                                                            {parsed.keyConcepts && parsed.keyConcepts.length > 0 && (
+                                                                <div className="bg-[#1c1b14] border border-slate-800 rounded-xl p-5">
+                                                                    <span className="text-xs text-slate-500 uppercase tracking-wider block mb-3">Key Concepts mapping</span>
+                                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                                        {parsed.keyConcepts.map((item: any, idx: number) => {
+                                                                            const subj = SUBJECTS.find(s => s.id === item.subject);
+                                                                            const Icon = subj?.icon || BookOpen;
+                                                                            return (
+                                                                                <div key={idx} className="bg-[#1a1811] border border-amber-900/10 rounded-lg p-3 flex gap-3 items-start">
+                                                                                    <div className="bg-amber-500/10 p-2 rounded-lg text-amber-500 shrink-0">
+                                                                                        <Icon className="w-4 h-4" />
+                                                                                    </div>
+                                                                                    <div>
+                                                                                        <p className="text-xs font-bold text-slate-400 mb-0.5">{subj?.label || item.subject}</p>
+                                                                                        <p className="text-sm text-slate-200">{item.concept}</p>
+                                                                                    </div>
+                                                                                </div>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                } catch (e) {
+                                                    // Fallback for old simple text format
+                                                    return (
+                                                        <div className="bg-[#1c1b14] border border-slate-800 rounded-xl p-5">
+                                                            <span className="text-xs text-slate-500 uppercase tracking-wider">Abstract</span>
+                                                            <p className="text-sm text-slate-300 mt-1 whitespace-pre-line">{projectData.abstract}</p>
+                                                        </div>
+                                                    );
+                                                }
+                                            })()}                                          {projectData.google_doc_url && (
+                                                <div className="bg-[#1c1b14] border border-slate-800 rounded-xl p-5">
+                                                    <span className="text-xs text-slate-500 uppercase tracking-wider">Google Doc</span>
+                                                    <a
+                                                        href={projectData.google_doc_url}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="inline-flex items-center justify-center gap-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 font-medium py-2.5 px-5 rounded-xl mt-3 transition-all active:scale-95 text-sm w-full sm:w-auto"
+                                                    >
+                                                        <LinkIcon className="w-4 h-4" />
+                                                        Open Document
+                                                    </a>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <div className="bg-[#1c1b14] border border-dashed border-slate-700 rounded-xl p-10 text-center flex flex-col items-center justify-center">
+                                            <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mb-4">
+                                                <PenSquare className="w-7 h-7 text-amber-500" />
+                                            </div>
+                                            <h3 className="text-lg font-bold text-slate-300 mb-2">No Project Submitted Yet</h3>
+                                            <p className="text-slate-500 text-sm max-w-sm mx-auto mb-6">
+                                                Your team hasn&apos;t submitted a project yet. Start by filling out the submission form.
+                                            </p>
+                                            <button
+                                                onClick={() => setActiveTab('submit')}
+                                                className="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-[#1a160d] font-bold py-3 px-8 rounded-xl flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-amber-900/20"
+                                            >
+                                                <PenSquare className="w-5 h-5" />
+                                                Submit a Project
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ═══════════════════════════════════════════ */}
+                        {/* TAB 2: MY LOGBOOK                          */}
+                        {/* ═══════════════════════════════════════════ */}
+                        {activeTab === 'logbook' && (
+                            <div className="bg-[#1a1811] border border-amber-900/20 rounded-2xl p-6 sm:p-8 shadow-2xl">
+                                <div className="flex justify-between items-center mb-6">
+                                    <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+                                        <BookOpen className="text-amber-500" />
+                                        Group Logbook
+                                    </h2>
+                                    {!showLogbookForm && (
+                                        <button
+                                            onClick={() => setShowLogbookForm(true)}
+                                            className="bg-amber-500 hover:bg-amber-400 text-[#1a160d] font-bold py-2 px-4 flex items-center gap-2 rounded-xl transition-colors text-sm shadow-lg shadow-amber-900/20"
+                                        >
+                                            <Plus className="w-4 h-4" /> Add Log
+                                        </button>
+                                    )}
+                                </div>
+
+                                {/* Add Log Form */}
+                                {showLogbookForm && (
+                                    <form onSubmit={handleLogbookSubmit} className="bg-[#1c1b14] border border-slate-800 rounded-xl p-6 mb-8 text-slate-300 space-y-4">
+                                        <div className="flex justify-between items-center mb-4">
+                                            <h3 className="text-lg font-semibold text-amber-500 flex items-center gap-2">
+                                                <PenSquare className="w-5 h-5" /> New Log Entry
+                                            </h3>
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowLogbookForm(false)}
+                                                className="text-slate-500 hover:text-red-400 transition-colors"
+                                            >
+                                                <X className="w-5 h-5" />
+                                            </button>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-400 mb-1">Date</label>
+                                                <div className="relative">
+                                                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                                                    <input
+                                                        type="date"
+                                                        required
+                                                        value={newLogDate}
+                                                        onChange={(e) => setNewLogDate(e.target.value)}
+                                                        className="w-full bg-[#110e08] border border-slate-800 rounded-lg py-2 pl-10 pr-4 text-slate-200 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-400 mb-1">Task</label>
+                                            <textarea
+                                                required
+                                                rows={2}
+                                                value={newLogTask}
+                                                onChange={(e) => setNewLogTask(e.target.value)}
+                                                placeholder="What did you work on today?"
+                                                className="w-full bg-[#110e08] border border-slate-800 rounded-lg py-2 px-4 text-slate-200 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 resize-none"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-400 mb-1">Result</label>
+                                            <textarea
+                                                required
+                                                rows={2}
+                                                value={newLogResult}
+                                                onChange={(e) => setNewLogResult(e.target.value)}
+                                                placeholder="What was the outcome of your task?"
+                                                className="w-full bg-[#110e08] border border-slate-800 rounded-lg py-2 px-4 text-slate-200 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 resize-none"
+                                            />
+                                        </div>
+
+                                        <div className="flex justify-end gap-3 pt-4">
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowLogbookForm(false)}
+                                                className="px-4 py-2 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition-colors text-sm font-medium"
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                type="submit"
+                                                disabled={isSubmittingLog}
+                                                className="bg-amber-500 hover:bg-amber-400 text-[#1a160d] font-bold py-2 px-6 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-amber-900/20"
+                                            >
+                                                {isSubmittingLog ? (
+                                                    <div className="w-4 h-4 border-2 border-[#1a160d] border-t-transparent rounded-full animate-spin"></div>
+                                                ) : (
+                                                    <Save className="w-4 h-4" />
+                                                )}
+                                                Save Entry
+                                            </button>
+                                        </div>
+                                    </form>
+                                )}
+
+                                {/* Logbooks Table */}
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left border-collapse">
+                                        <thead>
+                                            <tr className="border-b border-amber-900/30">
+                                                <th className="py-3 px-4 font-semibold text-slate-400 text-sm whitespace-nowrap">Date</th>
+                                                <th className="py-3 px-4 font-semibold text-slate-400 text-sm whitespace-nowrap">Member</th>
+                                                <th className="py-3 px-4 font-semibold text-slate-400 text-sm w-1/4">Task</th>
+                                                <th className="py-3 px-4 font-semibold text-slate-400 text-sm w-1/4">Result</th>
+                                                <th className="py-3 px-4 font-semibold text-slate-400 text-sm min-w-[130px]">Feedback</th>
+                                                <th className="py-3 px-4 font-semibold text-slate-400 text-sm w-10"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-800/50">
+                                            {logbooks.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={6} className="py-8 text-center text-slate-500">
+                                                        No logbook entries found. Click &quot;Add Log&quot; to create your first entry.
+                                                    </td>
+                                                </tr>
+                                            ) : (
+                                                logbooks.map((log) => (
+                                                    <tr key={log.id} className="hover:bg-[#1c1b14] transition-colors">
+                                                        <td className="py-4 px-4 text-sm text-amber-500 font-medium whitespace-nowrap align-top">
+                                                            {new Date(log.entry_date).toLocaleDateString()}
+                                                        </td>
+                                                        <td className="py-4 px-4 text-sm align-top whitespace-nowrap">
+                                                            <span className={`font-medium ${log.student_email === userEmail ? 'text-amber-400' : 'text-slate-300'}`}>
+                                                                {getMemberName(log.student_email)}
+                                                            </span>
+                                                            {log.student_email === userEmail && (
+                                                                <span className="ml-1 text-[10px] bg-amber-500/20 text-amber-500 px-1 py-0.5 rounded-full">You</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="py-4 px-4 text-sm text-slate-300 align-top">
+                                                            {log.task}
+                                                        </td>
+                                                        <td className="py-4 px-4 text-sm text-slate-300 align-top">
+                                                            {log.result}
+                                                        </td>
+                                                        <td className="py-4 px-4 text-sm align-top">
+                                                            {log.feedback ? (
+                                                                <span className="text-amber-100">{log.feedback}</span>
+                                                            ) : (
+                                                                <span className="text-slate-600 italic">No feedback yet</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="py-4 px-2 text-sm align-top">
+                                                            {log.student_email === userEmail && (
+                                                                <button
+                                                                    onClick={() => handleLogbookDelete(log.id)}
+                                                                    className="p-1.5 text-slate-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                                                                    title="Delete this entry"
+                                                                >
+                                                                    <Trash2 className="w-4 h-4" />
+                                                                </button>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                ))
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ═══════════════════════════════════════════ */}
+                        {/* TAB 3: PROJECT SUBMISSION                   */}
+                        {/* ═══════════════════════════════════════════ */}
+                        {activeTab === 'submit' && (
+                            <div className="bg-[#1a1811] border border-amber-900/20 rounded-2xl p-6 sm:p-8 shadow-2xl">
+                                <h2 className="text-2xl font-bold text-white mb-2 flex items-center gap-3">
+                                    <PenSquare className="text-amber-500" />
+                                    Project Submission
+                                </h2>
+                                <p className="text-slate-400 text-sm mb-8">Fill out the details of your STEAM project below.</p>
+
+                                {projectData ? (
+                                    <div className="bg-[#1c1b14] border border-amber-500/30 rounded-xl p-6 text-center">
+                                        <Award className="w-12 h-12 text-amber-500 mx-auto mb-3" />
+                                        <h3 className="text-lg font-bold text-white mb-2">Project Already Submitted</h3>
+                                        <p className="text-slate-400 text-sm mb-4">
+                                            Your group has already submitted a project: <strong className="text-amber-400">{projectData.title}</strong>
+                                        </p>
+                                        <button
+                                            onClick={() => setActiveTab('data')}
+                                            className="text-amber-400 hover:text-amber-300 text-sm font-medium transition-colors"
+                                        >
+                                            View Project Details →
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <form onSubmit={handleSubmit} className="space-y-6">
+                                        {/* Title */}
+                                        <div>
+                                            <label className="block text-sm font-semibold text-slate-300 mb-2">Project Title</label>
+                                            <input
+                                                type="text"
+                                                required
+                                                value={title}
+                                                onChange={(e) => setTitle(e.target.value)}
+                                                className="w-full bg-[#1c1b14] border border-slate-800 rounded-xl py-3 px-4 text-slate-200 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all"
+                                                placeholder="Enter your project title..."
+                                            />
+                                        </div>
+
+                                        {/* Theme Dropdown */}
+                                        <div>
+                                            <label className="block text-sm font-semibold text-slate-300 mb-2">Theme</label>
+                                            {themesList.length > 0 ? (
+                                                <div className="relative">
+                                                    <select
+                                                        value={theme}
+                                                        onChange={(e) => setTheme(e.target.value)}
+                                                        className="w-full bg-[#1c1b14] border border-slate-800 rounded-xl py-3 px-4 pr-10 text-slate-200 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all appearance-none"
+                                                    >
+                                                        {themesList.map((t) => (
+                                                            <option key={t.id} value={t.id}>{t.theme_name}</option>
+                                                        ))}
+                                                    </select>
+                                                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 pointer-events-none" />
+                                                </div>
+                                            ) : (
+                                                <div className="bg-[#1c1b14] border border-slate-800 rounded-xl py-3 px-4 text-slate-500 text-sm">
+                                                    No themes available for your grade. Please contact your teacher.
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Problem & Solution */}
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                            <div>
+                                                <label className="block text-sm font-semibold text-slate-300 mb-2">Problem</label>
+                                                <textarea
+                                                    required
+                                                    rows={4}
+                                                    value={problem}
+                                                    onChange={(e) => setProblem(e.target.value)}
+                                                    className="w-full bg-[#1c1b14] border border-slate-800 rounded-xl py-3 px-4 text-slate-200 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all resize-none"
+                                                    placeholder="Describe the problem you are solving..."
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-semibold text-slate-300 mb-2">Solution</label>
+                                                <textarea
+                                                    required
+                                                    rows={4}
+                                                    value={solution}
+                                                    onChange={(e) => setSolution(e.target.value)}
+                                                    className="w-full bg-[#1c1b14] border border-slate-800 rounded-xl py-3 px-4 text-slate-200 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all resize-none"
+                                                    placeholder="Describe your proposed solution..."
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {/* Key Concepts */}
+                                        <div className="pt-4 border-t border-slate-800/50">
+                                            <div className="flex justify-between items-center mb-4">
+                                                <label className="block text-sm font-semibold text-slate-300">Key Concepts</label>
+                                                <button
+                                                    type="button"
+                                                    onClick={addConcept}
+                                                    className="text-xs bg-amber-500/10 text-amber-400 border border-amber-500/20 px-3 py-1.5 rounded-lg flex items-center gap-1 hover:bg-amber-500/20 transition-colors"
+                                                >
+                                                    <Plus className="w-3 h-3" /> Add Concept
+                                                </button>
+                                            </div>
+
+                                            <div className="space-y-3">
+                                                {keyConcepts.map((item, index) => (
+                                                    <div key={index} className="flex gap-3 items-start">
+                                                        <div className="relative w-1/3 shrink-0">
+                                                            <select
+                                                                value={item.subject}
+                                                                onChange={(e) => updateConcept(index, 'subject', e.target.value)}
+                                                                className="w-full bg-[#1c1b14] border border-slate-800 rounded-lg py-2.5 pl-10 pr-4 text-sm text-slate-200 focus:outline-none focus:border-amber-500 appearance-none"
+                                                            >
+                                                                {SUBJECTS.map((sub) => (
+                                                                    <option key={sub.id} value={sub.id}>{sub.label}</option>
+                                                                ))}
+                                                            </select>
+                                                            <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                                                                {(() => {
+                                                                    const SelIcon = SUBJECTS.find(s => s.id === item.subject)?.icon || Calculator;
+                                                                    return <SelIcon className="w-4 h-4" />;
+                                                                })()}
+                                                            </div>
+                                                        </div>
+                                                        <input
+                                                            type="text"
+                                                            required
+                                                            value={item.concept}
+                                                            onChange={(e) => updateConcept(index, 'concept', e.target.value)}
+                                                            className="flex-1 bg-[#1c1b14] border border-slate-800 rounded-lg py-2.5 px-4 text-sm text-slate-200 focus:outline-none focus:border-amber-500"
+                                                            placeholder="Describe the concept..."
+                                                        />
+                                                        {keyConcepts.length > 1 && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => removeConcept(index)}
+                                                                className="p-2.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                                                            >
+                                                                <Trash2 className="w-4 h-4" />
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {/* Google Doc URL */}
+                                        <div className="pt-4 border-t border-slate-800/50">
+                                            <label className="block text-sm font-semibold text-slate-300 mb-2">Google Doc URL (Public)</label>
+                                            <div className="relative">
+                                                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
+                                                    <LinkIcon className="w-5 h-5" />
+                                                </div>
+                                                <input
+                                                    type="url"
+                                                    value={docUrl}
+                                                    onChange={(e) => setDocUrl(e.target.value)}
+                                                    className="w-full bg-[#1c1b14] border border-slate-800 rounded-xl py-3 pl-10 pr-4 text-slate-200 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all font-mono text-sm"
+                                                    placeholder="https://docs.google.com/document/d/..."
+                                                />
+                                            </div>
+                                            <p className="text-xs text-amber-500/80 mt-2">
+                                                * Make sure the document sharing setting is set to &quot;Anyone with the link can view&quot;.
+                                            </p>
+                                        </div>
+
+                                        {/* Submit Button */}
+                                        <button
+                                            type="submit"
+                                            disabled={isSubmitting}
+                                            className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-[#1a160d] font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-amber-900/20 mt-8 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            {isSubmitting ? (
+                                                <div className="w-5 h-5 border-2 border-[#1a160d] border-t-transparent rounded-full animate-spin"></div>
+                                            ) : (
+                                                <PenSquare className="w-5 h-5" />
+                                            )}
+                                            {isSubmitting ? 'Submitting...' : 'Submit Project Review'}
+                                        </button>
+                                    </form>
+                                )}
+                            </div>
+                        )}
+
+                        {/* ═══════════════════════════════════════════ */}
+                        {/* TAB 4: ASSESSMENT RESULT                    */}
+                        {/* ═══════════════════════════════════════════ */}
+                        {activeTab === 'result' && (
+                            <div className="bg-[#1a1811] border border-amber-900/20 rounded-2xl p-6 sm:p-8 shadow-2xl">
+                                <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+                                    <FileCheck className="text-amber-500" />
+                                    Assessment Results
+                                </h2>
+
+                                {/* Category Pills */}
+                                <div className="flex flex-wrap gap-2 mb-8">
+                                    {assessmentCategories.map((cat) => {
+                                        const isActive = selectedCategory === cat.id;
+                                        // Check if this category has any scores
+                                        const catDimIds = rubricDimensions.filter(d => d.category_id === cat.id).map(d => d.id);
+                                        const catIndIds = rubricIndicators.filter(ind => catDimIds.includes(ind.dimension_id)).map(ind => ind.id);
+                                        const hasScores = assessmentScores.some(s => catIndIds.includes(s.indicator_id));
+
+                                        return (
+                                            <button
+                                                key={cat.id}
+                                                onClick={() => setSelectedCategory(cat.id)}
+                                                className={`relative px-4 py-2 rounded-xl text-sm font-semibold border transition-all ${isActive
+                                                        ? 'bg-amber-500/20 text-amber-400 border-amber-500/50 shadow-lg shadow-amber-900/10'
+                                                        : 'bg-[#1c1b14] text-slate-400 border-slate-800 hover:border-slate-600 hover:text-slate-300'
+                                                    }`}
+                                            >
+                                                <span className="text-xs font-bold mr-1.5 opacity-60">{cat.code}</span>
+                                                <span className="hidden sm:inline">{cat.name}</span>
+                                                {hasScores && (
+                                                    <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-[#1a1811]"></span>
+                                                )}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+
+                                {/* Rubric Result View */}
+                                {(() => {
+                                    if (!selectedCategory) return null;
+
+                                    const cat = assessmentCategories.find(c => c.id === selectedCategory);
+                                    if (!cat) return null;
+
+                                    const dims = rubricDimensions.filter(d => d.category_id === cat.id).sort((a, b) => a.sort_order - b.sort_order);
+                                    const maxScale = parseInt(cat.rubric_type.replace('scale_', '')) || 1;
+                                    const isChecklist = cat.rubric_type === 'checklist';
+
+                                    // Collect all indicators and scores for this category
+                                    const allInds = dims.flatMap(dim =>
+                                        rubricIndicators.filter(ind => ind.dimension_id === dim.id)
+                                    );
+                                    const allIndIds = allInds.map(ind => ind.id);
+                                    const catScores = assessmentScores.filter(s => allIndIds.includes(s.indicator_id));
+
+                                    if (dims.length === 0) {
+                                        return (
+                                            <div className="bg-[#1c1b14] border border-slate-800 rounded-xl p-8 text-center flex flex-col items-center justify-center min-h-[250px]">
+                                                <FileCheck className="w-14 h-14 text-slate-700 mb-4" />
+                                                <h3 className="text-lg font-bold text-slate-300 mb-2">No Rubric Defined</h3>
+                                                <p className="text-slate-500 text-sm max-w-sm mx-auto">
+                                                    The rubric for <strong className="text-amber-400">{cat.code} — {cat.name}</strong> has not been set up yet. Please wait for your teacher to configure it.
+                                                </p>
+                                            </div>
+                                        );
+                                    }
+
+                                    if (catScores.length === 0) {
+                                        return (
+                                            <div className="bg-[#1c1b14] border border-slate-800 rounded-xl p-8 text-center flex flex-col items-center justify-center min-h-[250px]">
+                                                <FileCheck className="w-14 h-14 text-slate-700 mb-4" />
+                                                <h3 className="text-lg font-bold text-slate-300 mb-2">Not Assessed Yet</h3>
+                                                <p className="text-slate-500 text-sm max-w-sm mx-auto">
+                                                    <strong className="text-amber-400">{cat.code} — {cat.name}</strong> is pending review by your teacher. Scores will appear here once graded.
+                                                </p>
+                                            </div>
+                                        );
+                                    }
+
+                                    // Overall score for this category
+                                    const totalScore = catScores.reduce((sum, s) => sum + s.score, 0);
+                                    const totalMax = isChecklist ? allInds.length : allInds.length * maxScale;
+                                    const overallPct = totalMax > 0 ? Math.round((totalScore / totalMax) * 100) : 0;
+
+                                    let overallColor = 'text-amber-400';
+                                    let overallBg = 'bg-amber-500';
+                                    if (overallPct >= 80) { overallColor = 'text-emerald-400'; overallBg = 'bg-emerald-500'; }
+                                    else if (overallPct < 60) { overallColor = 'text-red-400'; overallBg = 'bg-red-500'; }
+
+                                    return (
+                                        <div className="space-y-6">
+                                            {/* Overall Summary Card */}
+                                            <div className="bg-gradient-to-r from-amber-900/20 to-amber-800/10 border border-amber-500/20 rounded-xl p-6">
+                                                <div className="flex items-center justify-between mb-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <TrendingUp className="w-5 h-5 text-amber-500" />
+                                                        <span className="text-sm font-semibold text-slate-300">{cat.code} — {cat.name}</span>
+                                                    </div>
+                                                    <span className="text-xs bg-slate-800 text-slate-400 px-2.5 py-1 rounded-full border border-slate-700">
+                                                        {isChecklist ? 'Checklist' : `Scale 1-${maxScale}`}
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-end gap-3 mt-3">
+                                                    <span className={`text-4xl font-bold ${overallColor}`}>{overallPct}%</span>
+                                                    <span className="text-sm text-slate-500 mb-1">({totalScore}/{totalMax} points)</span>
+                                                </div>
+                                                <div className="w-full bg-slate-800 rounded-full h-2 mt-3">
+                                                    <div className={`${overallBg} h-2 rounded-full transition-all duration-700`} style={{ width: `${overallPct}%` }}></div>
+                                                </div>
+                                            </div>
+
+                                            {/* Dimension Cards */}
+                                            {dims.map((dim) => {
+                                                const dimInds = rubricIndicators.filter(ind => ind.dimension_id === dim.id).sort((a, b) => a.sort_order - b.sort_order);
+                                                const dimIndIds = dimInds.map(ind => ind.id);
+                                                const dimScores = assessmentScores.filter(s => dimIndIds.includes(s.indicator_id));
+
+                                                const dimTotal = dimScores.reduce((sum, s) => sum + s.score, 0);
+                                                const dimMax = isChecklist ? dimInds.length : dimInds.length * maxScale;
+                                                const dimPct = dimMax > 0 ? Math.round((dimTotal / dimMax) * 100) : 0;
+
+                                                return (
+                                                    <div key={dim.id} className="bg-[#1c1b14] border border-slate-800 rounded-xl overflow-hidden">
+                                                        {/* Dimension Header */}
+                                                        <div className="px-5 py-4 border-b border-slate-800/50 flex items-center justify-between">
+                                                            <h4 className="font-bold text-white text-sm">{dim.name}</h4>
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-xs text-slate-500">{dimTotal}/{dimMax}</span>
+                                                                <span className={`text-sm font-bold ${dimPct >= 80 ? 'text-emerald-400' : dimPct >= 60 ? 'text-amber-400' : 'text-red-400'}`}>
+                                                                    {dimPct}%
+                                                                </span>
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Indicators */}
+                                                        <div className="divide-y divide-slate-800/30">
+                                                            {dimInds.map((ind, idx) => {
+                                                                const scoreEntry = dimScores.find(s => s.indicator_id === ind.id);
+                                                                const scoreVal = scoreEntry?.score || 0;
+
+                                                                return (
+                                                                    <div key={ind.id} className="px-5 py-3 flex items-center gap-4 hover:bg-[#1a1811] transition-colors">
+                                                                        <span className="text-xs text-slate-600 font-mono w-6 shrink-0">{idx + 1}.</span>
+                                                                        <p className="text-sm text-slate-300 flex-1">{ind.description}</p>
+
+                                                                        {/* Score Visualization */}
+                                                                        <div className="flex items-center gap-1 shrink-0">
+                                                                            {isChecklist ? (
+                                                                                scoreVal >= 1 ? (
+                                                                                    <div className="w-6 h-6 rounded-md bg-emerald-500/20 flex items-center justify-center">
+                                                                                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                                                                                    </div>
+                                                                                ) : (
+                                                                                    <div className="w-6 h-6 rounded-md bg-slate-800 flex items-center justify-center">
+                                                                                        <X className="w-3 h-3 text-slate-600" />
+                                                                                    </div>
+                                                                                )
+                                                                            ) : (
+                                                                                Array.from({ length: maxScale }, (_, i) => (
+                                                                                    <div
+                                                                                        key={i}
+                                                                                        className={`w-5 h-5 rounded-full border-2 transition-colors ${i < scoreVal
+                                                                                                ? 'bg-amber-500 border-amber-500'
+                                                                                                : 'bg-transparent border-slate-700'
+                                                                                            }`}
+                                                                                    />
+                                                                                ))
+                                                                            )}
+                                                                            <span className="text-xs font-bold text-slate-400 ml-2 w-8 text-right">
+                                                                                {isChecklist ? (scoreVal >= 1 ? '✓' : '—') : `${scoreVal}/${maxScale}`}
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    );
+                                })()}
+                            </div>
+                        )}
+
+                    </div>
+                </main>
+            )}
+        </div>
+    );
+}
