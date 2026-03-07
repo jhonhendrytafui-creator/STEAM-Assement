@@ -36,3 +36,48 @@ body {
     transform: translateX(0);
   }
 }
+
+/* Custom Scrollbar Styles (Dark Theme) */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1a1811;
+  border-left: 1px solid #292314;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #3f3621;
+  border-radius: 5px;
+  border: 2px solid #1a1811;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #f59e0b;
+  /* Amber 500 */
+}
+
+::-webkit-scrollbar-corner {
+  background: #1a1811;
+}
+
+/* Explicit class for elements needing the custom scrollbar *if* standard propagation fails */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #3f3621;
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #f59e0b;
+}
