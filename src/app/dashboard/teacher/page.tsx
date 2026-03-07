@@ -5,7 +5,7 @@ import { createBrowserClient } from '@supabase/ssr';
 import {
     GraduationCap, LogOut, LayoutDashboard, BarChart2,
     ClipboardCheck, Users, FileText, CheckCircle2,
-    X, AlertTriangle, LinkIcon, TrendingUp, BookOpen, Star
+    X, AlertTriangle, LinkIcon, TrendingUp, BookOpen, Star, FolderOpen, History
 } from 'lucide-react';
 
 const ACADEMIC_YEAR = '2025/2026';
@@ -108,18 +108,19 @@ export default function TeacherDashboardPage() {
     // Score Tab State
     const [scoreGrade, setScoreGrade] = useState<string>('');
     const [scoreClass, setScoreClass] = useState<string>('');
-    const [scoreCategory, setScoreCategory] = useState<string>('');
+    const [scoreCategories, setScoreCategories] = useState<string[]>([]);
     const [classScores, setClassScores] = useState<any[]>([]);
     const [isFetchingScores, setIsFetchingScores] = useState(false);
+    const [scoreGrouping, setScoreGrouping] = useState<'group' | 'alphabetical'>('group');
 
     const availableGrades = Array.from(new Set(allStudents.map(s => String(s.class_name).split('.')[0]))).sort((a, b) => Number(a) - Number(b));
     const availableClasses = Array.from(new Set(allStudents.filter(s => String(s.class_name).split('.')[0] === scoreGrade).map(s => s.class_name))).sort();
 
     const fetchClassScores = async () => {
-        if (!scoreClass || !scoreCategory) return;
+        if (!scoreClass || scoreCategories.length === 0) return;
         setIsFetchingScores(true);
 
-        const groupsInClass = Array.from(new Set(allStudents.filter(s => s.class_name === scoreClass).map(s => s.group_number))).sort((a, b) => a - b);
+        const studentsInClass = allStudents.filter(s => s.class_name === scoreClass).sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''));
 
         const { data: classProjects } = await supabase
             .from('projects')
@@ -129,41 +130,157 @@ export default function TeacherDashboardPage() {
 
         const { data: scoresData } = await supabase
             .from('assessment_scores')
-            .select('group_number, indicator_id, score, assessed_at, profiles(full_name)')
+            .select('*')
             .eq('class_name', scoreClass)
-            .eq('category_id', scoreCategory)
+            .in('category_id', scoreCategories)
             .eq('academic_year', ACADEMIC_YEAR);
 
-        const cat = assessmentCategories.find(c => c.id === scoreCategory);
-        const maxScale = parseInt(cat?.rubric_type.replace('scale_', '') || '1');
-        const isChecklist = cat?.rubric_type === 'checklist';
+        const results = studentsInClass.map(student => {
+            const proj = classProjects?.find(p => p.group_number === student.group_number);
 
-        const dims = rubricDimensions.filter(d => d.category_id === scoreCategory);
-        const inds = rubricIndicators.filter(i => dims.some(d => d.id === i.dimension_id));
-        const totalMax = isChecklist ? inds.length : inds.length * maxScale;
+            const studentAssessments: Record<string, any> = {};
 
-        const results = groupsInClass.map(groupNum => {
-            const proj = classProjects?.find(p => p.group_number === groupNum);
-            const groupScores = scoresData?.filter(s => s.group_number === groupNum) || [];
+            scoreCategories.forEach(catId => {
+                const cat = assessmentCategories.find(c => c.id === catId);
+                const dims = rubricDimensions.filter(d => d.category_id === catId);
+                const inds = rubricIndicators.filter(i => dims.some(d => d.id === i.dimension_id));
 
-            const totalScore = groupScores.reduce((sum, s) => sum + s.score, 0);
-            const assessedBy = groupScores.length > 0 ? (groupScores[0].profiles as any)?.full_name || 'Teacher' : null;
-            const assessedAt = groupScores.length > 0 ? groupScores[0].assessed_at : null;
+                const maxScale = parseInt(cat?.rubric_type.replace('scale_', '') || '1');
+                const isChecklist = cat?.rubric_type === 'checklist';
+                const totalMax = isChecklist ? inds.length : inds.length * maxScale;
+
+                const groupCatScores = scoresData?.filter(s => s.group_number === student.group_number && s.category_id === catId) || [];
+                const totalScore = groupCatScores.reduce((sum, s) => sum + s.score, 0);
+
+                studentAssessments[catId] = {
+                    totalScore,
+                    totalMax,
+                    percentage: totalMax > 0 ? Math.round((totalScore / totalMax) * 100) : 0,
+                    isAssessed: groupCatScores.length > 0
+                };
+            });
 
             return {
-                group_number: groupNum,
-                title: proj?.title || 'No Project Submitted',
-                totalScore,
-                totalMax,
-                percentage: totalMax > 0 ? Math.round((totalScore / totalMax) * 100) : 0,
-                assessedBy,
-                assessedAt,
-                isAssessed: groupScores.length > 0
+                student_name: student.full_name,
+                group_number: student.group_number,
+                project_title: proj?.title || 'No Project Submitted',
+                assessments: studentAssessments
             };
         });
 
+        // Sorting
+        if (scoreGrouping === 'group') {
+            results.sort((a, b) => a.group_number - b.group_number || (a.student_name || '').localeCompare(b.student_name || ''));
+        }
+
         setClassScores(results);
         setIsFetchingScores(false);
+    };
+
+    const downloadScoresCSV = () => {
+        if (classScores.length === 0) return;
+
+        const headers = ['Student Name', 'Group', 'Project Title'];
+        scoreCategories.forEach(catId => {
+            const cat = assessmentCategories.find(c => c.id === catId);
+            if (cat) headers.push(cat.name);
+        });
+
+        const csvRows = [headers.join(',')];
+
+        classScores.forEach(row => {
+            const rowData = [
+                `"${row.student_name}"`,
+                row.group_number,
+                `"${row.project_title.replace(/"/g, '""')}"`
+            ];
+
+            scoreCategories.forEach(catId => {
+                const assessment = row.assessments[catId];
+                if (assessment.isAssessed) {
+                    rowData.push(`${assessment.totalScore}/${assessment.totalMax} (${assessment.percentage}%)`);
+                } else {
+                    rowData.push('-');
+                }
+            });
+
+            csvRows.push(rowData.join(','));
+        });
+
+        const csvString = csvRows.join('\n');
+        const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `Steam_Scores_${scoreClass}_${new Date().toISOString().split('T')[0]}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    // Submissions Tab State
+    const [submissionGrade, setSubmissionGrade] = useState<string>('');
+    const [gradeSubmissionsList, setGradeSubmissionsList] = useState<any[]>([]);
+    const [selectedGroupForSubmission, setSelectedGroupForSubmission] = useState<{ class_name: string, group_number: number } | null>(null);
+    const [groupSubmissions, setGroupSubmissions] = useState<any[]>([]);
+    const [currentSubmissionIndex, setCurrentSubmissionIndex] = useState(0);
+    const [isFetchingSubmissions, setIsFetchingSubmissions] = useState(false);
+
+    const fetchGradeSubmissionsList = async () => {
+        if (!submissionGrade) return;
+        setIsFetchingSubmissions(true);
+        setSelectedGroupForSubmission(null);
+        setGroupSubmissions([]);
+
+        // Get all groups for this grade
+        const groupsInGrade = allStudents.filter(s => String(s.class_name).split('.')[0] === submissionGrade);
+        const uniqueGroups = new Map();
+        groupsInGrade.forEach(s => {
+            uniqueGroups.set(`${s.class_name}-${s.group_number}`, { class_name: s.class_name, group_number: s.group_number });
+        });
+
+        // Get all submitted projects
+        const { data: projs } = await supabase
+            .from('projects')
+            .select(`*, themes(theme_name)`)
+            .eq('academic_year', ACADEMIC_YEAR)
+            .ilike('class_name', `${submissionGrade}.%`)
+            .order('iteration', { ascending: false });
+
+        const listView: any[] = [];
+        uniqueGroups.forEach((group) => {
+            const groupProjs = projs?.filter(p => p.class_name === group.class_name && p.group_number === group.group_number) || [];
+            if (groupProjs.length > 0) {
+                listView.push({
+                    class_name: group.class_name,
+                    group_number: group.group_number,
+                    latestStatus: groupProjs[0].status,
+                    latestTitle: groupProjs[0].title,
+                    iterationsCount: groupProjs.length,
+                    latestProject: groupProjs[0],
+                    allProjects: groupProjs
+                });
+            } else {
+                listView.push({
+                    class_name: group.class_name,
+                    group_number: group.group_number,
+                    latestStatus: 'not submitted yet',
+                    latestTitle: '-',
+                    iterationsCount: 0,
+                    latestProject: null,
+                    allProjects: []
+                });
+            }
+        });
+
+        setGradeSubmissionsList(listView.sort((a, b) => a.class_name.localeCompare(b.class_name) || a.group_number - b.group_number));
+        setIsFetchingSubmissions(false);
+    };
+
+    const handleSelectSubmissionGroup = (group: any) => {
+        setSelectedGroupForSubmission({ class_name: group.class_name, group_number: group.group_number });
+        setGroupSubmissions(group.allProjects);
+        setCurrentSubmissionIndex(0);
     };
 
     // Assess Tab State
@@ -175,6 +292,8 @@ export default function TeacherDashboardPage() {
     // Assess Form State
     const [assessProject, setAssessProject] = useState<any>(null);
     const [currentScores, setCurrentScores] = useState<Record<string, number>>({});
+    const [assessStatus, setAssessStatus] = useState<string>('');
+    const [assessComment, setAssessComment] = useState<string>('');
     const [isSubmittingScore, setIsSubmittingScore] = useState(false);
 
     const availableAssessClasses = Array.from(new Set(allStudents.filter(s => String(s.class_name).split('.')[0] === assessGrade).map(s => s.class_name))).sort();
@@ -188,15 +307,19 @@ export default function TeacherDashboardPage() {
                 return;
             }
 
-            // Load project
-            const { data: proj } = await supabase
+            // Load project (get latest iteration)
+            const { data: projs } = await supabase
                 .from('projects')
                 .select('*')
                 .eq('class_name', assessClass)
                 .eq('group_number', parseInt(assessGroup))
                 .eq('academic_year', ACADEMIC_YEAR)
-                .single();
-            setAssessProject(proj || null);
+                .order('iteration', { ascending: false })
+                .limit(1);
+            const proj = projs && projs.length > 0 ? projs[0] : null;
+            setAssessProject(proj);
+            setAssessStatus(proj?.status !== 'pending' ? proj?.status : '');
+            setAssessComment(proj?.teacher_comment || '');
 
             // Load existing scores for this group + category
             const { data: scores } = await supabase
@@ -218,6 +341,10 @@ export default function TeacherDashboardPage() {
 
     const submitAssessment = async () => {
         if (!assessClass || !assessGroup || !assessCategory || !teacherProfile) return;
+        if (!assessStatus) {
+            showToast('Please select an approval status before saving.', 'warning');
+            return;
+        }
         setIsSubmittingScore(true);
 
         const groupNum = parseInt(assessGroup);
@@ -237,7 +364,7 @@ export default function TeacherDashboardPage() {
             category_id: assessCategory,
             indicator_id: indicatorId,
             score: score,
-            assessor_id: teacherProfile.id,
+            teacher_comment: assessComment || null
         }));
 
         if (scoreEntries.length > 0) {
@@ -246,11 +373,14 @@ export default function TeacherDashboardPage() {
                 showToast('Failed to save assessment: ' + error.message, 'error');
             } else {
                 showToast('Assessment saved successfully!', 'success');
-                if (assessProject && assessProject.status === 'pending') {
+                if (assessProject) {
                     await supabase.from('projects')
-                        .update({ status: 'assessed' })
+                        .update({
+                            status: assessStatus,
+                            teacher_comment: assessComment
+                        })
                         .eq('id', assessProject.id);
-                    setAssessProject({ ...assessProject, status: 'assessed' });
+                    setAssessProject({ ...assessProject, status: assessStatus, teacher_comment: assessComment });
                 }
             }
         } else {
@@ -297,10 +427,10 @@ export default function TeacherDashboardPage() {
             setTeacherProfile({ ...profile, email: authData.user.email });
 
             // Fetch Overview Data
-            // 1. Get unique groups
+            // 1. Get unique groups and all student profiles
             const { data: students } = await supabase
                 .from('student_master')
-                .select('class_name, group_number')
+                .select('full_name, class_name, group_number')
                 .eq('academic_year', ACADEMIC_YEAR);
 
             if (students) {
@@ -374,7 +504,7 @@ export default function TeacherDashboardPage() {
                 </div>
             </nav>
 
-            <main className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 flex flex-col md:flex-row gap-8">
+            <main className="w-full px-3 sm:px-6 lg:px-8 py-4 sm:py-6 flex flex-col md:flex-row gap-4 md:gap-6 lg:gap-8">
                 {/* Sidebar */}
                 <aside
                     className="w-full md:w-64 shrink-0 flex flex-row md:flex-col gap-2 md:gap-0 md:space-y-2 overflow-x-auto md:overflow-visible pb-2 md:pb-0 sticky top-20 md:top-24 h-fit z-40 bg-[#1c1b14] pt-2 md:pt-0"
@@ -384,6 +514,7 @@ export default function TeacherDashboardPage() {
 
                     {[
                         { id: 'overview', label: 'Projects Overview', icon: LayoutDashboard },
+                        { id: 'submissions', label: 'Project Submissions', icon: FolderOpen },
                         { id: 'score', label: 'Student Score', icon: BarChart2 },
                         { id: 'assess', label: 'Project Assessment', icon: ClipboardCheck },
                     ].map((tab) => (
@@ -493,6 +624,248 @@ export default function TeacherDashboardPage() {
                         </div>
                     )}
 
+                    {/* TAB 1.5: SUBMISSIONS */}
+                    {activeTab === 'submissions' && (
+                        <div className="bg-[#1a1811] border border-amber-900/20 rounded-2xl p-6 sm:p-8 shadow-2xl">
+                            <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+                                <FolderOpen className="text-amber-500" />
+                                Project Submissions & History
+                            </h2>
+
+                            {/* Submissions Filters */}
+                            {!selectedGroupForSubmission ? (
+                                <>
+                                    <div className="flex flex-col sm:flex-row gap-4 mb-8 bg-[#1c1b14] border border-slate-800 rounded-xl p-4">
+                                        <div className="flex-1">
+                                            <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Grade</label>
+                                            <select
+                                                value={submissionGrade}
+                                                onChange={(e) => { setSubmissionGrade(e.target.value); setGradeSubmissionsList([]); }}
+                                                className="w-full bg-[#1a1811] border border-slate-800 rounded-lg py-2.5 px-3 text-sm text-slate-200 focus:outline-none focus:border-amber-500"
+                                            >
+                                                <option value="">Select Grade</option>
+                                                {availableGrades.map(g => <option key={g} value={g}>Grade {g}</option>)}
+                                            </select>
+                                        </div>
+                                        <div className="flex items-end sm:w-48 shrink-0">
+                                            <button
+                                                onClick={fetchGradeSubmissionsList}
+                                                disabled={!submissionGrade || isFetchingSubmissions}
+                                                className="w-full bg-amber-500 hover:bg-amber-400 text-[#1a1811] font-bold py-2.5 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                                            >
+                                                {isFetchingSubmissions ? 'Loading...' : 'Search Grade'}
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Groups Grid */}
+                                    {gradeSubmissionsList.length > 0 ? (
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                            {gradeSubmissionsList.map((group, idx) => (
+                                                <div
+                                                    key={idx}
+                                                    onClick={() => handleSelectSubmissionGroup(group)}
+                                                    className="bg-[#1c1b14] border border-slate-800 hover:border-amber-500/50 rounded-xl p-5 cursor-pointer transition-all hover:shadow-lg hover:shadow-amber-900/10 group"
+                                                >
+                                                    <div className="flex items-center justify-between mb-3 border-b border-slate-800/50 pb-3">
+                                                        <h3 className="font-bold text-slate-200 group-hover:text-amber-400 transition-colors">
+                                                            {group.class_name} - Group {group.group_number}
+                                                        </h3>
+                                                        <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider border ${group.latestStatus === 'approved' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+                                                            group.latestStatus === 'revision' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' :
+                                                                group.latestStatus === 'disapproved' ? 'bg-red-500/10 text-red-500 border-red-500/20' :
+                                                                    'bg-slate-800/50 text-slate-400 border-slate-700'
+                                                            }`}>
+                                                            {group.latestStatus}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-sm font-medium text-slate-300 line-clamp-2 mb-3 h-10">
+                                                        {group.latestTitle}
+                                                    </p>
+                                                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                                                        <History className="w-3.5 h-3.5" />
+                                                        {group.iterationsCount} Iteration{group.iterationsCount !== 1 ? 's' : ''} Found
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        submissionGrade && !isFetchingSubmissions && (
+                                            <div className="text-center py-12 border border-slate-800 rounded-xl bg-[#1c1b14]">
+                                                <AlertTriangle className="w-10 h-10 text-slate-500 mx-auto mb-3" />
+                                                <p className="text-sm text-slate-400">Click Search to load groups for Grade {submissionGrade}.</p>
+                                            </div>
+                                        )
+                                    )}
+                                </>
+                            ) : (
+                                <div>
+                                    <div className="flex items-center gap-4 mb-6">
+                                        <button
+                                            onClick={() => setSelectedGroupForSubmission(null)}
+                                            className="px-4 py-2 bg-[#1c1b14] border border-slate-800 rounded-lg text-sm font-bold text-slate-300 hover:text-white hover:border-slate-600 transition-colors flex items-center gap-2"
+                                        >
+                                            &larr; Back to List
+                                        </button>
+                                        <h3 className="text-lg font-bold text-amber-400">
+                                            {selectedGroupForSubmission.class_name} - Group {selectedGroupForSubmission.group_number} Timeline
+                                        </h3>
+                                    </div>
+
+                                    <div className="flex flex-col xl:flex-row gap-8">
+                                        {/* Main Timeline */}
+                                        <div className="flex-1">
+                                            {groupSubmissions.length > 0 ? (
+                                                <div className="space-y-6">
+                                                    {(() => {
+                                                        const sub = groupSubmissions[currentSubmissionIndex];
+                                                        let absData: any = {};
+                                                        try { absData = JSON.parse(sub.abstract); } catch (e) { }
+
+                                                        return (
+                                                            <div className="bg-[#1c1b14] border border-slate-800 rounded-2xl p-6 md:p-8 shadow-xl">
+                                                                {/* Pagination Headers */}
+                                                                <div className="flex items-center justify-between border-b border-slate-800/50 pb-4 mb-6">
+                                                                    <div className="flex items-center gap-3">
+                                                                        <div className="flex items-center justify-center w-10 h-10 rounded-full bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                                                                            <History className="w-5 h-5" />
+                                                                        </div>
+                                                                        <div>
+                                                                            <h3 className="text-lg font-bold text-slate-200">Iteration {sub.iteration || 1}</h3>
+                                                                            <p className="text-sm text-slate-500">{new Date(sub.created_at).toLocaleString()}</p>
+                                                                        </div>
+                                                                    </div>
+                                                                    <span className={`px-3 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider border ${sub.status === 'approved' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : sub.status === 'revision' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' : sub.status === 'disapproved' ? 'bg-red-500/10 text-red-500 border-red-500/20' : 'bg-slate-800/50 text-slate-400 border-slate-700'}`}>
+                                                                        {sub.status || 'pending'}
+                                                                    </span>
+                                                                </div>
+
+                                                                {/* Project Data */}
+                                                                <div className="space-y-6">
+                                                                    <div>
+                                                                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Project Title</span>
+                                                                        <h4 className="text-xl font-bold text-white">{sub.title}</h4>
+                                                                    </div>
+
+                                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                                        <div className="bg-[#1a1811] p-4 rounded-xl border border-slate-800/50">
+                                                                            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Problem</span>
+                                                                            <p className="text-sm text-slate-300 leading-relaxed italic">{absData.problem || 'No description provided.'}</p>
+                                                                        </div>
+                                                                        <div className="bg-[#1a1811] p-4 rounded-xl border border-slate-800/50">
+                                                                            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Solution</span>
+                                                                            <p className="text-sm text-slate-300 leading-relaxed italic">{absData.solution || 'No description provided.'}</p>
+                                                                        </div>
+                                                                    </div>
+
+                                                                    {absData.keyConcepts && absData.keyConcepts.length > 0 && (
+                                                                        <div>
+                                                                            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 block">Subject Key Concepts</span>
+                                                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                                                {absData.keyConcepts.map((item: any, idx: number) => (
+                                                                                    <div key={idx} className="bg-[#1a1811] border border-slate-800/50 p-3 rounded-lg flex flex-col gap-1.5">
+                                                                                        <span className="inline-block self-start bg-amber-500/10 text-amber-500 border border-amber-500/20 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider">{item.subject}</span>
+                                                                                        <span className="text-sm text-slate-300">{item.concept || 'No concept provided'}</span>
+                                                                                    </div>
+                                                                                ))}
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+
+                                                                    {sub.google_doc_url && (
+                                                                        <div className="pt-2">
+                                                                            <a href={sub.google_doc_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-blue-500/10 text-blue-400 border border-blue-500/20 py-2.5 px-5 rounded-lg hover:bg-blue-500/20 transition-colors text-sm font-semibold">
+                                                                                <LinkIcon className="w-4 h-4" />
+                                                                                Open Project Document
+                                                                            </a>
+                                                                        </div>
+                                                                    )}
+
+                                                                    {sub.teacher_comment && (
+                                                                        <div className="mt-6 bg-[#1a1811] border border-amber-900/30 p-4 rounded-xl">
+                                                                            <span className="text-xs uppercase text-amber-500/70 font-bold block mb-2">Teacher Feedback from this iteration</span>
+                                                                            <p className="text-sm text-amber-100">{sub.teacher_comment}</p>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+
+                                                                {/* Pagination Controls */}
+                                                                {groupSubmissions.length > 1 && (
+                                                                    <div className="mt-8 pt-6 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
+                                                                        <button
+                                                                            onClick={() => setCurrentSubmissionIndex(prev => prev + 1)}
+                                                                            disabled={currentSubmissionIndex === groupSubmissions.length - 1}
+                                                                            className="w-full sm:w-auto px-4 py-2 bg-[#1a1811] border border-slate-800 rounded-lg text-sm font-bold text-slate-300 hover:text-white hover:border-slate-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                                                        >
+                                                                            &larr; Older Iteration
+                                                                        </button>
+
+                                                                        <div className="flex gap-1.5 flex-wrap justify-center">
+                                                                            {groupSubmissions.map((_, idx) => (
+                                                                                <button
+                                                                                    key={idx}
+                                                                                    onClick={() => setCurrentSubmissionIndex(idx)}
+                                                                                    className={`w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full transition-all ${currentSubmissionIndex === idx
+                                                                                        ? 'bg-amber-500 w-5 sm:w-6'
+                                                                                        : 'bg-slate-700 hover:bg-slate-500'
+                                                                                        }`}
+                                                                                    aria-label={`Go to iteration ${groupSubmissions.length - idx}`}
+                                                                                />
+                                                                            ))}
+                                                                        </div>
+
+                                                                        <button
+                                                                            onClick={() => setCurrentSubmissionIndex(prev => prev - 1)}
+                                                                            disabled={currentSubmissionIndex === 0}
+                                                                            className="w-full sm:w-auto px-4 py-2 bg-[#1a1811] border border-slate-800 rounded-lg text-sm font-bold text-slate-300 hover:text-white hover:border-slate-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                                                        >
+                                                                            Newer Iteration &rarr;
+                                                                        </button>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })()}
+                                                </div>
+                                            ) : (
+                                                <div className="text-center py-12 border border-slate-800 rounded-xl bg-[#1c1b14]">
+                                                    <AlertTriangle className="w-10 h-10 text-slate-500 mx-auto mb-3" />
+                                                    <p className="text-sm text-slate-400">No project submissions found for this group.</p>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Quick Navigation Sidebar */}
+                                        <div className="w-full xl:w-64 shrink-0">
+                                            <div className="bg-[#1c1b14] border border-slate-800 rounded-xl p-4 sticky top-24">
+                                                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Quick Navigation</h4>
+                                                <p className="text-sm font-bold text-white mb-4">Class {selectedGroupForSubmission.class_name}</p>
+                                                <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+                                                    {gradeSubmissionsList.filter(g => g.class_name === selectedGroupForSubmission.class_name).map(g => (
+                                                        <button
+                                                            key={g.group_number}
+                                                            onClick={() => handleSelectSubmissionGroup(g)}
+                                                            className={`w-full text-left px-4 py-2.5 rounded-lg border transition-all text-sm font-semibold flex items-center justify-between ${selectedGroupForSubmission.group_number === g.group_number
+                                                                ? 'bg-amber-500/10 border-amber-500/50 text-amber-400 shadow-lg shadow-amber-900/10'
+                                                                : 'bg-[#1a1811] border-slate-800/50 text-slate-400 hover:border-slate-600 hover:text-slate-200 hover:bg-[#25221b]'
+                                                                }`}
+                                                        >
+                                                            <span>Group {g.group_number}</span>
+                                                            {g.latestStatus === 'not submitted yet' && <span className="w-2 h-2 rounded-full bg-slate-700 block"></span>}
+                                                            {g.latestStatus === 'approved' && <span className="w-2 h-2 rounded-full bg-emerald-500 block"></span>}
+                                                            {g.latestStatus === 'revision' && <span className="w-2 h-2 rounded-full bg-amber-500 block"></span>}
+                                                            {g.latestStatus === 'disapproved' && <span className="w-2 h-2 rounded-full bg-red-500 block"></span>}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {/* TAB 2: SCORE */}
                     {activeTab === 'score' && (
                         <div className="bg-[#1a1811] border border-amber-900/20 rounded-2xl p-6 sm:p-8 shadow-2xl">
@@ -502,98 +875,151 @@ export default function TeacherDashboardPage() {
                             </h2>
 
                             {/* Score Filters */}
-                            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-8 bg-[#1c1b14] border border-slate-800 rounded-xl p-4">
-                                <div>
-                                    <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Grade</label>
-                                    <select
-                                        value={scoreGrade}
-                                        onChange={(e) => { setScoreGrade(e.target.value); setScoreClass(''); setClassScores([]); }}
-                                        className="w-full bg-[#1a1811] border border-slate-800 rounded-lg py-2.5 px-3 text-sm text-slate-200 focus:outline-none focus:border-amber-500"
-                                    >
-                                        <option value="">Select Grade</option>
-                                        {availableGrades.map(g => <option key={g} value={g}>Grade {g}</option>)}
-                                    </select>
+                            <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 mb-8 bg-[#1c1b14] border border-slate-800 rounded-xl p-5">
+                                <div className="space-y-4 lg:col-span-2">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Grade</label>
+                                            <select
+                                                value={scoreGrade}
+                                                onChange={(e) => { setScoreGrade(e.target.value); setScoreClass(''); setClassScores([]); }}
+                                                className="w-full bg-[#1a1811] border border-slate-800 rounded-lg py-2.5 px-3 text-sm text-slate-200 focus:outline-none focus:border-amber-500"
+                                            >
+                                                <option value="">Select Grade</option>
+                                                {availableGrades.map(g => <option key={g} value={g}>Grade {g}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Class</label>
+                                            <select
+                                                value={scoreClass}
+                                                onChange={(e) => { setScoreClass(e.target.value); setClassScores([]); }}
+                                                disabled={!scoreGrade}
+                                                className="w-full bg-[#1a1811] border border-slate-800 rounded-lg py-2.5 px-3 text-sm text-slate-200 focus:outline-none focus:border-amber-500 disabled:opacity-50"
+                                            >
+                                                <option value="">Select Class</option>
+                                                {availableClasses.map(c => <option key={c} value={c}>{c}</option>)}
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Grouping Options</label>
+                                        <div className="flex bg-[#1a1811] border border-slate-800 rounded-lg overflow-hidden">
+                                            <button
+                                                onClick={() => { setScoreGrouping('group'); setClassScores([]); }}
+                                                className={`flex-1 py-2 text-xs font-bold transition-colors ${scoreGrouping === 'group' ? 'bg-amber-500/20 text-amber-500 border-b-2 border-amber-500' : 'text-slate-500 hover:text-slate-300'}`}
+                                            >
+                                                By Group
+                                            </button>
+                                            <button
+                                                onClick={() => { setScoreGrouping('alphabetical'); setClassScores([]); }}
+                                                className={`flex-1 py-2 text-xs font-bold transition-colors ${scoreGrouping === 'alphabetical' ? 'bg-amber-500/20 text-amber-500 border-b-2 border-amber-500' : 'text-slate-500 hover:text-slate-300'}`}
+                                            >
+                                                A-Z Alphabetical
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div>
-                                    <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Class</label>
-                                    <select
-                                        value={scoreClass}
-                                        onChange={(e) => { setScoreClass(e.target.value); setClassScores([]); }}
-                                        disabled={!scoreGrade}
-                                        className="w-full bg-[#1a1811] border border-slate-800 rounded-lg py-2.5 px-3 text-sm text-slate-200 focus:outline-none focus:border-amber-500 disabled:opacity-50"
-                                    >
-                                        <option value="">Select Class</option>
-                                        {availableClasses.map(c => <option key={c} value={c}>{c}</option>)}
-                                    </select>
+
+                                <div className="lg:col-span-2">
+                                    <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Assessments (Multi-Select)</label>
+                                    <div className="bg-[#1a1811] border border-slate-800 rounded-lg p-3 custom-scrollbar overflow-y-auto max-h-48">
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                                            {assessmentCategories.map(c => {
+                                                const isSelected = scoreCategories.includes(c.id);
+                                                return (
+                                                    <button
+                                                        key={c.id}
+                                                        onClick={() => {
+                                                            if (isSelected) {
+                                                                setScoreCategories(prev => prev.filter(id => id !== c.id));
+                                                            } else {
+                                                                setScoreCategories(prev => [...prev, c.id]);
+                                                            }
+                                                            setClassScores([]);
+                                                        }}
+                                                        className={`p-2 rounded-lg text-left transition-all border flex flex-col justify-center h-full ${isSelected
+                                                            ? 'bg-amber-500 text-[#1a1811] border-amber-500 shadow-md'
+                                                            : 'bg-[#1c1b14] border-slate-700 hover:border-amber-500/50'
+                                                            }`}
+                                                    >
+                                                        <span className={`text-xs font-extrabold ${isSelected ? 'text-[#1a1811]' : 'text-slate-300'}`}>{c.code}</span>
+                                                        <span className={`text-[10px] leading-tight mt-0.5 line-clamp-2 ${isSelected ? 'text-amber-950' : 'text-slate-500'}`}>{c.name}</span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                        {assessmentCategories.length === 0 && <span className="text-sm text-slate-500 italic">No assessments available.</span>}
+                                    </div>
                                 </div>
-                                <div>
-                                    <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Assessment</label>
-                                    <select
-                                        value={scoreCategory}
-                                        onChange={(e) => { setScoreCategory(e.target.value); setClassScores([]); }}
-                                        className="w-full bg-[#1a1811] border border-slate-800 rounded-lg py-2.5 px-3 text-sm text-slate-200 focus:outline-none focus:border-amber-500"
-                                    >
-                                        <option value="">Select Assessment</option>
-                                        {assessmentCategories.map(c => <option key={c.id} value={c.id}>{c.code} - {c.name}</option>)}
-                                    </select>
-                                </div>
-                                <div className="flex items-end">
+
+                                <div className="flex flex-col justify-end gap-3 lg:col-span-1">
                                     <button
                                         onClick={fetchClassScores}
-                                        disabled={!scoreClass || !scoreCategory || isFetchingScores}
-                                        className="w-full bg-amber-500 hover:bg-amber-400 text-[#1a1811] font-bold py-2.5 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                                        disabled={!scoreClass || scoreCategories.length === 0 || isFetchingScores}
+                                        className="w-full bg-amber-500 hover:bg-amber-400 text-[#1a1811] font-bold py-2.5 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm h-[42px] flex items-center justify-center gap-2"
                                     >
                                         {isFetchingScores ? 'Loading...' : 'Search Scores'}
+                                    </button>
+
+                                    <button
+                                        onClick={downloadScoresCSV}
+                                        disabled={classScores.length === 0}
+                                        className="w-full bg-[#1a1811] border border-amber-500/30 text-amber-500 hover:bg-amber-500/10 font-bold py-2.5 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm h-[42px] flex items-center justify-center gap-2"
+                                    >
+                                        Download CSV
                                     </button>
                                 </div>
                             </div>
 
                             {/* Scores Table */}
                             {classScores.length > 0 && (
-                                <div className="bg-[#1c1b14] border border-slate-800 rounded-xl overflow-hidden">
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full text-left border-collapse">
+                                <div className="bg-[#1c1b14] border border-slate-800 rounded-xl overflow-hidden shadow-2xl">
+                                    <div className="overflow-x-auto custom-scrollbar">
+                                        <table className="w-full text-left border-collapse min-w-max">
                                             <thead>
                                                 <tr className="bg-[#1a1811] border-b border-slate-800/50 text-xs uppercase tracking-wider text-slate-500">
+                                                    <th className="p-4 font-semibold w-64 bg-[#1a1811] sticky left-0 z-10 border-r border-slate-800/50">Student Name</th>
                                                     <th className="p-4 font-semibold text-center w-20">Group</th>
-                                                    <th className="p-4 font-semibold">Project Title</th>
-                                                    <th className="p-4 font-semibold text-center">Score</th>
-                                                    <th className="p-4 font-semibold">Assessment Details</th>
+                                                    <th className="p-4 font-semibold w-64">Project Title</th>
+                                                    {scoreCategories.map(catId => {
+                                                        const cat = assessmentCategories.find(c => c.id === catId);
+                                                        return <th key={catId} className="p-4 font-semibold text-center">{cat?.code || 'Score'}</th>;
+                                                    })}
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-800/30 text-sm">
-                                                {classScores.map((score) => (
-                                                    <tr key={score.group_number} className="hover:bg-[#1a1811] transition-colors">
+                                                {classScores.map((score, idx) => (
+                                                    <tr key={idx} className="hover:bg-[#1a1811]/50 transition-colors group">
+                                                        <td className="p-4 font-bold text-slate-200 bg-[#1c1b14] group-hover:bg-[#1a1811] sticky left-0 z-10 border-r border-slate-800/50">
+                                                            {score.student_name}
+                                                        </td>
                                                         <td className="p-4 text-center">
-                                                            <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-amber-400 font-bold text-xs mx-auto">
+                                                            <div className="w-7 h-7 rounded-sm bg-slate-800/80 flex items-center justify-center text-amber-400 font-bold text-xs mx-auto border border-slate-700">
                                                                 {score.group_number}
                                                             </div>
                                                         </td>
-                                                        <td className="p-4 font-medium text-slate-200">
-                                                            {score.title}
+                                                        <td className="p-4 font-medium text-slate-400">
+                                                            <span className="line-clamp-2">{score.project_title}</span>
                                                         </td>
-                                                        <td className="p-4 text-center">
-                                                            {score.isAssessed ? (
-                                                                <div className="flex flex-col items-center">
-                                                                    <span className={`text-lg font-bold ${score.percentage >= 80 ? 'text-emerald-400' : score.percentage >= 60 ? 'text-amber-400' : 'text-red-400'}`}>
-                                                                        {score.percentage}%
-                                                                    </span>
-                                                                    <span className="text-xs text-slate-500 block">{score.totalScore}/{score.totalMax}</span>
-                                                                </div>
-                                                            ) : (
-                                                                <span className="text-xs bg-slate-800 text-slate-400 px-2.5 py-1 rounded-md">Not Assessed</span>
-                                                            )}
-                                                        </td>
-                                                        <td className="p-4">
-                                                            {score.isAssessed ? (
-                                                                <div className="text-xs text-slate-400">
-                                                                    <p className="mb-0.5"><span className="text-slate-500">By:</span> {score.assessedBy}</p>
-                                                                    <p><span className="text-slate-500">Date:</span> {new Date(score.assessedAt).toLocaleDateString()}</p>
-                                                                </div>
-                                                            ) : (
-                                                                <span className="text-slate-600">—</span>
-                                                            )}
-                                                        </td>
+
+                                                        {scoreCategories.map(catId => {
+                                                            const assessment = score.assessments[catId];
+                                                            return (
+                                                                <td key={catId} className="p-4 text-center">
+                                                                    {assessment.isAssessed ? (
+                                                                        <div className="flex flex-col items-center">
+                                                                            <span className={`text-sm font-bold ${assessment.percentage >= 80 ? 'text-emerald-400' : assessment.percentage >= 60 ? 'text-amber-400' : 'text-red-400'}`}>
+                                                                                {assessment.percentage}%
+                                                                            </span>
+                                                                            <span className="text-[10px] text-slate-500 font-medium block">{assessment.totalScore}/{assessment.totalMax}</span>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <span className="text-slate-600">—</span>
+                                                                    )}
+                                                                </td>
+                                                            );
+                                                        })}
                                                     </tr>
                                                 ))}
                                             </tbody>
@@ -665,9 +1091,9 @@ export default function TeacherDashboardPage() {
 
                             {/* Evaluation Area */}
                             {assessClass && assessGroup && assessCategory ? (
-                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                                <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
                                     {/* Left sidebar: Project Overview */}
-                                    <div className="lg:col-span-1 space-y-6">
+                                    <div className="xl:col-span-4 space-y-6">
                                         <div className="bg-[#1c1b14] border border-slate-800 rounded-xl p-5 sticky top-24">
                                             <h3 className="font-bold text-white mb-4 border-b border-slate-800 pb-3">Project Info</h3>
 
@@ -682,7 +1108,7 @@ export default function TeacherDashboardPage() {
                                                         let absData: any = {};
                                                         try { absData = JSON.parse(assessProject.abstract); } catch (e) { }
                                                         return (
-                                                            <>
+                                                            <div className="space-y-4">
                                                                 <div>
                                                                     <span className="text-xs text-slate-500 uppercase tracking-wider block mb-1">Problem</span>
                                                                     <p className="text-sm text-slate-300 bg-[#1a1811] p-3 rounded-lg border border-slate-800/50 italic leading-relaxed">
@@ -695,7 +1121,22 @@ export default function TeacherDashboardPage() {
                                                                         "{absData.solution || 'No description.'}"
                                                                     </p>
                                                                 </div>
-                                                            </>
+                                                                {absData.keyConcepts && absData.keyConcepts.length > 0 && (
+                                                                    <div>
+                                                                        <span className="text-xs text-slate-500 uppercase tracking-wider block mb-2">Subject Key Concepts</span>
+                                                                        <div className="space-y-2">
+                                                                            {absData.keyConcepts.map((item: any, idx: number) => {
+                                                                                return (
+                                                                                    <div key={idx} className="bg-[#1a1811] border border-slate-800/50 p-2.5 rounded-lg flex flex-col sm:flex-row sm:items-start gap-2">
+                                                                                        <span className="inline-block bg-amber-500/10 text-amber-500 border border-amber-500/20 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider whitespace-nowrap">{item.subject}</span>
+                                                                                        <span className="text-sm text-slate-300 flex-1 leading-snug">{item.concept || 'No concept provided'}</span>
+                                                                                    </div>
+                                                                                );
+                                                                            })}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
                                                         )
                                                     })()}
 
@@ -715,8 +1156,8 @@ export default function TeacherDashboardPage() {
                                         </div>
                                     </div>
 
-                                    {/* Right Content: Interactive Rubric */}
-                                    <div className="lg:col-span-2 space-y-6">
+                                    {/* Center Content: Interactive Rubric */}
+                                    <div className="xl:col-span-6 space-y-6">
                                         {(() => {
                                             const cat = assessmentCategories.find(c => c.id === assessCategory);
                                             const dims = rubricDimensions.filter(d => d.category_id === assessCategory);
@@ -781,6 +1222,45 @@ export default function TeacherDashboardPage() {
                                                         );
                                                     })}
 
+                                                    {/* Approval Status & Comments */}
+                                                    <div className="bg-[#1c1b14] border border-amber-900/50 rounded-xl p-6 shadow-lg mt-8">
+                                                        <h3 className="font-bold text-white mb-4 border-b border-slate-800 pb-3">Final Decision & Feedback</h3>
+                                                        <div className="space-y-5">
+                                                            <div>
+                                                                <label className="block text-sm font-semibold text-slate-300 mb-3">Project Status</label>
+                                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                                                    {[
+                                                                        { val: 'approved', label: 'Approved', color: 'emerald' },
+                                                                        { val: 'revision', label: 'Needs Revision', color: 'amber' },
+                                                                        { val: 'disapproved', label: 'Disapproved', color: 'red' }
+                                                                    ].map(st => (
+                                                                        <button
+                                                                            key={st.val}
+                                                                            onClick={() => setAssessStatus(st.val)}
+                                                                            className={`py-2 px-3 rounded-lg border flex items-center justify-center gap-2 text-sm font-semibold transition-all ${assessStatus === st.val
+                                                                                ? (st.color === 'emerald' ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400' : st.color === 'amber' ? 'bg-amber-500/20 border-amber-500 text-amber-400' : 'bg-red-500/20 border-red-500 text-red-400')
+                                                                                : 'bg-[#1a1811] border-slate-700 text-slate-500 hover:border-slate-500 hover:text-slate-300'
+                                                                                }`}
+                                                                        >
+                                                                            {assessStatus === st.val && <CheckCircle2 className="w-4 h-4" />}
+                                                                            {st.label}
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                            <div>
+                                                                <label className="block text-sm font-semibold text-slate-300 mb-2">Teacher Comment / Feedback</label>
+                                                                <textarea
+                                                                    value={assessComment}
+                                                                    onChange={e => setAssessComment(e.target.value)}
+                                                                    rows={3}
+                                                                    placeholder="Leave constructive feedback for the group..."
+                                                                    className="w-full bg-[#1a1811] border border-slate-800 rounded-lg py-3 px-4 text-sm text-slate-200 focus:outline-none focus:border-amber-500 resize-none"
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
                                                     {/* Submit Button */}
                                                     <div className="flex justify-end pt-4">
                                                         <button
@@ -788,13 +1268,35 @@ export default function TeacherDashboardPage() {
                                                             disabled={isSubmittingScore}
                                                             className="flex items-center gap-2 bg-gradient-to-r from-amber-600 to-amber-500 text-[#1a1811] px-8 py-3.5 rounded-xl font-bold hover:from-amber-500 hover:to-amber-400 transition-all shadow-xl shadow-amber-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
                                                         >
-                                                            {isSubmittingScore ? 'Saving Scores...' : 'Save Assessment'}
+                                                            {isSubmittingScore ? 'Saving Assessment...' : 'Save Assessment'}
                                                             {!isSubmittingScore && <CheckCircle2 className="w-5 h-5" />}
                                                         </button>
                                                     </div>
                                                 </div>
                                             );
                                         })()}
+                                    </div>
+
+                                    {/* Right Content: Quick Navigation Sidebar */}
+                                    <div className="xl:col-span-2 space-y-6">
+                                        <div className="bg-[#1c1b14] border border-slate-800 rounded-xl p-4 sticky top-24">
+                                            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Quick Navigation</h4>
+                                            <p className="text-sm font-bold text-white mb-4">Class {assessClass}</p>
+                                            <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+                                                {availableAssessGroups.map(g => (
+                                                    <button
+                                                        key={g}
+                                                        onClick={() => setAssessGroup(g.toString())}
+                                                        className={`w-full text-left px-4 py-2.5 rounded-lg border transition-all text-sm font-semibold ${assessGroup === g.toString()
+                                                            ? 'bg-amber-500/10 border-amber-500/50 text-amber-400 shadow-lg shadow-amber-900/10'
+                                                            : 'bg-[#1a1811] border-slate-800/50 text-slate-400 hover:border-slate-600 hover:text-slate-200 hover:bg-[#25221b]'
+                                                            }`}
+                                                    >
+                                                        Group {g}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             ) : (

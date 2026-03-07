@@ -6,7 +6,8 @@ import {
     Star, LogOut, Database, PenSquare, FileCheck,
     Plus, Trash2, Link as LinkIcon, Calculator,
     FlaskConical, Paintbrush, Globe, Cpu, Wrench, BookOpen, Calendar, Save, X, Users,
-    TrendingUp, Award, ChevronDown, CheckCircle2, AlertTriangle, XCircle, Info
+    TrendingUp, Award, ChevronDown, CheckCircle2, AlertTriangle, XCircle, Info,
+    MessageSquare, History
 } from 'lucide-react';
 
 // ─── Toast Notification System ────────────────────────
@@ -133,6 +134,9 @@ interface ProjectData {
     google_doc_url: string;
     status: string;
     theme_id: string;
+    iteration?: number;
+    teacher_comment?: string | null;
+    created_at: string;
 }
 
 interface LogbookEntry {
@@ -177,6 +181,7 @@ interface AssessmentScoreEntry {
     indicator_id: string;
     score: number;
     assessed_at: string;
+    teacher_comment?: string;
 }
 
 export default function StudentDashboardPage() {
@@ -190,6 +195,8 @@ export default function StudentDashboardPage() {
 
     // Project
     const [projectData, setProjectData] = useState<ProjectData | null>(null);
+    const [projectHistory, setProjectHistory] = useState<ProjectData[]>([]);
+    const [viewingPastIteration, setViewingPastIteration] = useState<ProjectData | null>(null);
 
     // Form State for Project Submission
     const [title, setTitle] = useState('');
@@ -301,16 +308,19 @@ export default function StudentDashboardPage() {
             setTheme(fetchedThemes[0].id);
         }
 
-        // 4. Fetch project for this group
-        const { data: fetchedProject } = await supabase
+        // 4. Fetch project(s) for this group
+        const { data: fetchedProjects } = await supabase
             .from('projects')
             .select('*')
             .eq('class_name', myInfo.class_name)
             .eq('group_number', myInfo.group_number)
             .eq('academic_year', ACADEMIC_YEAR)
-            .single();
+            .order('iteration', { ascending: false });
 
-        if (fetchedProject) setProjectData(fetchedProject);
+        if (fetchedProjects && fetchedProjects.length > 0) {
+            setProjectHistory(fetchedProjects);
+            setProjectData(fetchedProjects[0]);
+        }
 
         // 5. Fetch logbooks for this group (all members' entries)
         const { data: fetchedLogs } = await supabase
@@ -348,7 +358,7 @@ export default function StudentDashboardPage() {
 
         const { data: scrs } = await supabase
             .from('assessment_scores')
-            .select('id, indicator_id, score, assessed_at')
+            .select('id, indicator_id, score, assessed_at, teacher_comment')
             .eq('class_name', myInfo.class_name)
             .eq('group_number', myInfo.group_number)
             .eq('academic_year', ACADEMIC_YEAR);
@@ -507,6 +517,8 @@ export default function StudentDashboardPage() {
             keyConcepts
         });
 
+        const nextIteration = projectHistory.length > 0 ? (projectHistory[0].iteration || 1) + 1 : 1;
+
         const { data, error } = await supabase.from('projects').insert([
             {
                 class_name: studentInfo.class_name,
@@ -516,7 +528,8 @@ export default function StudentDashboardPage() {
                 title: title,
                 abstract: combinedAbstract,
                 status: 'pending',
-                google_doc_url: docUrl
+                google_doc_url: docUrl,
+                iteration: nextIteration
             }
         ]).select();
 
@@ -526,7 +539,8 @@ export default function StudentDashboardPage() {
             console.error(error);
             showToast('Error submitting project: ' + error.message, 'error');
         } else if (data) {
-            showToast('Project submitted successfully!', 'success');
+            showToast(nextIteration > 1 ? 'Project resubmitted successfully!' : 'Project submitted successfully!', 'success');
+            setProjectHistory(prev => [data[0], ...prev]);
             setProjectData(data[0]);
             setActiveTab('data');
             setTitle('');
@@ -594,7 +608,7 @@ export default function StudentDashboardPage() {
 
             {/* Not registered warning */}
             {!studentInfo && (
-                <div className="max-w-6xl mx-auto p-4 sm:p-6 lg:p-8">
+                <div className="w-full px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
                     <div className="bg-amber-900/20 border border-amber-500/30 rounded-2xl p-8 text-center">
                         <Users className="w-12 h-12 text-amber-500 mx-auto mb-4" />
                         <h2 className="text-xl font-bold text-white mb-2">Not Registered in Any Group</h2>
@@ -607,7 +621,7 @@ export default function StudentDashboardPage() {
 
             {/* Main Layout (only if registered) */}
             {studentInfo && (
-                <main className="max-w-6xl mx-auto p-4 sm:p-6 lg:p-8 flex flex-col md:flex-row gap-8">
+                <main className="w-full px-3 sm:px-6 lg:px-8 py-4 sm:py-6 flex flex-col md:flex-row gap-4 md:gap-6 lg:gap-8">
 
                     {/* Sidebar / Tabs */}
                     <aside
@@ -781,6 +795,59 @@ export default function StudentDashboardPage() {
                                                     </a>
                                                 </div>
                                             )}
+
+                                            {projectData.teacher_comment && (
+                                                <div className="bg-[#1c1b14] border border-amber-900/30 rounded-xl p-5 mt-4">
+                                                    <span className="text-xs text-amber-500 uppercase tracking-wider block mb-2 font-bold flex items-center gap-2">
+                                                        <MessageSquare className="w-4 h-4" /> Teacher Feedback
+                                                    </span>
+                                                    <p className="text-sm text-amber-100/90 whitespace-pre-line bg-amber-500/5 p-4 rounded-lg border border-amber-500/10">
+                                                        {projectData.teacher_comment}
+                                                    </p>
+                                                </div>
+                                            )}
+
+                                            {/* Iteration History */}
+                                            {projectHistory.length > 1 && (
+                                                <div className="mt-8 pt-8 border-t border-slate-800/50">
+                                                    <h3 className="text-lg font-bold text-slate-300 mb-4 flex items-center gap-2">
+                                                        <History className="w-5 h-5 text-amber-500" />
+                                                        Previous Submissions (History)
+                                                    </h3>
+                                                    <div className="space-y-4">
+                                                        {projectHistory.slice(1).map((past, idx) => (
+                                                            <div key={past.id} className="bg-[#1c1b14] border border-slate-800/50 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 opacity-80 hover:opacity-100 transition-opacity">
+                                                                <div>
+                                                                    <div className="flex items-center gap-2 mb-1">
+                                                                        <span className="bg-amber-500/10 text-amber-500 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">
+                                                                            Iteration {past.iteration || 1}
+                                                                        </span>
+                                                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${past.status === 'approved' ? 'bg-emerald-500/10 text-emerald-400' :
+                                                                            past.status === 'revision' ? 'bg-amber-500/10 text-amber-400' :
+                                                                                past.status === 'disapproved' ? 'bg-red-500/10 text-red-500' :
+                                                                                    'bg-slate-800/50 text-slate-400'
+                                                                            }`}>
+                                                                            {past.status || 'pending'}
+                                                                        </span>
+                                                                    </div>
+                                                                    <h4 className="text-slate-300 font-medium text-sm">{past.title}</h4>
+                                                                    {past.teacher_comment && (
+                                                                        <p className="text-xs text-amber-500/70 mt-2 line-clamp-1 italic">
+                                                                            &quot;{past.teacher_comment}&quot;
+                                                                        </p>
+                                                                    )}
+                                                                </div>
+                                                                <button
+                                                                    onClick={() => setViewingPastIteration(past)}
+                                                                    className="text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-400 hover:text-amber-400 hover:border-amber-500/30 transition-colors shrink-0 whitespace-nowrap"
+                                                                >
+                                                                    View
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                     ) : (
                                         <div className="bg-[#1c1b14] border border-dashed border-slate-700 rounded-xl p-10 text-center flex flex-col items-center justify-center">
@@ -814,7 +881,7 @@ export default function StudentDashboardPage() {
                                         <BookOpen className="text-amber-500" />
                                         Group Logbook
                                     </h2>
-                                    {!showLogbookForm && (
+                                    {!showLogbookForm && projectData?.status === 'approved' && (
                                         <button
                                             onClick={() => setShowLogbookForm(true)}
                                             className="bg-amber-500 hover:bg-amber-400 text-[#1a160d] font-bold py-2 px-4 flex items-center gap-2 rounded-xl transition-colors text-sm shadow-lg shadow-amber-900/20"
@@ -823,6 +890,15 @@ export default function StudentDashboardPage() {
                                         </button>
                                     )}
                                 </div>
+                                {projectData?.status !== 'approved' && (
+                                    <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 mb-6 flex items-start gap-3">
+                                        <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+                                        <div className="text-sm text-amber-200">
+                                            <p className="font-semibold mb-1">Logbook Locked</p>
+                                            <p className="opacity-80">You can only create logbook entries once your project iteration has been officially approved by a teacher.</p>
+                                        </div>
+                                    </div>
+                                )}
 
                                 {/* Add Log Form */}
                                 {showLogbookForm && (
@@ -982,12 +1058,17 @@ export default function StudentDashboardPage() {
                                 </h2>
                                 <p className="text-slate-400 text-sm mb-8">Fill out the details of your STEAM project below.</p>
 
-                                {projectData ? (
+                                {projectData && ['pending', 'approved'].includes(projectData.status) ? (
                                     <div className="bg-[#1c1b14] border border-amber-500/30 rounded-xl p-6 text-center">
                                         <Award className="w-12 h-12 text-amber-500 mx-auto mb-3" />
-                                        <h3 className="text-lg font-bold text-white mb-2">Project Already Submitted</h3>
+                                        <h3 className="text-lg font-bold text-white mb-2">
+                                            {projectData.status === 'approved' ? 'Project Approved!' : 'Project Under Review'}
+                                        </h3>
                                         <p className="text-slate-400 text-sm mb-4">
-                                            Your group has already submitted a project: <strong className="text-amber-400">{projectData.title}</strong>
+                                            {projectData.status === 'approved'
+                                                ? 'Great job! Your project was approved by the teacher. Check the "My Project Data" tab.'
+                                                : 'Your group has submitted a project and it is currently being reviewed.'}
+                                            <br /><strong className="text-amber-400 mt-2 block">{projectData.title}</strong>
                                         </p>
                                         <button
                                             onClick={() => setActiveTab('data')}
@@ -998,6 +1079,15 @@ export default function StudentDashboardPage() {
                                     </div>
                                 ) : (
                                     <form onSubmit={handleSubmit} className="space-y-6">
+                                        {projectData && ['revision', 'disapproved'].includes(projectData.status) && (
+                                            <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 mb-6 flex items-start gap-3">
+                                                <AlertTriangle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+                                                <div className="text-sm text-red-200">
+                                                    <p className="font-semibold mb-1">Resubmission Required ({projectData.status})</p>
+                                                    <p className="opacity-80">Please update your project details below and submit a new iteration for assessment.</p>
+                                                </div>
+                                            </div>
+                                        )}
                                         {/* Title */}
                                         <div>
                                             <label className="block text-sm font-semibold text-slate-300 mb-2">Project Title</label>
@@ -1177,8 +1267,8 @@ export default function StudentDashboardPage() {
                                                 key={cat.id}
                                                 onClick={() => setSelectedCategory(cat.id)}
                                                 className={`relative px-4 py-2 rounded-xl text-sm font-semibold border transition-all ${isActive
-                                                        ? 'bg-amber-500/20 text-amber-400 border-amber-500/50 shadow-lg shadow-amber-900/10'
-                                                        : 'bg-[#1c1b14] text-slate-400 border-slate-800 hover:border-slate-600 hover:text-slate-300'
+                                                    ? 'bg-amber-500/20 text-amber-400 border-amber-500/50 shadow-lg shadow-amber-900/10'
+                                                    : 'bg-[#1c1b14] text-slate-400 border-slate-800 hover:border-slate-600 hover:text-slate-300'
                                                     }`}
                                             >
                                                 <span className="text-xs font-bold mr-1.5 opacity-60">{cat.code}</span>
@@ -1243,6 +1333,8 @@ export default function StudentDashboardPage() {
                                     if (overallPct >= 80) { overallColor = 'text-emerald-400'; overallBg = 'bg-emerald-500'; }
                                     else if (overallPct < 60) { overallColor = 'text-red-400'; overallBg = 'bg-red-500'; }
 
+                                    const teacherComment = catScores[0]?.teacher_comment;
+
                                     return (
                                         <div className="space-y-6">
                                             {/* Overall Summary Card */}
@@ -1263,6 +1355,13 @@ export default function StudentDashboardPage() {
                                                 <div className="w-full bg-slate-800 rounded-full h-2 mt-3">
                                                     <div className={`${overallBg} h-2 rounded-full transition-all duration-700`} style={{ width: `${overallPct}%` }}></div>
                                                 </div>
+
+                                                {teacherComment && (
+                                                    <div className="mt-5 pt-4 border-t border-amber-500/20">
+                                                        <span className="text-[10px] uppercase text-amber-500/70 font-bold block mb-1">Teacher Assessment Comment</span>
+                                                        <p className="text-sm text-amber-100 italic">"{teacherComment}"</p>
+                                                    </div>
+                                                )}
                                             </div>
 
                                             {/* Dimension Cards */}
@@ -1316,8 +1415,8 @@ export default function StudentDashboardPage() {
                                                                                     <div
                                                                                         key={i}
                                                                                         className={`w-5 h-5 rounded-full border-2 transition-colors ${i < scoreVal
-                                                                                                ? 'bg-amber-500 border-amber-500'
-                                                                                                : 'bg-transparent border-slate-700'
+                                                                                            ? 'bg-amber-500 border-amber-500'
+                                                                                            : 'bg-transparent border-slate-700'
                                                                                             }`}
                                                                                     />
                                                                                 ))
@@ -1341,6 +1440,121 @@ export default function StudentDashboardPage() {
 
                     </div>
                 </main>
+            )}
+
+            {/* Past Iteration Modal */}
+            {viewingPastIteration && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+                    <div className="bg-[#1c1b14] border border-amber-900/50 rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl animate-[slideIn_0.3s_ease-out]">
+                        <div className="sticky top-0 bg-[#1a1811]/90 backdrop-blur-md border-b border-amber-900/30 p-5 flex justify-between items-center z-10">
+                            <div>
+                                <h3 className="text-xl font-bold text-white flex items-center gap-3">
+                                    <History className="text-amber-500" />
+                                    Iteration {viewingPastIteration.iteration || 1}
+                                </h3>
+                                <p className="text-sm text-slate-400 mt-1">Submitted on {new Date(viewingPastIteration.created_at).toLocaleDateString()}</p>
+                            </div>
+                            <button
+                                onClick={() => setViewingPastIteration(null)}
+                                className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-6">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div className="bg-[#1a1811] border border-slate-800 rounded-xl p-4">
+                                    <span className="text-xs text-slate-500 uppercase tracking-wider block mb-1">Project Title</span>
+                                    <h4 className="text-white font-bold">{viewingPastIteration.title}</h4>
+                                </div>
+                                <div className="bg-[#1a1811] border border-slate-800 rounded-xl p-4">
+                                    <span className="text-xs text-slate-500 uppercase tracking-wider block mb-1">Status</span>
+                                    <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider mt-1 ${viewingPastIteration.status === 'approved' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
+                                        viewingPastIteration.status === 'revision' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
+                                            viewingPastIteration.status === 'disapproved' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
+                                                'bg-slate-800 text-slate-400 border border-slate-700'
+                                        }`}>
+                                        {viewingPastIteration.status || 'pending'}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {viewingPastIteration.teacher_comment && (
+                                <div className="bg-[#1a1811] border border-amber-900/30 rounded-xl p-5">
+                                    <span className="text-xs text-amber-500 uppercase tracking-wider block mb-2 font-bold flex items-center gap-2">
+                                        <MessageSquare className="w-4 h-4" /> Teacher Feedback
+                                    </span>
+                                    <p className="text-sm text-amber-100/90 whitespace-pre-line bg-amber-500/5 p-4 rounded-lg border border-amber-500/10">
+                                        {viewingPastIteration.teacher_comment}
+                                    </p>
+                                </div>
+                            )}
+
+                            {viewingPastIteration.abstract && (() => {
+                                try {
+                                    const parsed = JSON.parse(viewingPastIteration.abstract);
+                                    return (
+                                        <div className="space-y-4 bg-[#1a1811] border border-slate-800 rounded-xl p-5">
+                                            <div>
+                                                <span className="text-xs text-slate-500 uppercase tracking-wider block mb-2 cursor-help" title="Describe the problem your project aims to solve.">The Problem</span>
+                                                <p className="text-sm text-slate-300 leading-relaxed bg-[#1c1b14] p-4 rounded-lg border border-slate-800">
+                                                    {parsed.problem || 'No description provided.'}
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <span className="text-xs text-slate-500 uppercase tracking-wider block mb-2 cursor-help" title="Describe your proposed solution to the problem.">The Solution</span>
+                                                <p className="text-sm text-slate-300 leading-relaxed bg-[#1c1b14] p-4 rounded-lg border border-slate-800">
+                                                    {parsed.solution || 'No description provided.'}
+                                                </p>
+                                            </div>
+                                            {parsed.keyConcepts && parsed.keyConcepts.length > 0 && (
+                                                <div className="mt-6 pt-6 border-t border-slate-800">
+                                                    <span className="text-xs text-slate-500 uppercase tracking-wider block mb-3">Key Concepts mapping</span>
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                        {parsed.keyConcepts.map((item: any, idx: number) => {
+                                                            const subj = SUBJECTS.find(s => s.id === item.subject);
+                                                            const Icon = subj?.icon || BookOpen;
+                                                            return (
+                                                                <div key={idx} className="bg-[#1c1b14] border border-amber-900/10 rounded-lg p-3 flex gap-3 items-start">
+                                                                    <div className="bg-amber-500/10 p-2 rounded-lg text-amber-500 shrink-0">
+                                                                        <Icon className="w-4 h-4" />
+                                                                    </div>
+                                                                    <div>
+                                                                        <p className="text-xs font-bold text-slate-400 mb-0.5">{subj?.label || item.subject}</p>
+                                                                        <p className="text-sm text-slate-200">{item.concept}</p>
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                } catch (e) {
+                                    return (
+                                        <div className="bg-[#1a1811] border border-slate-800 rounded-xl p-5">
+                                            <span className="text-xs text-slate-500 uppercase tracking-wider block mb-2">Abstract</span>
+                                            <p className="text-sm text-slate-300 whitespace-pre-line">{viewingPastIteration.abstract}</p>
+                                        </div>
+                                    );
+                                }
+                            })()}
+
+                            {viewingPastIteration.google_doc_url && (
+                                <a
+                                    href={viewingPastIteration.google_doc_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center justify-center gap-2 w-full bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 font-bold py-4 rounded-xl transition-colors border border-blue-500/20"
+                                >
+                                    <LinkIcon className="w-5 h-5" />
+                                    Open Google Document
+                                </a>
+                            )}
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );
