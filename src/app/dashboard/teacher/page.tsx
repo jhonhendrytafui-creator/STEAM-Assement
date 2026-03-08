@@ -10,6 +10,34 @@ import {
 
 const ACADEMIC_YEAR = '2025/2026';
 
+// ─── C1 Rubric Tooltips ─────────────────────────────
+const C1_RUBRIC_TOOLTIPS: Record<string, Record<number, string>> = {
+    'Title Quality & Originality': {
+        4: 'Concise, highly original, and immediately makes the core purpose clear to teachers and colleagues.',
+        3: 'Clear and easy to understand, but standard or slightly wordy.',
+        2: 'Somewhat confusing, too long, or misses the core focus of the project.',
+        1: 'Missing, completely unrelated, or extremely difficult to understand.'
+    },
+    'Problem & Contextual Relevance': {
+        4: 'Problem connects deeply to the theme/real-life context. Solution is logical and perfectly aligns with students\' grade/ability level.',
+        3: 'Problem relates to the theme/real-life but is generic. Solution is mostly grade-appropriate.',
+        2: 'Weak connection to theme/real-world. Solution is a mismatch for students\' ability (too easy/hard).',
+        1: 'No clear connection to a real-life problem/theme. Completely disconnected from grade level.'
+    },
+    'STEAM Integration & Conceptual Depth': {
+        4: 'Seamlessly integrates 3+ STEAM fields. Massive potential for applying deep conceptual understanding.',
+        3: 'Integrates 2-3 STEAM fields well. Good potential for applying conceptual understanding.',
+        2: 'Attempts 2 disciplines, but integration feels forced or superficial.',
+        1: 'Focuses entirely on a single subject area with no cross-disciplinary connections.'
+    },
+    'Prototype Focus': {
+        4: 'Highly actionable, clear plan for a functional physical or digital prototype. Making is central to the solution.',
+        3: 'Proposes a prototype, but lacks some functional details, materials, or building clarity.',
+        2: 'Vaguely mentions a prototype; leans heavily toward a theoretical model or presentation.',
+        1: 'No prototype planned. Strictly a research paper, essay, or standard presentation.'
+    }
+};
+
 // ─── Toast System ───────────────────────────────────
 type ToastType = 'success' | 'error' | 'info' | 'warning';
 interface ToastData { id: number; message: string; type: ToastType; }
@@ -1217,13 +1245,13 @@ export default function TeacherDashboardPage() {
                                                     {dims.map(dim => {
                                                         const inds = rubricIndicators.filter(i => i.dimension_id === dim.id);
                                                         return (
-                                                            <div key={dim.id} className="bg-[#1c1b14] border border-slate-800 rounded-xl overflow-hidden shadow-lg">
-                                                                <div className="bg-[#1a1811] border-b border-slate-800 px-5 py-3">
+                                                            <div key={dim.id} className="bg-[#1c1b14] border border-slate-800 rounded-xl shadow-lg">
+                                                                <div className="bg-[#1a1811] border-b border-slate-800 rounded-t-xl px-5 py-3">
                                                                     <h3 className="font-bold text-slate-200">{dim.name}</h3>
                                                                 </div>
                                                                 <div className="divide-y divide-slate-800/50">
                                                                     {inds.map(ind => (
-                                                                        <div key={ind.id} className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-[#1a1811]/50 transition-colors">
+                                                                        <div key={ind.id} className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-[#1a1811]/50 transition-colors last:rounded-b-xl">
                                                                             <p className="text-sm text-slate-400 flex-1">{ind.description}</p>
                                                                             <div className="shrink-0 flex items-center justify-end">
                                                                                 {isChecklist ? (
@@ -1240,14 +1268,29 @@ export default function TeacherDashboardPage() {
                                                                                         {Array.from({ length: maxScale }).map((_, i) => {
                                                                                             const val = i + 1;
                                                                                             const isSelected = currentScores[ind.id] === val;
+                                                                                            const isC1 = cat?.code === 'C1';
+                                                                                            const tooltipText = isC1 ? C1_RUBRIC_TOOLTIPS[dim.name]?.[val] : undefined;
+
                                                                                             return (
-                                                                                                <button
-                                                                                                    key={val}
-                                                                                                    onClick={() => setCurrentScores(prev => ({ ...prev, [ind.id]: val }))}
-                                                                                                    className={`w-10 h-10 rounded-md flex items-center justify-center font-bold text-sm transition-all ${isSelected ? 'bg-amber-500 text-[#1a1811] shadow-lg shadow-amber-500/20 translate-y-[-2px]' : 'bg-[#1c1b14] text-slate-500 hover:text-amber-400 hover:bg-[#25221b]'}`}
-                                                                                                >
-                                                                                                    {val}
-                                                                                                </button>
+                                                                                                <div key={val} className="relative group inline-block">
+                                                                                                    <button
+                                                                                                        onClick={() => setCurrentScores(prev => ({ ...prev, [ind.id]: val }))}
+                                                                                                        className={`w-10 h-10 rounded-md flex items-center justify-center font-bold text-sm transition-all relative ${isSelected ? 'bg-amber-500 text-[#1a1811] shadow-lg shadow-amber-500/20 translate-y-[-2px]' : 'bg-[#1c1b14] text-slate-500 hover:text-amber-400 hover:bg-[#25221b]'}`}
+                                                                                                    >
+                                                                                                        {val}
+                                                                                                        {tooltipText && (
+                                                                                                            <div className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-sky-500/20 border border-sky-500/50 text-sky-400 rounded-full flex items-center justify-center text-[9px] font-black shadow-sm">!</div>
+                                                                                                        )}
+                                                                                                    </button>
+
+                                                                                                    {tooltipText && (
+                                                                                                        <div className="absolute bottom-full right-0 sm:left-1/2 sm:-translate-x-1/2 mb-3 w-64 p-3 bg-slate-800 border border-slate-700 text-slate-300 text-xs rounded-xl shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 pointer-events-none">
+                                                                                                            <div className="font-bold text-amber-400 mb-1.5 pb-1.5 border-b border-slate-700/50">Score: {val}</div>
+                                                                                                            <div className="leading-relaxed">{tooltipText}</div>
+                                                                                                            <div className="absolute top-full right-4 sm:left-1/2 sm:-translate-x-1/2 border-[5px] border-transparent border-t-slate-700"></div>
+                                                                                                        </div>
+                                                                                                    )}
+                                                                                                </div>
                                                                                             );
                                                                                         })}
                                                                                     </div>
