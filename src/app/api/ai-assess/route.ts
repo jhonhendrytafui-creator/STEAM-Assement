@@ -154,7 +154,42 @@ export async function POST(req: Request) {
             }
         }
 
-        const prompt = `You are an encouraging STEAM educator assistant. Your task is to review a student's STEAM project based on a specific rubric and provide scores and a single, casual feedback paragraph.
+        let prompt = '';
+
+        if (categoryName.toLowerCase().includes('c1') || categoryName.toLowerCase().includes('abstract')) {
+            // New C1 specific prompt based on the latest 16-point rubric
+            prompt = `### System Instructions for STEAM Project Filtration API
+
+**Role & Objective**
+You are a STEAM Education Expert and Project Filtration System. Your job is to evaluate student project proposals to determine if they qualify as true STEAM projects. A valid STEAM project must focus on building a tangible prototype (physical or digital) that solves a real-world problem by meaningfully integrating multiple STEAM disciplines (Science, Technology, Engineering, Art, Mathematics).
+
+**Input Data Expectation**
+You will receive student proposals containing:
+* Title: ${project.title}
+* Problem: ${problemDesc || 'Not provided.'}
+* Solution (Prototype): ${solutionDesc || 'Not provided.'}
+* Key Concepts (STEAM subjects): ${JSON.stringify(keyConcepts || {})}
+* Submission Status: On-time
+
+**Evaluation Rubric (Score each dimension 1 to 4)**
+${rubricContext}
+
+Assessment Indicators (you MUST score each one using the 1-4 scale above):
+${JSON.stringify(indicators, null, 2)}
+
+**Scoring & Decision Logic (Max 16 Points)**
+1. Calculate the total score across the 4 dimensions.
+2. Apply the **Time Modifier**: If the project was NOT submitted on time, automatically drop the final decision down by one tier.
+3. Determine the final decision (suggested_status):
+* 'approved' (13 to 16 Points): Accepted. Green light to start building the prototype.
+* 'revision' (8 to 12 Points): Accepted with Revision. Needs tweaks to the title, real-world connection, subject integration, or prototype plan before building.
+* 'disapproved' (4 to 7 Points): Not Accepted. Misses the mark on multiple fronts; needs a completely new idea.
+
+**Output Constraints**
+You must always output your final evaluation as a **single, casual paragraph** in the 'teacher_comment' field. This paragraph must naturally include the final decision, the total score out of 16, a brief highlight of what they did well, and the specific feedback on what needs to be fixed based on the rubric. Do not use bullet points or multiple paragraphs in your final output. Provide your output exactly matching the JSON schema.`;
+        } else {
+            // General prompt for other categories
+            prompt = `You are an encouraging STEAM educator assistant. Your task is to review a student's STEAM project based on a specific rubric and provide scores and a single, casual feedback paragraph.
 
 You are assessing the category: "${categoryName}".
 
@@ -191,15 +226,19 @@ ${JSON.stringify(indicators, null, 2)}
 FEEDBACK GUIDELINES:
 1. Analyze the project data against EACH indicator using the rubric criteria above.
 2. Provide an integer score (1-4) for EVERY indicator ID in your 'scores' map.
-3. Be kind and supportive in tone, but honest and objective in scoring.
+3. CRITICAL STEAM ENFORCEMENT: This is a STEAM project. It MUST combine Science, Tech, Engineering, Art, and Math. If the project reads like a simple, single-subject project (e.g. just a regular science experiment or just a math worksheet) with no clear interdisciplinary connection:
+   - You MUST score it very low on any related indicators.
+   - Your 'teacher_comment' MUST provide specific, firm criticism about this lack of integration, challenging them to add missing STEAM elements.
+   - You MUST NOT give an 'approved' status.
 4. Your 'teacher_comment' MUST be a single casual, friendly paragraph. Always prioritize suggestions for improvement over just pointing out flaws. Mention ONE specific strength and ONE specific area to improve with a concrete suggestion.
 5. Your 'suggested_status' should be:
-   - 'approved' if most scores are 3 or 4
-   - 'revision' if most scores are 2 or below
-   - 'disapproved' only if most scores are 1
+   - 'approved' if most scores are 3 or 4 AND the project shows true interdisciplinary STEAM integration.
+   - 'revision' if most scores are 2 or below OR if the project lacks STEAM integration (single-subject).
+   - 'disapproved' only if most scores are 1 and effort is completely absent.
 
 Provide your output exactly matching the JSON schema.
 `;
+        }
 
         const result = await model.generateContent(prompt);
         const responseText = result.response.text();
