@@ -5,7 +5,8 @@ import { createBrowserClient } from '@supabase/ssr';
 import {
     GraduationCap, LogOut, LayoutDashboard, BarChart2,
     ClipboardCheck, Users, FileText, CheckCircle2,
-    X, AlertTriangle, LinkIcon, TrendingUp, BookOpen, Star, FolderOpen, History, Sparkles
+    X, AlertTriangle, LinkIcon, TrendingUp, BookOpen, Star, FolderOpen, History, Sparkles,
+    Lock, Unlock
 } from 'lucide-react';
 
 const ACADEMIC_YEAR = '2025/2026';
@@ -35,6 +36,34 @@ const C1_RUBRIC_TOOLTIPS: Record<string, Record<number, string>> = {
         3: 'Proposes a prototype, but lacks some functional details, materials, or building clarity.',
         2: 'Vaguely mentions a prototype; leans heavily toward a theoretical model or presentation.',
         1: 'No prototype planned. Strictly a research paper, essay, or standard presentation.'
+    }
+};
+
+// ─── C2 Rubric Tooltips ─────────────────────────────
+const C2_RUBRIC_TOOLTIPS: Record<string, Record<number, string>> = {
+    'Ask': {
+        4: 'Masterfully defines a clear problem relevant to the student\'s life. Explicitly breaks down causes and real-world impacts. Relies entirely on hard facts and data, not personal opinions.',
+        3: 'Clearly states the problem and touches on causes/impacts. Uses some data but might occasionally rely on assumptions or general statements.',
+        2: 'The problem is vague. Briefly mentions causes/impacts but lacks depth. Heavily reliant on personal opinions rather than factual data.',
+        1: 'Unclear, irrelevant, lacks explanation of causes/impacts. Zero facts or data provided.'
+    },
+    'Research': {
+        4: 'Gathers highly credible data from academic resources. Elevates research by incorporating real-world data from expert interviews and/or deep analysis of existing solutions/products.',
+        3: 'Uses good, credible academic or online resources. May mention existing products but lacks deep analysis or expert input.',
+        2: 'Research relies on basic, potentially non-credible sources. No mention of existing solutions, expert input, or deep academic literature.',
+        1: 'No meaningful research, data, or credible sources provided.'
+    },
+    'Interdisciplinary': {
+        4: 'Masterfully explains how specific, advanced concepts from 2 or more STEAM fields intertwine to explain the problem and theory. Connections are deeply analyzed.',
+        3: 'Clearly explains the theoretical involvement of 2 or more STEAM fields. Connections make sense but might lack deep, critical analysis.',
+        2: 'Mentions different STEAM fields but fails to clearly elaborate on how their theoretical concepts specifically connect to the problem.',
+        1: 'Focuses entirely on the theory of a single subject, missing the interdisciplinary nature of STEAM.'
+    },
+    'Analysis': {
+        4: 'Brilliantly critiques the problem space and research. Uses data to identify a specific, clear opportunity to create something genuinely new or significantly better than existing solutions.',
+        3: 'Analyzes the research well enough to spot an opportunity for a project, though the proposed innovation might be slightly standard or generic.',
+        2: 'Takes data at face value without critical thought. Struggles to identify a clear, specific opportunity to improve upon existing solutions.',
+        1: 'Shows no critical analysis. Fails entirely to identify any opportunity to create a solution or improve upon existing ideas.'
     }
 };
 
@@ -324,6 +353,8 @@ export default function TeacherDashboardPage() {
     const [assessComment, setAssessComment] = useState<string>('');
     const [isSubmittingScore, setIsSubmittingScore] = useState(false);
     const [isAutoAssessing, setIsAutoAssessing] = useState(false);
+    const [isAssessmentLocked, setIsAssessmentLocked] = useState(false);
+    const [showUnlockConfirm, setShowUnlockConfirm] = useState(false);
 
     const handleAutoAssess = async () => {
         if (!assessProject || !assessCategory) return;
@@ -341,7 +372,8 @@ export default function TeacherDashboardPage() {
                 body: JSON.stringify({
                     project: assessProject,
                     categoryName: cat?.name || 'Unknown Category',
-                    indicators: inds.map(i => ({ id: i.id, description: i.description }))
+                    indicators: inds.map(i => ({ id: i.id, description: i.description })),
+                    googleDocUrl: assessProject?.google_doc_url || null
                 })
             });
 
@@ -370,8 +402,15 @@ export default function TeacherDashboardPage() {
             if (!assessClass || !assessGroup || !assessCategory) {
                 setAssessProject(null);
                 setCurrentScores({});
+                setAssessComment('');
+                setAssessStatus('');
                 return;
             }
+
+            // Reset state before loading new data
+            setCurrentScores({});
+            setAssessComment('');
+            setAssessStatus('');
 
             // Load project (get latest iteration)
             const { data: projs } = await supabase
@@ -384,22 +423,39 @@ export default function TeacherDashboardPage() {
                 .limit(1);
             const proj = projs && projs.length > 0 ? projs[0] : null;
             setAssessProject(proj);
-            setAssessStatus(proj?.status !== 'pending' ? proj?.status : '');
-            setAssessComment(proj?.teacher_comment || '');
 
             // Load existing scores for this group + category
             const { data: scores } = await supabase
                 .from('assessment_scores')
-                .select('indicator_id, score')
+                .select('indicator_id, score, teacher_comment')
                 .eq('class_name', assessClass)
                 .eq('group_number', parseInt(assessGroup))
                 .eq('category_id', assessCategory)
                 .eq('academic_year', ACADEMIC_YEAR);
 
-            if (scores) {
+            if (scores && scores.length > 0) {
                 const scoreMap: Record<string, number> = {};
                 scores.forEach(s => scoreMap[s.indicator_id] = s.score);
                 setCurrentScores(scoreMap);
+
+                // Load comment from the assessment scores (stored per-category)
+                const savedComment = scores.find(s => s.teacher_comment)?.teacher_comment || '';
+                setAssessComment(savedComment);
+
+                // Lock if scores already exist
+                setIsAssessmentLocked(true);
+            } else {
+                setCurrentScores({});
+                setAssessComment('');
+                setIsAssessmentLocked(false);
+            }
+
+            // Load status from project only for non-C2 assessments
+            const currentCat = assessmentCategories.find(c => c.id === assessCategory);
+            if (currentCat?.code !== 'C2') {
+                setAssessStatus(proj?.status !== 'pending' ? proj?.status : '');
+            } else {
+                setAssessStatus('');
             }
         };
         loadAssessData();
@@ -407,7 +463,9 @@ export default function TeacherDashboardPage() {
 
     const submitAssessment = async () => {
         if (!assessClass || !assessGroup || !assessCategory || !teacherProfile) return;
-        if (!assessStatus) {
+        const selectedCat = assessmentCategories.find(c => c.id === assessCategory);
+        const isC2Category = selectedCat?.code === 'C2';
+        if (!isC2Category && !assessStatus) {
             showToast('Please select an approval status before saving.', 'warning');
             return;
         }
@@ -439,7 +497,7 @@ export default function TeacherDashboardPage() {
                 showToast('Failed to save assessment: ' + error.message, 'error');
             } else {
                 showToast('Assessment saved successfully!', 'success');
-                if (assessProject) {
+                if (assessProject && !isC2Category) {
                     await supabase.from('projects')
                         .update({
                             status: assessStatus,
@@ -1242,6 +1300,58 @@ export default function TeacherDashboardPage() {
 
                                             return (
                                                 <div className="space-y-6">
+                                                    {/* Lock Banner */}
+                                                    {isAssessmentLocked && (
+                                                        <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 flex items-center justify-between gap-4">
+                                                            <div className="flex items-center gap-3">
+                                                                <Lock className="w-5 h-5 text-amber-500 shrink-0" />
+                                                                <div>
+                                                                    <p className="text-sm font-bold text-amber-400">Assessment Locked</p>
+                                                                    <p className="text-xs text-amber-500/70">This group has already been assessed. Unlock to modify scores.</p>
+                                                                </div>
+                                                            </div>
+                                                            <button
+                                                                onClick={() => setShowUnlockConfirm(true)}
+                                                                className="flex items-center gap-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 border border-amber-500/40 px-4 py-2 rounded-lg text-sm font-semibold transition-all shrink-0"
+                                                            >
+                                                                <Unlock className="w-4 h-4" />
+                                                                Unlock
+                                                            </button>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Unlock Confirmation Dialog */}
+                                                    {showUnlockConfirm && (
+                                                        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setShowUnlockConfirm(false)}>
+                                                            <div className="bg-[#1c1b14] border border-amber-500/30 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+                                                                <div className="flex items-center gap-3 mb-4">
+                                                                    <div className="w-10 h-10 bg-amber-500/20 rounded-full flex items-center justify-center">
+                                                                        <AlertTriangle className="w-5 h-5 text-amber-500" />
+                                                                    </div>
+                                                                    <h3 className="text-lg font-bold text-white">Unlock Assessment?</h3>
+                                                                </div>
+                                                                <p className="text-sm text-slate-400 mb-6 leading-relaxed">
+                                                                    This group has already been assessed. Are you sure you want to unlock and modify the scores? The existing scores will remain until you save new ones.
+                                                                </p>
+                                                                <div className="flex justify-end gap-3">
+                                                                    <button
+                                                                        onClick={() => setShowUnlockConfirm(false)}
+                                                                        className="px-4 py-2 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition-colors text-sm font-medium"
+                                                                    >
+                                                                        Cancel
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => { setIsAssessmentLocked(false); setShowUnlockConfirm(false); }}
+                                                                        className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-[#1a1811] px-5 py-2 rounded-lg text-sm font-bold transition-all"
+                                                                    >
+                                                                        <Unlock className="w-4 h-4" />
+                                                                        Yes, Unlock
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
                                                     {dims.map(dim => {
                                                         const inds = rubricIndicators.filter(i => i.dimension_id === dim.id);
                                                         return (
@@ -1269,13 +1379,15 @@ export default function TeacherDashboardPage() {
                                                                                             const val = i + 1;
                                                                                             const isSelected = currentScores[ind.id] === val;
                                                                                             const isC1 = cat?.code === 'C1';
-                                                                                            const tooltipText = isC1 ? C1_RUBRIC_TOOLTIPS[dim.name]?.[val] : undefined;
+                                                                                            const isC2 = cat?.code === 'C2';
+                                                                                            const tooltipText = isC1 ? C1_RUBRIC_TOOLTIPS[dim.name]?.[val] : isC2 ? C2_RUBRIC_TOOLTIPS[dim.name]?.[val] : undefined;
 
                                                                                             return (
                                                                                                 <div key={val} className="relative group inline-block">
                                                                                                     <button
-                                                                                                        onClick={() => setCurrentScores(prev => ({ ...prev, [ind.id]: val }))}
-                                                                                                        className={`w-10 h-10 rounded-md flex items-center justify-center font-bold text-sm transition-all relative ${isSelected ? 'bg-amber-500 text-[#1a1811] shadow-lg shadow-amber-500/20 translate-y-[-2px]' : 'bg-[#1c1b14] text-slate-500 hover:text-amber-400 hover:bg-[#25221b]'}`}
+                                                                                                        onClick={() => !isAssessmentLocked && setCurrentScores(prev => ({ ...prev, [ind.id]: val }))}
+                                                                                                        className={`w-10 h-10 rounded-md flex items-center justify-center font-bold text-sm transition-all relative ${isAssessmentLocked ? 'cursor-not-allowed opacity-60' : ''} ${isSelected ? 'bg-amber-500 text-[#1a1811] shadow-lg shadow-amber-500/20 translate-y-[-2px]' : 'bg-[#1c1b14] text-slate-500 hover:text-amber-400 hover:bg-[#25221b]'}`}
+                                                                                                        disabled={isAssessmentLocked}
                                                                                                     >
                                                                                                         {val}
                                                                                                         {tooltipText && (
@@ -1303,50 +1415,61 @@ export default function TeacherDashboardPage() {
                                                         );
                                                     })}
 
-                                                    {/* Approval Status & Comments */}
-                                                    <div className="bg-[#1c1b14] border border-amber-900/50 rounded-xl p-6 shadow-lg mt-8">
-                                                        <h3 className="font-bold text-white mb-4 border-b border-slate-800 pb-3">Final Decision & Feedback</h3>
-                                                        <div className="space-y-5">
-                                                            <div>
-                                                                <label className="block text-sm font-semibold text-slate-300 mb-3">Project Status</label>
-                                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                                                    {[
-                                                                        { val: 'approved', label: 'Approved', color: 'emerald' },
-                                                                        { val: 'revision', label: 'Needs Revision', color: 'amber' },
-                                                                        { val: 'disapproved', label: 'Disapproved', color: 'red' }
-                                                                    ].map(st => (
-                                                                        <button
-                                                                            key={st.val}
-                                                                            onClick={() => setAssessStatus(st.val)}
-                                                                            className={`py-2 px-3 rounded-lg border flex items-center justify-center gap-2 text-sm font-semibold transition-all ${assessStatus === st.val
-                                                                                ? (st.color === 'emerald' ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400' : st.color === 'amber' ? 'bg-amber-500/20 border-amber-500 text-amber-400' : 'bg-red-500/20 border-red-500 text-red-400')
-                                                                                : 'bg-[#1a1811] border-slate-700 text-slate-500 hover:border-slate-500 hover:text-slate-300'
-                                                                                }`}
-                                                                        >
-                                                                            {assessStatus === st.val && <CheckCircle2 className="w-4 h-4" />}
-                                                                            {st.label}
-                                                                        </button>
-                                                                    ))}
+                                                    {/* Approval Status & Comments — hide status for C2 */}
+                                                    {(() => {
+                                                        const selectedCat = assessmentCategories.find(c => c.id === assessCategory);
+                                                        const isC2Category = selectedCat?.code === 'C2';
+                                                        return (
+                                                            <div className="bg-[#1c1b14] border border-amber-900/50 rounded-xl p-6 shadow-lg mt-8">
+                                                                <h3 className="font-bold text-white mb-4 border-b border-slate-800 pb-3">
+                                                                    {isC2Category ? 'Feedback & Comments' : 'Final Decision & Feedback'}
+                                                                </h3>
+                                                                <div className="space-y-5">
+                                                                    {!isC2Category && (
+                                                                        <div>
+                                                                            <label className="block text-sm font-semibold text-slate-300 mb-3">Project Status</label>
+                                                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                                                                {[
+                                                                                    { val: 'approved', label: 'Approved', color: 'emerald' },
+                                                                                    { val: 'revision', label: 'Needs Revision', color: 'amber' },
+                                                                                    { val: 'disapproved', label: 'Disapproved', color: 'red' }
+                                                                                ].map(st => (
+                                                                                    <button
+                                                                                        key={st.val}
+                                                                                        onClick={() => setAssessStatus(st.val)}
+                                                                                        className={`py-2 px-3 rounded-lg border flex items-center justify-center gap-2 text-sm font-semibold transition-all ${assessStatus === st.val
+                                                                                            ? (st.color === 'emerald' ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400' : st.color === 'amber' ? 'bg-amber-500/20 border-amber-500 text-amber-400' : 'bg-red-500/20 border-red-500 text-red-400')
+                                                                                            : 'bg-[#1a1811] border-slate-700 text-slate-500 hover:border-slate-500 hover:text-slate-300'
+                                                                                            }`}
+                                                                                    >
+                                                                                        {assessStatus === st.val && <CheckCircle2 className="w-4 h-4" />}
+                                                                                        {st.label}
+                                                                                    </button>
+                                                                                ))}
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                    <div>
+                                                                        <label className="block text-sm font-semibold text-slate-300 mb-2">Teacher Comment / Feedback</label>
+                                                                        <textarea
+                                                                            value={assessComment}
+                                                                            onChange={e => setAssessComment(e.target.value)}
+                                                                            rows={3}
+                                                                            placeholder="Leave constructive feedback for the group..."
+                                                                            className="w-full bg-[#1a1811] border border-slate-800 rounded-lg py-3 px-4 text-sm text-slate-200 focus:outline-none focus:border-amber-500 resize-none whitespace-pre-wrap"
+                                                                            disabled={isAssessmentLocked}
+                                                                        />
+                                                                    </div>
                                                                 </div>
                                                             </div>
-                                                            <div>
-                                                                <label className="block text-sm font-semibold text-slate-300 mb-2">Teacher Comment / Feedback</label>
-                                                                <textarea
-                                                                    value={assessComment}
-                                                                    onChange={e => setAssessComment(e.target.value)}
-                                                                    rows={3}
-                                                                    placeholder="Leave constructive feedback for the group..."
-                                                                    className="w-full bg-[#1a1811] border border-slate-800 rounded-lg py-3 px-4 text-sm text-slate-200 focus:outline-none focus:border-amber-500 resize-none"
-                                                                />
-                                                            </div>
-                                                        </div>
-                                                    </div>
+                                                        );
+                                                    })()}
 
                                                     {/* Submit Button */}
                                                     <div className="flex justify-end gap-3 pt-4">
                                                         <button
                                                             onClick={handleAutoAssess}
-                                                            disabled={isAutoAssessing || isSubmittingScore}
+                                                            disabled={isAutoAssessing || isSubmittingScore || isAssessmentLocked}
                                                             className="flex items-center gap-2 bg-[#1c1b2e] border border-indigo-500/30 text-indigo-400 px-6 py-3.5 rounded-xl font-bold hover:bg-indigo-900/40 hover:text-indigo-300 transition-all shadow-xl shadow-indigo-900/10 disabled:opacity-50 disabled:cursor-not-allowed"
                                                         >
                                                             {isAutoAssessing ? 'AI is Thinking...' : 'Auto-Assess with Gemini'}
@@ -1354,7 +1477,7 @@ export default function TeacherDashboardPage() {
                                                         </button>
                                                         <button
                                                             onClick={submitAssessment}
-                                                            disabled={isSubmittingScore || isAutoAssessing}
+                                                            disabled={isSubmittingScore || isAutoAssessing || isAssessmentLocked}
                                                             className="flex items-center gap-2 bg-gradient-to-r from-amber-600 to-amber-500 text-[#1a1811] px-8 py-3.5 rounded-xl font-bold hover:from-amber-500 hover:to-amber-400 transition-all shadow-xl shadow-amber-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
                                                         >
                                                             {isSubmittingScore ? 'Saving Assessment...' : 'Save Assessment'}

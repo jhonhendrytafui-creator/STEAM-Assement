@@ -4,6 +4,31 @@ import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 // Initialize the Gemini client
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
+// ─── Google Doc Text Extraction ─────────────────────
+async function fetchGoogleDocText(url: string): Promise<string> {
+    try {
+        // Extract Google Doc ID from URL
+        const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+        if (!match) return '';
+        const docId = match[1];
+
+        // Fetch as plain text via Google's export URL
+        const exportUrl = `https://docs.google.com/document/d/${docId}/export?format=txt`;
+        const response = await fetch(exportUrl, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; STEAMBot/1.0)' },
+            redirect: 'follow',
+        });
+
+        if (!response.ok) return '';
+        const text = await response.text();
+        // Limit to ~15000 chars to stay within token limits
+        return text.slice(0, 15000);
+    } catch (e) {
+        console.error('Failed to fetch Google Doc text:', e);
+        return '';
+    }
+}
+
 // Rubric criteria from c1_prompt.md — gives the AI specific scoring guidance per category
 function buildRubricContext(categoryName: string): string {
     const lowerCat = categoryName.toLowerCase();
@@ -68,6 +93,37 @@ Indicator: Ability & Grade Level
 Use these rubric descriptors to determine the exact score for each indicator.`;
     }
 
+    // C2: Ask & Research rubric
+    if (lowerCat.includes('c2') || lowerCat.includes('ask') || lowerCat.includes('research')) {
+        return `DETAILED RUBRIC FOR THIS CATEGORY ("${categoryName}"):
+
+Dimension: Ask (Problem Elaboration & Impact)
+  4 (Excellent): Masterfully defines a clear problem relevant to the student's life. Explicitly breaks down causes and real-world impacts. Relies entirely on hard facts and data, not personal opinions or feelings.
+  3 (Proficient): Clearly states the problem and touches on causes/impacts. Uses some data but might occasionally rely on assumptions or general statements.
+  2 (Developing): The problem is vague. Briefly mentions causes/impacts but lacks depth. Heavily reliant on personal opinions rather than factual data.
+  1 (Beginning): Unclear, irrelevant, lacks explanation of causes/impacts. Zero facts or data provided.
+
+Dimension: Research Quality & Source Diversity
+  4 (Excellent): Gathers highly credible data from academic resources. Elevates research by incorporating real-world data from expert interviews and/or deep analysis of existing solutions/products.
+  3 (Proficient): Uses good, credible academic or online resources. May mention existing products but lacks deep analysis or expert input.
+  2 (Developing): Research relies on basic, potentially non-credible sources. No mention of existing solutions, expert input, or deep academic literature.
+  1 (Beginning): No meaningful research, data, or credible sources provided.
+
+Dimension: STEAM Interdisciplinary Connection
+  4 (Excellent): Masterfully explains how specific, advanced concepts from 2 or more STEAM fields intertwine to explain the problem and the theory behind it. Connections are deeply analyzed.
+  3 (Proficient): Clearly explains the theoretical involvement of 2 or more STEAM fields. Connections make sense but might lack deep, critical analysis.
+  2 (Developing): Mentions different STEAM fields but fails to clearly elaborate on how their theoretical concepts specifically connect to the problem.
+  1 (Beginning): Focuses entirely on the theory of a single subject, missing the interdisciplinary nature of STEAM.
+
+Dimension: Critical Analysis & Opportunity
+  4 (Excellent): Brilliantly critiques the problem space and research. Uses the data to identify a specific, clear opportunity to create something genuinely new or significantly better than existing solutions.
+  3 (Proficient): Analyzes the research well enough to spot an opportunity for a project, though the proposed innovation might be slightly standard or generic.
+  2 (Developing): Takes data at face value without critical thought. Struggles to identify a clear, specific opportunity to improve upon existing solutions.
+  1 (Beginning): Shows no critical analysis. Fails entirely to identify any opportunity to create a solution or improve upon existing ideas.
+
+Use these rubric descriptors to determine the exact score for each indicator.`;
+    }
+
     // Fallback for other categories — use generic 1-4 guidance
     return `RUBRIC GUIDANCE FOR "${categoryName}":
 Use the 1-4 scoring scale. Match each indicator's score to the level that best describes the student's work:
@@ -80,7 +136,7 @@ Use the 1-4 scoring scale. Match each indicator's score to the level that best d
 export async function POST(req: Request) {
     try {
         const body = await req.json();
-        const { project, categoryName, indicators } = body;
+        const { project, categoryName, indicators, googleDocUrl } = body;
 
         if (!project || !categoryName || !indicators) {
             return NextResponse.json(
@@ -106,30 +162,41 @@ export async function POST(req: Request) {
             };
         });
 
+        // Determine if this is a C2 assessment (no decision status needed)
+        const isC2 = categoryName.toLowerCase().includes('c2') || categoryName.toLowerCase().includes('ask');
+
+        const responseSchemaProperties: Record<string, any> = {
+            scores: {
+                type: SchemaType.OBJECT,
+                properties: scoreProperties,
+                description: "A map of indicator IDs as string keys mapping to their assessed integer score values."
+            },
+            teacher_comment: {
+                type: SchemaType.STRING,
+                description: isC2
+                    ? "A structured, critical feedback using numbered bullet points. For each of the 4 dimensions, state the score, WHY that score was given with specific evidence, and a concrete IMPROVE action. Be sharp and direct."
+                    : "A single, casual, friendly feedback paragraph written directly to the student. Must mention one specific strength and one specific suggestion for improvement."
+            }
+        };
+        const requiredFields = ["scores", "teacher_comment"];
+
+        if (!isC2) {
+            responseSchemaProperties.suggested_status = {
+                type: SchemaType.STRING,
+                description: "The suggested overarching status for the project based on the scores. MUST be exactly one of: 'approved', 'revision', 'disapproved'."
+            };
+            requiredFields.push("suggested_status");
+        }
+
         const model = genAI.getGenerativeModel({
             model: 'gemini-2.5-flash',
             generationConfig: {
                 temperature: 0.2, // Low temperature for consistent grading
                 responseMimeType: "application/json",
-                // Strongly typed response schema so the LLM knows what to return
                 responseSchema: {
                     type: SchemaType.OBJECT,
-                    properties: {
-                        scores: {
-                            type: SchemaType.OBJECT,
-                            properties: scoreProperties,
-                            description: "A map of indicator IDs as string keys mapping to their assessed integer score values."
-                        },
-                        teacher_comment: {
-                            type: SchemaType.STRING,
-                            description: "A single, casual, friendly feedback paragraph written directly to the student. Must mention one specific strength and one specific suggestion for improvement."
-                        },
-                        suggested_status: {
-                            type: SchemaType.STRING,
-                            description: "The suggested overarching status for the project based on the scores. MUST be exactly one of: 'approved', 'revision', 'disapproved'."
-                        }
-                    },
-                    required: ["scores", "teacher_comment", "suggested_status"]
+                    properties: responseSchemaProperties,
+                    required: requiredFields
                 }
             }
         });
@@ -156,7 +223,73 @@ export async function POST(req: Request) {
 
         let prompt = '';
 
-        if (categoryName.toLowerCase().includes('c1') || categoryName.toLowerCase().includes('abstract')) {
+        if (categoryName.toLowerCase().includes('c2') || categoryName.toLowerCase().includes('ask')) {
+            // ===== C2: Ask & Research — reads Google Doc content =====
+            let docText = '';
+            const docUrl = googleDocUrl || project.google_doc_url;
+            if (docUrl) {
+                docText = await fetchGoogleDocText(docUrl);
+            }
+
+            prompt = `### System Instructions for STEAM Project Assessment API (Phase: Ask & Research)
+
+**Role & Objective**
+You are a STEAM Education Expert and Project Assessment AI. Your job is to evaluate the "Ask and Research" phase (Problem Description and Theoretical Literature) of a student's STEAM project. You will analyze how well the student defines a real-world problem, backs it up with credible research, connects interdisciplinary STEAM theories, and identifies a clear opportunity for innovation.
+
+You are evaluating content from the student's written document, focusing specifically on **Bab 1 (Introduction / Problem Description)** and **Bab 2 (Literature Review / Theoretical Framework)**.
+
+**Student Project Info**
+* Title: ${project.title}
+* Problem Summary: ${problemDesc || 'See document content below.'}
+* Solution Summary: ${solutionDesc || 'See document content below.'}
+* Key Concepts: ${JSON.stringify(keyConcepts || {})}
+
+**Student Document Content (from Google Doc — focus on Bab 1 & Bab 2):**
+<DOCUMENT>
+${docText || 'No document content available. Assess based on the project data provided above.'}
+</DOCUMENT>
+
+**Evaluation Rubric (Score each dimension 1 to 4)**
+${rubricContext}
+
+Assessment Indicators (you MUST score each one using the 1-4 scale above):
+${JSON.stringify(indicators, null, 2)}
+
+**Scoring Logic (Max 16 Points)**
+Calculate the total score by adding the points from all 4 dimensions, then determine the category:
+* 13 to 16 Points: Exemplary — Rock-solid foundation, fact-based, diverse research, strong STEAM connections, clear innovation gap.
+* 9 to 12 Points: Proficient — Strong start but noticeable gaps in data, source diversity, or opportunity definition.
+* 5 to 8 Points: Developing — Shaky foundation, relies on feelings over facts, thin research, weak interdisciplinary connection.
+* 4 Points: Beginning — Fails to meet basic requirements of research and problem-definition.
+
+**Output Constraints**
+You must output your evaluation in the 'teacher_comment' field using a **structured, critical format**. Be SHARP and DIRECT — do not sugarcoat. Use the following format:
+
+**Overall: X/16 — [Category: Exemplary/Proficient/Developing/Beginning]**
+
+Then provide a numbered breakdown for EACH of the 4 dimensions:
+
+1. **Ask (Problem Elaboration & Impact) — Score: X/4**
+   - WHY this score: [Cite specific evidence from their document — what they did well or failed to do]
+   - IMPROVE: [Concrete, actionable step to raise their score]
+
+2. **Research (Quality & Source Diversity) — Score: X/4**
+   - WHY this score: [Cite specific evidence — type of sources used, what's missing]
+   - IMPROVE: [Specific suggestion, e.g. "Add at least 2 peer-reviewed journal sources" or "Conduct an expert interview"]
+
+3. **Interdisciplinary (STEAM Connection) — Score: X/4**
+   - WHY this score: [Which STEAM fields are present/missing, how deep is the connection]
+   - IMPROVE: [Name the missing discipline and how to integrate it]
+
+4. **Analysis (Critical Analysis & Opportunity) — Score: X/4**
+   - WHY this score: [Did they critically analyze or just summarize? Is there a clear innovation gap?]
+   - IMPROVE: [What kind of analysis or comparison should they add]
+
+Be brutally honest. If the work is weak, say so directly. If a dimension deserves a 1 or 2, explain exactly what is missing. Do NOT be generous — grade strictly according to the rubric.
+
+Do NOT include a 'suggested_status' field. Just provide 'scores' and 'teacher_comment'. Provide your output exactly matching the JSON schema.`;
+
+        } else if (categoryName.toLowerCase().includes('c1') || categoryName.toLowerCase().includes('abstract')) {
             // New C1 specific prompt based on the latest 16-point rubric
             prompt = `### System Instructions for STEAM Project Filtration API
 

@@ -1359,7 +1359,7 @@ export default function StudentDashboardPage() {
                                                 {teacherComment && (
                                                     <div className="mt-5 pt-4 border-t border-amber-500/20">
                                                         <span className="text-[10px] uppercase text-amber-500/70 font-bold block mb-1">Teacher Assessment Comment</span>
-                                                        <p className="text-sm text-amber-100 italic">"{teacherComment}"</p>
+                                                        <p className="text-sm text-amber-100 whitespace-pre-wrap leading-relaxed">"{teacherComment}"</p>
                                                     </div>
                                                 )}
                                             </div>
