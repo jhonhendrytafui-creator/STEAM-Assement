@@ -6,7 +6,7 @@ import {
     GraduationCap, LogOut, LayoutDashboard, BarChart2,
     ClipboardCheck, Users, FileText, CheckCircle2,
     X, AlertTriangle, LinkIcon, TrendingUp, BookOpen, Star, FolderOpen, History, Sparkles,
-    Lock, Unlock
+    Lock, Unlock, Filter, LayoutGrid, List, PieChart, Clock
 } from 'lucide-react';
 
 const ACADEMIC_YEAR = '2025/2026';
@@ -155,6 +155,7 @@ export default function TeacherDashboardPage() {
     const [totalGroups, setTotalGroups] = useState(0);
     const [totalProjects, setTotalProjects] = useState(0);
     const [recentProjects, setRecentProjects] = useState<ProjectData[]>([]);
+    const [overviewGradeFilter, setOverviewGradeFilter] = useState<string>('');
 
     // Reference Data
     const [allStudents, setAllStudents] = useState<any[]>([]);
@@ -282,6 +283,10 @@ export default function TeacherDashboardPage() {
     const [groupSubmissions, setGroupSubmissions] = useState<any[]>([]);
     const [currentSubmissionIndex, setCurrentSubmissionIndex] = useState(0);
     const [isFetchingSubmissions, setIsFetchingSubmissions] = useState(false);
+    const [submissionClassFilter, setSubmissionClassFilter] = useState<string>('');
+    const [submissionStatusFilter, setSubmissionStatusFilter] = useState<string[]>([]);
+    const [submissionViewMode, setSubmissionViewMode] = useState<'card' | 'list'>('card');
+    const [submissionGroupByClass, setSubmissionGroupByClass] = useState(false);
 
     const fetchGradeSubmissionsList = async () => {
         if (!submissionGrade) return;
@@ -345,6 +350,7 @@ export default function TeacherDashboardPage() {
     const [assessClass, setAssessClass] = useState<string>('');
     const [assessGroup, setAssessGroup] = useState<string>('');
     const [assessCategory, setAssessCategory] = useState<string>('');
+    const [assessedGroupsMap, setAssessedGroupsMap] = useState<Record<number, boolean>>({});
 
     // Assess Form State
     const [assessProject, setAssessProject] = useState<any>(null);
@@ -355,6 +361,12 @@ export default function TeacherDashboardPage() {
     const [isAutoAssessing, setIsAutoAssessing] = useState(false);
     const [isAssessmentLocked, setIsAssessmentLocked] = useState(false);
     const [showUnlockConfirm, setShowUnlockConfirm] = useState(false);
+
+    // Analytics State
+    const [allAssessmentScores, setAllAssessmentScores] = useState<any[]>([]);
+    const [analyticsGrade, setAnalyticsGrade] = useState<string>('');
+    const [analyticsClass, setAnalyticsClass] = useState<string>('');
+    const [analyticsCategory, setAnalyticsCategory] = useState<string>('');
 
     const handleAutoAssess = async () => {
         if (!assessProject || !assessCategory) return;
@@ -395,7 +407,38 @@ export default function TeacherDashboardPage() {
     };
 
     const availableAssessClasses = Array.from(new Set(allStudents.filter(s => String(s.class_name).split('.')[0] === assessGrade).map(s => s.class_name))).sort();
-    const availableAssessGroups = Array.from(new Set(allStudents.filter(s => s.class_name === assessClass).map(s => s.group_number))).sort((a, b) => a - b);
+    const availableAssessGroups = Array.from(new Set(allStudents.filter(s => s.class_name === assessClass).map(s => s.group_number))).sort((a: number, b: number) => a - b);
+
+    // Auto-select first group when class changes
+    useEffect(() => {
+        if (assessClass && availableAssessGroups.length > 0) {
+            setAssessGroup(availableAssessGroups[0].toString());
+        } else {
+            setAssessGroup('');
+        }
+    }, [assessClass]);
+
+    // Fetch assessed groups map when class or category changes
+    useEffect(() => {
+        const fetchAssessedGroups = async () => {
+            if (!assessClass || !assessCategory) {
+                setAssessedGroupsMap({});
+                return;
+            }
+            const { data: scores } = await supabase
+                .from('assessment_scores')
+                .select('group_number')
+                .eq('class_name', assessClass)
+                .eq('category_id', assessCategory)
+                .eq('academic_year', ACADEMIC_YEAR);
+            const map: Record<number, boolean> = {};
+            if (scores) {
+                scores.forEach(s => { map[s.group_number] = true; });
+            }
+            setAssessedGroupsMap(map);
+        };
+        fetchAssessedGroups();
+    }, [assessClass, assessCategory, supabase]);
 
     useEffect(() => {
         const loadAssessData = async () => {
@@ -497,6 +540,15 @@ export default function TeacherDashboardPage() {
                 showToast('Failed to save assessment: ' + error.message, 'error');
             } else {
                 showToast('Assessment saved successfully!', 'success');
+                setIsAssessmentLocked(true);
+                setAssessedGroupsMap(prev => ({ ...prev, [groupNum]: true }));
+
+                // Update local analytics data so charts reflect instantly
+                setAllAssessmentScores(prev => {
+                    const filtered = prev.filter(s => !(s.class_name === assessClass && s.group_number === groupNum && s.category_id === assessCategory));
+                    return [...filtered, ...scoreEntries];
+                });
+
                 if (assessProject && !isC2Category) {
                     await supabase.from('projects')
                         .update({
@@ -573,6 +625,13 @@ export default function TeacherDashboardPage() {
             const { data: inds } = await supabase.from('rubric_indicators').select('*').order('sort_order');
             if (inds) setRubricIndicators(inds);
 
+            // 1c. Fetch all assessment scores for analytics
+            const { data: allScores } = await supabase
+                .from('assessment_scores')
+                .select('*')
+                .eq('academic_year', ACADEMIC_YEAR);
+            if (allScores) setAllAssessmentScores(allScores);
+
             // 2. Get submitted projects
             const { data: projects } = await supabase
                 .from('projects')
@@ -641,6 +700,7 @@ export default function TeacherDashboardPage() {
                         { id: 'submissions', label: 'Project Submissions', icon: FolderOpen },
                         { id: 'score', label: 'Student Score', icon: BarChart2 },
                         { id: 'assess', label: 'Project Assessment', icon: ClipboardCheck },
+                        { id: 'analytics', label: 'Analytics', icon: TrendingUp },
                     ].map((tab) => (
                         <button
                             key={tab.id}
@@ -660,93 +720,145 @@ export default function TeacherDashboardPage() {
                 <div className="flex-1 w-full min-w-0">
 
                     {/* TAB 1: OVERVIEW */}
-                    {activeTab === 'overview' && (
-                        <div className="space-y-6">
-                            <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
-                                <LayoutDashboard className="text-amber-500" />
-                                Projects Overview
-                            </h2>
+                    {activeTab === 'overview' && (() => {
+                        // Compute filtered projects based on grade filter
+                        const filteredProjects = overviewGradeFilter
+                            ? recentProjects.filter(p => String(p.class_name).split('.')[0] === overviewGradeFilter)
+                            : recentProjects;
 
-                            {/* Stats */}
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                <div className="bg-[#1a1811] border border-slate-800 rounded-2xl p-6 hover:border-amber-900/50 transition-colors">
-                                    <div className="flex items-center gap-3 mb-2 text-slate-400">
-                                        <Users className="w-5 h-5 text-blue-400" />
-                                        <span className="text-sm font-semibold">Total Groups</span>
-                                    </div>
-                                    <div className="text-3xl font-bold text-white">{totalGroups}</div>
-                                </div>
-                                <div className="bg-[#1a1811] border border-slate-800 rounded-2xl p-6 hover:border-amber-900/50 transition-colors">
-                                    <div className="flex items-center gap-3 mb-2 text-slate-400">
-                                        <BookOpen className="w-5 h-5 text-emerald-400" />
-                                        <span className="text-sm font-semibold">Submitted Projects</span>
-                                    </div>
-                                    <div className="text-3xl font-bold text-white">{totalProjects}</div>
-                                </div>
-                                <div className="bg-[#1a1811] border border-slate-800 rounded-2xl p-6 hover:border-amber-900/50 transition-colors">
-                                    <div className="flex items-center gap-3 mb-2 text-slate-400">
-                                        <AlertTriangle className="w-5 h-5 text-amber-400" />
-                                        <span className="text-sm font-semibold">Not Yet Submitted</span>
-                                    </div>
-                                    <div className="text-3xl font-bold text-amber-400">{Math.max(0, totalGroups - totalProjects)}</div>
-                                </div>
-                            </div>
+                        // Compute unique latest project per group
+                        const latestByGroup = new Map<string, ProjectData>();
+                        filteredProjects.forEach(p => {
+                            const key = `${p.class_name}-${p.group_number}`;
+                            if (!latestByGroup.has(key)) latestByGroup.set(key, p);
+                        });
+                        const uniqueLatest = Array.from(latestByGroup.values());
 
-                            {/* Recent Projects Table */}
-                            <div className="bg-[#1a1811] border border-amber-900/20 rounded-2xl shadow-xl overflow-hidden mt-8">
-                                <div className="p-6 border-b border-slate-800/50">
-                                    <h3 className="text-lg font-bold text-white">Recent Submissions</h3>
+                        const filteredStudents = overviewGradeFilter
+                            ? allStudents.filter(s => String(s.class_name).split('.')[0] === overviewGradeFilter)
+                            : allStudents;
+                        const filteredGroupCount = new Set(filteredStudents.map(s => `${s.class_name}-${s.group_number}`)).size;
+
+                        const pendingCount = uniqueLatest.filter(p => !p.status || p.status === 'pending').length;
+                        const approvedCount = uniqueLatest.filter(p => p.status === 'approved').length;
+                        const revisionCount = uniqueLatest.filter(p => p.status === 'revision').length;
+                        const disapprovedCount = uniqueLatest.filter(p => p.status === 'disapproved').length;
+
+                        return (
+                            <div className="space-y-6">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-2">
+                                    <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+                                        <LayoutDashboard className="text-amber-500" />
+                                        Projects Overview
+                                    </h2>
+                                    <div className="w-full sm:w-48">
+                                        <select
+                                            value={overviewGradeFilter}
+                                            onChange={(e) => setOverviewGradeFilter(e.target.value)}
+                                            className="w-full bg-[#1a1811] border border-slate-800 rounded-lg py-2 px-3 text-sm text-slate-200 focus:outline-none focus:border-amber-500"
+                                        >
+                                            <option value="">All Grades</option>
+                                            {availableGrades.map(g => <option key={g} value={g}>Grade {g}</option>)}
+                                        </select>
+                                    </div>
                                 </div>
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-left border-collapse">
-                                        <thead>
-                                            <tr className="bg-[#1c1b14] border-b border-slate-800/50 text-xs uppercase tracking-wider text-slate-500">
-                                                <th className="p-4 font-semibold">Group</th>
-                                                <th className="p-4 font-semibold">Project Title</th>
-                                                <th className="p-4 font-semibold">Theme</th>
-                                                <th className="p-4 font-semibold">Date</th>
-                                                <th className="p-4 font-semibold">Status</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-800/30 text-sm">
-                                            {recentProjects.length > 0 ? (
-                                                recentProjects.map((proj) => (
-                                                    <tr key={proj.id} className="hover:bg-[#1c1b14]/50 transition-colors">
-                                                        <td className="p-4 whitespace-nowrap text-amber-400 font-medium whitespace-nowrap">
-                                                            {proj.class_name} - {proj.group_number}
-                                                        </td>
-                                                        <td className="p-4 font-medium text-slate-200">
-                                                            {proj.title}
-                                                        </td>
-                                                        <td className="p-4 text-slate-400 whitespace-nowrap">
-                                                            {proj.themes?.theme_name || '-'}
-                                                        </td>
-                                                        <td className="p-4 text-slate-400 whitespace-nowrap">
-                                                            {new Date(proj.created_at).toLocaleDateString()}
-                                                        </td>
-                                                        <td className="p-4 whitespace-nowrap">
-                                                            <span className={`inline-flex px-2 py-1 rounded-md text-xs font-medium border ${proj.status === 'approved' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
-                                                                proj.status === 'revision' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
-                                                                    'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                                                                }`}>
-                                                                {proj.status || 'pending'}
-                                                            </span>
+
+                                {/* Stats */}
+                                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                                    <div className="bg-[#1a1811] border border-slate-800 rounded-2xl p-5 hover:border-amber-900/50 transition-colors">
+                                        <div className="flex items-center gap-2 mb-2 text-slate-400">
+                                            <Users className="w-4 h-4 text-blue-400" />
+                                            <span className="text-xs font-semibold">Total Groups</span>
+                                        </div>
+                                        <div className="text-2xl font-bold text-white">{filteredGroupCount}</div>
+                                    </div>
+                                    <div className="bg-[#1a1811] border border-slate-800 rounded-2xl p-5 hover:border-amber-900/50 transition-colors">
+                                        <div className="flex items-center gap-2 mb-2 text-slate-400">
+                                            <AlertTriangle className="w-4 h-4 text-amber-400" />
+                                            <span className="text-xs font-semibold">Pending</span>
+                                        </div>
+                                        <div className="text-2xl font-bold text-amber-400">{pendingCount}</div>
+                                    </div>
+                                    <div className="bg-[#1a1811] border border-slate-800 rounded-2xl p-5 hover:border-amber-900/50 transition-colors">
+                                        <div className="flex items-center gap-2 mb-2 text-slate-400">
+                                            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                                            <span className="text-xs font-semibold">Approved</span>
+                                        </div>
+                                        <div className="text-2xl font-bold text-emerald-400">{approvedCount}</div>
+                                    </div>
+                                    <div className="bg-[#1a1811] border border-slate-800 rounded-2xl p-5 hover:border-amber-900/50 transition-colors">
+                                        <div className="flex items-center gap-2 mb-2 text-slate-400">
+                                            <History className="w-4 h-4 text-orange-400" />
+                                            <span className="text-xs font-semibold">Revision</span>
+                                        </div>
+                                        <div className="text-2xl font-bold text-orange-400">{revisionCount}</div>
+                                    </div>
+                                    <div className="bg-[#1a1811] border border-slate-800 rounded-2xl p-5 hover:border-amber-900/50 transition-colors">
+                                        <div className="flex items-center gap-2 mb-2 text-slate-400">
+                                            <X className="w-4 h-4 text-red-400" />
+                                            <span className="text-xs font-semibold">Disapproved</span>
+                                        </div>
+                                        <div className="text-2xl font-bold text-red-400">{disapprovedCount}</div>
+                                    </div>
+                                </div>
+
+                                {/* Recent Projects Table */}
+                                <div className="bg-[#1a1811] border border-amber-900/20 rounded-2xl shadow-xl overflow-hidden mt-4">
+                                    <div className="p-6 border-b border-slate-800/50">
+                                        <h3 className="text-lg font-bold text-white">{overviewGradeFilter ? `Grade ${overviewGradeFilter} Submissions` : 'All Submissions'}</h3>
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left border-collapse">
+                                            <thead>
+                                                <tr className="bg-[#1c1b14] border-b border-slate-800/50 text-xs uppercase tracking-wider text-slate-500">
+                                                    <th className="p-4 font-semibold">Group</th>
+                                                    <th className="p-4 font-semibold">Project Title</th>
+                                                    <th className="p-4 font-semibold">Theme</th>
+                                                    <th className="p-4 font-semibold">Date</th>
+                                                    <th className="p-4 font-semibold">Status</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-800/30 text-sm">
+                                                {filteredProjects.length > 0 ? (
+                                                    filteredProjects.map((proj) => (
+                                                        <tr key={proj.id} className="hover:bg-[#1c1b14]/50 transition-colors">
+                                                            <td className="p-4 whitespace-nowrap text-amber-400 font-medium">
+                                                                {proj.class_name} - {proj.group_number}
+                                                            </td>
+                                                            <td className="p-4 font-medium text-slate-200">
+                                                                {proj.title}
+                                                            </td>
+                                                            <td className="p-4 text-slate-400 whitespace-nowrap">
+                                                                {proj.themes?.theme_name || '-'}
+                                                            </td>
+                                                            <td className="p-4 text-slate-400 whitespace-nowrap">
+                                                                {new Date(proj.created_at).toLocaleDateString()}
+                                                            </td>
+                                                            <td className="p-4 whitespace-nowrap">
+                                                                <span className={`inline-flex px-2 py-1 rounded-md text-xs font-medium border ${proj.status === 'approved' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+                                                                    proj.status === 'revision' ? 'bg-orange-500/10 text-orange-400 border-orange-500/20' :
+                                                                        proj.status === 'disapproved' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
+                                                                            'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                                                                    }`}>
+                                                                    {proj.status || 'pending'}
+                                                                </span>
+                                                            </td>
+                                                        </tr>
+                                                    ))
+                                                ) : (
+                                                    <tr>
+                                                        <td colSpan={5} className="p-8 text-center text-slate-500">
+                                                            No projects submitted yet.
                                                         </td>
                                                     </tr>
-                                                ))
-                                            ) : (
-                                                <tr>
-                                                    <td colSpan={5} className="p-8 text-center text-slate-500">
-                                                        No projects submitted yet.
-                                                    </td>
-                                                </tr>
-                                            )}
-                                        </tbody>
-                                    </table>
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    )}
+                        );
+                    })()}
 
                     {/* TAB 1.5: SUBMISSIONS */}
                     {activeTab === 'submissions' && (
@@ -757,72 +869,238 @@ export default function TeacherDashboardPage() {
                             </h2>
 
                             {/* Submissions Filters */}
-                            {!selectedGroupForSubmission ? (
-                                <>
-                                    <div className="flex flex-col sm:flex-row gap-4 mb-8 bg-[#1c1b14] border border-slate-800 rounded-xl p-4">
-                                        <div className="flex-1">
-                                            <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Grade</label>
-                                            <select
-                                                value={submissionGrade}
-                                                onChange={(e) => { setSubmissionGrade(e.target.value); setGradeSubmissionsList([]); }}
-                                                className="w-full bg-[#1a1811] border border-slate-800 rounded-lg py-2.5 px-3 text-sm text-slate-200 focus:outline-none focus:border-amber-500"
-                                            >
-                                                <option value="">Select Grade</option>
-                                                {availableGrades.map(g => <option key={g} value={g}>Grade {g}</option>)}
-                                            </select>
+                            {!selectedGroupForSubmission ? (() => {
+                                // Compute available classes for filter
+                                const submissionAvailableClasses = Array.from(new Set(gradeSubmissionsList.map(g => g.class_name))).sort();
+                                // Apply client-side filters
+                                let filtered = gradeSubmissionsList;
+                                if (submissionClassFilter) filtered = filtered.filter(g => g.class_name === submissionClassFilter);
+                                if (submissionStatusFilter.length > 0) filtered = filtered.filter(g => submissionStatusFilter.includes(g.latestStatus));
+
+                                // Group by class if toggled
+                                const classesSorted = Array.from(new Set(filtered.map(g => g.class_name))).sort();
+
+                                const statusOptions = ['pending', 'approved', 'revision', 'disapproved', 'not submitted yet'];
+                                const statusColors: Record<string, string> = {
+                                    'pending': 'bg-amber-500/10 text-amber-400 border-amber-500/30',
+                                    'approved': 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+                                    'revision': 'bg-orange-500/10 text-orange-400 border-orange-500/30',
+                                    'disapproved': 'bg-red-500/10 text-red-400 border-red-500/30',
+                                    'not submitted yet': 'bg-slate-800/50 text-slate-400 border-slate-600',
+                                };
+                                const statusColorsActive: Record<string, string> = {
+                                    'pending': 'bg-amber-500 text-[#1a1811] border-amber-500',
+                                    'approved': 'bg-emerald-500 text-[#1a1811] border-emerald-500',
+                                    'revision': 'bg-orange-500 text-[#1a1811] border-orange-500',
+                                    'disapproved': 'bg-red-500 text-white border-red-500',
+                                    'not submitted yet': 'bg-slate-500 text-white border-slate-500',
+                                };
+
+                                const renderGroupCard = (group: any, idx: number) => (
+                                    <div
+                                        key={`${group.class_name}-${group.group_number}`}
+                                        onClick={() => handleSelectSubmissionGroup(group)}
+                                        className="bg-[#1c1b14] border border-slate-800 hover:border-amber-500/50 rounded-xl p-5 cursor-pointer transition-all hover:shadow-lg hover:shadow-amber-900/10 group"
+                                    >
+                                        <div className="flex items-center justify-between mb-3 border-b border-slate-800/50 pb-3">
+                                            <h3 className="font-bold text-slate-200 group-hover:text-amber-400 transition-colors">
+                                                {group.class_name} - Group {group.group_number}
+                                            </h3>
+                                            <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider border ${group.latestStatus === 'approved' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+                                                group.latestStatus === 'revision' ? 'bg-orange-500/10 text-orange-400 border-orange-500/20' :
+                                                    group.latestStatus === 'disapproved' ? 'bg-red-500/10 text-red-500 border-red-500/20' :
+                                                        group.latestStatus === 'pending' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' :
+                                                            'bg-slate-800/50 text-slate-400 border-slate-700'
+                                                }`}>
+                                                {group.latestStatus}
+                                            </span>
                                         </div>
-                                        <div className="flex items-end sm:w-48 shrink-0">
-                                            <button
-                                                onClick={fetchGradeSubmissionsList}
-                                                disabled={!submissionGrade || isFetchingSubmissions}
-                                                className="w-full bg-amber-500 hover:bg-amber-400 text-[#1a1811] font-bold py-2.5 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-                                            >
-                                                {isFetchingSubmissions ? 'Loading...' : 'Search Grade'}
-                                            </button>
+                                        <p className="text-sm font-medium text-slate-300 line-clamp-2 mb-3 h-10">
+                                            {group.latestTitle}
+                                        </p>
+                                        <div className="flex items-center gap-2 text-xs text-slate-500">
+                                            <History className="w-3.5 h-3.5" />
+                                            {group.iterationsCount} Iteration{group.iterationsCount !== 1 ? 's' : ''} Found
                                         </div>
                                     </div>
+                                );
 
-                                    {/* Groups Grid */}
-                                    {gradeSubmissionsList.length > 0 ? (
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                            {gradeSubmissionsList.map((group, idx) => (
-                                                <div
-                                                    key={idx}
-                                                    onClick={() => handleSelectSubmissionGroup(group)}
-                                                    className="bg-[#1c1b14] border border-slate-800 hover:border-amber-500/50 rounded-xl p-5 cursor-pointer transition-all hover:shadow-lg hover:shadow-amber-900/10 group"
+                                const renderGroupRow = (group: any) => (
+                                    <tr
+                                        key={`${group.class_name}-${group.group_number}`}
+                                        onClick={() => handleSelectSubmissionGroup(group)}
+                                        className="hover:bg-[#1c1b14]/50 transition-colors cursor-pointer"
+                                    >
+                                        <td className="p-4 whitespace-nowrap text-amber-400 font-medium">{group.class_name} - G{group.group_number}</td>
+                                        <td className="p-4 font-medium text-slate-200">{group.latestTitle}</td>
+                                        <td className="p-4 text-center text-slate-400">{group.iterationsCount}</td>
+                                        <td className="p-4 whitespace-nowrap">
+                                            <span className={`inline-flex px-2 py-1 rounded-md text-xs font-medium border ${group.latestStatus === 'approved' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+                                                group.latestStatus === 'revision' ? 'bg-orange-500/10 text-orange-400 border-orange-500/20' :
+                                                    group.latestStatus === 'disapproved' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
+                                                        group.latestStatus === 'pending' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' :
+                                                            'bg-slate-800/50 text-slate-400 border-slate-700'
+                                                }`}>{group.latestStatus}</span>
+                                        </td>
+                                    </tr>
+                                );
+
+                                return (
+                                    <>
+                                        {/* Grade selector + Search */}
+                                        <div className="flex flex-col sm:flex-row gap-4 mb-4 bg-[#1c1b14] border border-slate-800 rounded-xl p-4">
+                                            <div className="flex-1">
+                                                <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Grade</label>
+                                                <select
+                                                    value={submissionGrade}
+                                                    onChange={(e) => { setSubmissionGrade(e.target.value); setGradeSubmissionsList([]); setSubmissionClassFilter(''); setSubmissionStatusFilter([]); }}
+                                                    className="w-full bg-[#1a1811] border border-slate-800 rounded-lg py-2.5 px-3 text-sm text-slate-200 focus:outline-none focus:border-amber-500"
                                                 >
-                                                    <div className="flex items-center justify-between mb-3 border-b border-slate-800/50 pb-3">
-                                                        <h3 className="font-bold text-slate-200 group-hover:text-amber-400 transition-colors">
-                                                            {group.class_name} - Group {group.group_number}
-                                                        </h3>
-                                                        <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider border ${group.latestStatus === 'approved' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
-                                                            group.latestStatus === 'revision' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' :
-                                                                group.latestStatus === 'disapproved' ? 'bg-red-500/10 text-red-500 border-red-500/20' :
-                                                                    'bg-slate-800/50 text-slate-400 border-slate-700'
-                                                            }`}>
-                                                            {group.latestStatus}
-                                                        </span>
+                                                    <option value="">Select Grade</option>
+                                                    {availableGrades.map(g => <option key={g} value={g}>Grade {g}</option>)}
+                                                </select>
+                                            </div>
+                                            <div className="flex items-end sm:w-48 shrink-0">
+                                                <button
+                                                    onClick={fetchGradeSubmissionsList}
+                                                    disabled={!submissionGrade || isFetchingSubmissions}
+                                                    className="w-full bg-amber-500 hover:bg-amber-400 text-[#1a1811] font-bold py-2.5 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                                                >
+                                                    {isFetchingSubmissions ? 'Loading...' : 'Search Grade'}
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Extra Filters (only show after data loaded) */}
+                                        {gradeSubmissionsList.length > 0 && (
+                                            <div className="bg-[#1c1b14] border border-slate-800 rounded-xl p-4 mb-6 space-y-4">
+                                                <div className="flex flex-col sm:flex-row gap-4">
+                                                    {/* Class Filter */}
+                                                    <div className="w-full sm:w-48">
+                                                        <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Filter by Class</label>
+                                                        <select
+                                                            value={submissionClassFilter}
+                                                            onChange={(e) => setSubmissionClassFilter(e.target.value)}
+                                                            className="w-full bg-[#1a1811] border border-slate-800 rounded-lg py-2 px-3 text-sm text-slate-200 focus:outline-none focus:border-amber-500"
+                                                        >
+                                                            <option value="">All Classes</option>
+                                                            {submissionAvailableClasses.map(c => <option key={c} value={c}>{c}</option>)}
+                                                        </select>
                                                     </div>
-                                                    <p className="text-sm font-medium text-slate-300 line-clamp-2 mb-3 h-10">
-                                                        {group.latestTitle}
-                                                    </p>
-                                                    <div className="flex items-center gap-2 text-xs text-slate-500">
-                                                        <History className="w-3.5 h-3.5" />
-                                                        {group.iterationsCount} Iteration{group.iterationsCount !== 1 ? 's' : ''} Found
+                                                    {/* View Toggle */}
+                                                    <div className="flex items-end gap-2 ml-auto">
+                                                        <button
+                                                            onClick={() => setSubmissionGroupByClass(!submissionGroupByClass)}
+                                                            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-semibold transition-all ${submissionGroupByClass ? 'bg-amber-500/20 text-amber-400 border-amber-500/50' : 'bg-[#1a1811] text-slate-400 border-slate-800 hover:border-slate-600'}`}
+                                                        >
+                                                            <Users className="w-3.5 h-3.5" /> Group by Class
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setSubmissionViewMode('card')}
+                                                            className={`p-2 rounded-lg border transition-all ${submissionViewMode === 'card' ? 'bg-amber-500/20 text-amber-400 border-amber-500/50' : 'bg-[#1a1811] text-slate-400 border-slate-800 hover:border-slate-600'}`}
+                                                            title="Card View"
+                                                        >
+                                                            <LayoutGrid className="w-4 h-4" />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setSubmissionViewMode('list')}
+                                                            className={`p-2 rounded-lg border transition-all ${submissionViewMode === 'list' ? 'bg-amber-500/20 text-amber-400 border-amber-500/50' : 'bg-[#1a1811] text-slate-400 border-slate-800 hover:border-slate-600'}`}
+                                                            title="List View"
+                                                        >
+                                                            <List className="w-4 h-4" />
+                                                        </button>
                                                     </div>
                                                 </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        submissionGrade && !isFetchingSubmissions && (
-                                            <div className="text-center py-12 border border-slate-800 rounded-xl bg-[#1c1b14]">
-                                                <AlertTriangle className="w-10 h-10 text-slate-500 mx-auto mb-3" />
-                                                <p className="text-sm text-slate-400">Click Search to load groups for Grade {submissionGrade}.</p>
+                                                {/* Status Filter Pills */}
+                                                <div>
+                                                    <label className="block text-xs font-semibold text-slate-400 mb-2 uppercase">Filter by Status</label>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {statusOptions.map(st => {
+                                                            const isActive = submissionStatusFilter.includes(st);
+                                                            return (
+                                                                <button
+                                                                    key={st}
+                                                                    onClick={() => {
+                                                                        if (isActive) setSubmissionStatusFilter(prev => prev.filter(s => s !== st));
+                                                                        else setSubmissionStatusFilter(prev => [...prev, st]);
+                                                                    }}
+                                                                    className={`px-3 py-1.5 rounded-lg border text-xs font-bold uppercase tracking-wider transition-all ${isActive ? statusColorsActive[st] : statusColors[st]}`}
+                                                                >
+                                                                    {st}
+                                                                </button>
+                                                            );
+                                                        })}
+                                                        {submissionStatusFilter.length > 0 && (
+                                                            <button onClick={() => setSubmissionStatusFilter([])} className="px-3 py-1.5 text-xs text-slate-500 hover:text-slate-300 transition-colors">Clear</button>
+                                                        )}
+                                                    </div>
+                                                </div>
                                             </div>
-                                        )
-                                    )}
-                                </>
-                            ) : (
+                                        )}
+
+                                        {/* Results Area */}
+                                        {filtered.length > 0 ? (
+                                            submissionViewMode === 'card' ? (
+                                                submissionGroupByClass ? (
+                                                    <div className="space-y-6">
+                                                        {classesSorted.map(cls => (
+                                                            <div key={cls}>
+                                                                <h3 className="text-sm font-bold text-amber-400 uppercase tracking-wider mb-3 pl-1">Class {cls}</h3>
+                                                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                                                    {filtered.filter(g => g.class_name === cls).map((group, idx) => renderGroupCard(group, idx))}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                                        {filtered.map((group, idx) => renderGroupCard(group, idx))}
+                                                    </div>
+                                                )
+                                            ) : (
+                                                /* List View */
+                                                submissionGroupByClass ? (
+                                                    <div className="space-y-6">
+                                                        {classesSorted.map(cls => (
+                                                            <div key={cls}>
+                                                                <h3 className="text-sm font-bold text-amber-400 uppercase tracking-wider mb-3 pl-1">Class {cls}</h3>
+                                                                <div className="bg-[#1c1b14] border border-slate-800 rounded-xl overflow-hidden">
+                                                                    <table className="w-full text-left border-collapse">
+                                                                        <thead><tr className="bg-[#1a1811] border-b border-slate-800/50 text-xs uppercase tracking-wider text-slate-500">
+                                                                            <th className="p-3 font-semibold">Group</th><th className="p-3 font-semibold">Title</th><th className="p-3 font-semibold text-center">Iter.</th><th className="p-3 font-semibold">Status</th>
+                                                                        </tr></thead>
+                                                                        <tbody className="divide-y divide-slate-800/30 text-sm">
+                                                                            {filtered.filter(g => g.class_name === cls).map(g => renderGroupRow(g))}
+                                                                        </tbody>
+                                                                    </table>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <div className="bg-[#1c1b14] border border-slate-800 rounded-xl overflow-hidden">
+                                                        <table className="w-full text-left border-collapse">
+                                                            <thead><tr className="bg-[#1a1811] border-b border-slate-800/50 text-xs uppercase tracking-wider text-slate-500">
+                                                                <th className="p-3 font-semibold">Group</th><th className="p-3 font-semibold">Title</th><th className="p-3 font-semibold text-center">Iterations</th><th className="p-3 font-semibold">Status</th>
+                                                            </tr></thead>
+                                                            <tbody className="divide-y divide-slate-800/30 text-sm">
+                                                                {filtered.map(g => renderGroupRow(g))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                )
+                                            )
+                                        ) : (
+                                            submissionGrade && !isFetchingSubmissions && (
+                                                <div className="text-center py-12 border border-slate-800 rounded-xl bg-[#1c1b14]">
+                                                    <AlertTriangle className="w-10 h-10 text-slate-500 mx-auto mb-3" />
+                                                    <p className="text-sm text-slate-400">{gradeSubmissionsList.length > 0 ? 'No groups match your filters.' : `Click Search to load groups for Grade ${submissionGrade}.`}</p>
+                                                </div>
+                                            )
+                                        )}
+                                    </>
+                                );
+                            })() : (
                                 <div>
                                     <div className="flex items-center gap-4 mb-6">
                                         <button
@@ -1164,7 +1442,7 @@ export default function TeacherDashboardPage() {
                             </h2>
 
                             {/* Selection Filters */}
-                            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-8 bg-[#1c1b14] border border-slate-800 rounded-xl p-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8 bg-[#1c1b14] border border-slate-800 rounded-xl p-4">
                                 <div>
                                     <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Grade</label>
                                     <select
@@ -1180,24 +1458,12 @@ export default function TeacherDashboardPage() {
                                     <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Class</label>
                                     <select
                                         value={assessClass}
-                                        onChange={(e) => { setAssessClass(e.target.value); setAssessGroup(''); }}
+                                        onChange={(e) => { setAssessClass(e.target.value); }}
                                         disabled={!assessGrade}
                                         className="w-full bg-[#1a1811] border border-slate-800 rounded-lg py-2.5 px-3 text-sm text-slate-200 focus:outline-none focus:border-amber-500 disabled:opacity-50"
                                     >
                                         <option value="">Select Class</option>
                                         {availableAssessClasses.map(c => <option key={c} value={c}>{c}</option>)}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Group</label>
-                                    <select
-                                        value={assessGroup}
-                                        onChange={(e) => setAssessGroup(e.target.value)}
-                                        disabled={!assessClass}
-                                        className="w-full bg-[#1a1811] border border-slate-800 rounded-lg py-2.5 px-3 text-sm text-slate-200 focus:outline-none focus:border-amber-500 disabled:opacity-50"
-                                    >
-                                        <option value="">Select Group</option>
-                                        {availableAssessGroups.map(g => <option key={g} value={g}>Group {g}</option>)}
                                     </select>
                                 </div>
                                 <div>
@@ -1495,18 +1761,28 @@ export default function TeacherDashboardPage() {
                                             <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Quick Navigation</h4>
                                             <p className="text-sm font-bold text-white mb-4">Class {assessClass}</p>
                                             <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
-                                                {availableAssessGroups.map(g => (
-                                                    <button
-                                                        key={g}
-                                                        onClick={() => setAssessGroup(g.toString())}
-                                                        className={`w-full text-left px-4 py-2.5 rounded-lg border transition-all text-sm font-semibold ${assessGroup === g.toString()
-                                                            ? 'bg-amber-500/10 border-amber-500/50 text-amber-400 shadow-lg shadow-amber-900/10'
-                                                            : 'bg-[#1a1811] border-slate-800/50 text-slate-400 hover:border-slate-600 hover:text-slate-200 hover:bg-[#25221b]'
-                                                            }`}
-                                                    >
-                                                        Group {g}
-                                                    </button>
-                                                ))}
+                                                {availableAssessGroups.map(g => {
+                                                    const isAssessed = assessedGroupsMap[g] === true;
+                                                    return (
+                                                        <button
+                                                            key={g}
+                                                            onClick={() => setAssessGroup(g.toString())}
+                                                            className={`w-full text-left px-4 py-2.5 rounded-lg border transition-all text-sm font-semibold flex items-center justify-between group ${assessGroup === g.toString()
+                                                                ? 'bg-amber-500/10 border-amber-500/50 text-amber-400 shadow-lg shadow-amber-900/10'
+                                                                : 'bg-[#1a1811] border-slate-800/50 text-slate-400 hover:border-slate-600 hover:text-slate-200 hover:bg-[#25221b]'
+                                                                }`}
+                                                        >
+                                                            <span>Group {g}</span>
+                                                            <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] uppercase tracking-wider font-bold border transition-colors ${isAssessed
+                                                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 group-hover:bg-emerald-500/20'
+                                                                : 'bg-slate-800 text-slate-400 border-slate-700 group-hover:bg-slate-700 group-hover:text-slate-300'
+                                                                }`}>
+                                                                {isAssessed ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Clock className="w-3 h-3" />}
+                                                                <span>{isAssessed ? 'Assessed' : 'Pending'}</span>
+                                                            </div>
+                                                        </button>
+                                                    );
+                                                })}
                                             </div>
                                         </div>
                                     </div>
@@ -1515,12 +1791,269 @@ export default function TeacherDashboardPage() {
                                 <div className="text-center py-16 bg-[#1a1811]/50 border border-slate-800/50 rounded-2xl">
                                     <ClipboardCheck className="w-12 h-12 text-slate-700 mx-auto mb-4" />
                                     <h3 className="text-lg font-bold text-slate-300 mb-2">Select a Target</h3>
-                                    <p className="text-slate-500 max-w-sm mx-auto">Please choose grading parameters (Grade, Class, Group, and Assessment) to load the rubric evaluator.</p>
+                                    <p className="text-slate-500 max-w-sm mx-auto">Please choose Grade, Class, and Assessment to begin grading. Use the Quick Navigation sidebar to switch between groups.</p>
                                 </div>
                             )}
 
                         </div>
                     )}
+
+                    {/* TAB 5: ANALYTICS */}
+                    {activeTab === 'analytics' && (() => {
+                        // 1. FILTERING & DATA PREP
+                        // Available classes based on selected grade
+                        const availableAnalyticsClasses = analyticsGrade
+                            ? Array.from(new Set(allStudents.filter(s => String(s.class_name).split('.')[0] === analyticsGrade).map(s => s.class_name))).sort()
+                            : [];
+
+                        // Chart 1 Data: Average score for each assessment (Filtered by Grade/Class)
+                        const chart1Data = assessmentCategories.map(cat => {
+                            const dims = rubricDimensions.filter(d => d.category_id === cat.id);
+                            const inds = rubricIndicators.filter(i => dims.some(d => d.id === i.dimension_id));
+                            const isChecklist = cat.rubric_type === 'checklist';
+                            const maxScale = parseInt(cat.rubric_type.replace('scale_', '') || '1');
+                            const maxPerGroup = isChecklist ? inds.length : inds.length * maxScale;
+
+                            let baseScores = allAssessmentScores.filter(s => s.category_id === cat.id);
+                            if (analyticsClass) {
+                                baseScores = baseScores.filter(s => s.class_name === analyticsClass);
+                            } else if (analyticsGrade) {
+                                baseScores = baseScores.filter(s => String(s.class_name).split('.')[0] === analyticsGrade);
+                            }
+
+                            const groupScores = new Map<string, number>();
+                            baseScores.forEach(s => {
+                                const key = `${s.class_name}-${s.group_number}`;
+                                groupScores.set(key, (groupScores.get(key) || 0) + s.score);
+                            });
+
+                            const groupEntries = Array.from(groupScores.values());
+                            const avgPct = groupEntries.length > 0 && maxPerGroup > 0
+                                ? Math.round(groupEntries.reduce((a, b) => a + b, 0) / groupEntries.length / maxPerGroup * 100)
+                                : 0;
+                            return { code: cat.code, name: cat.name, avgPct, groupCount: groupEntries.length };
+                        });
+
+                        // Chart 2 & 3 Dependencies: Selected Category
+                        const selectedCatForCharts = assessmentCategories.find(c => c.id === analyticsCategory);
+
+                        // Chart 2 Data: Leaderboard (Top 10) for Selected Grade/Class & Category
+                        let leaderboardData: { label: string; pct: number }[] = [];
+                        if (selectedCatForCharts) {
+                            const dims = rubricDimensions.filter(d => d.category_id === selectedCatForCharts.id);
+                            const inds = rubricIndicators.filter(i => dims.some(d => d.id === i.dimension_id));
+                            const isChecklist = selectedCatForCharts.rubric_type === 'checklist';
+                            const maxScale = parseInt(selectedCatForCharts.rubric_type.replace('scale_', '') || '1');
+                            const maxPerGroup = isChecklist ? inds.length : inds.length * maxScale;
+
+                            let baseScores = allAssessmentScores.filter(s => s.category_id === selectedCatForCharts.id);
+                            if (analyticsClass) {
+                                baseScores = baseScores.filter(s => s.class_name === analyticsClass);
+                            } else if (analyticsGrade) {
+                                baseScores = baseScores.filter(s => String(s.class_name).split('.')[0] === analyticsGrade);
+                            }
+
+                            const groupScores = new Map<string, number>();
+                            baseScores.forEach(s => {
+                                const key = `${s.class_name}-${s.group_number}`;
+                                groupScores.set(key, (groupScores.get(key) || 0) + s.score);
+                            });
+
+                            groupScores.forEach((score, key) => {
+                                const pct = maxPerGroup > 0 ? Math.round((score / maxPerGroup) * 100) : 0;
+                                const [cls, grp] = key.split('-');
+                                leaderboardData.push({ label: `${cls} G${grp}`, pct });
+                            });
+                            leaderboardData.sort((a, b) => b.pct - a.pct);
+                            leaderboardData = leaderboardData.slice(0, 10); // Top 10
+                        }
+
+                        // Chart 3 Data: Avg per dimension for Selected Grade/Class & Category
+                        const chart3Data: { dimName: string; avgPct: number; count: number }[] = [];
+                        if (selectedCatForCharts) {
+                            const dims = rubricDimensions.filter(d => d.category_id === selectedCatForCharts.id);
+                            const isChecklist = selectedCatForCharts.rubric_type === 'checklist';
+                            const maxScale = parseInt(selectedCatForCharts.rubric_type.replace('scale_', '') || '1');
+
+                            dims.forEach(dim => {
+                                const inds = rubricIndicators.filter(i => i.dimension_id === dim.id);
+                                const indIds = inds.map(i => i.id);
+                                const maxPerGroup = isChecklist ? inds.length : inds.length * maxScale;
+
+                                let baseScores = allAssessmentScores.filter(s => indIds.includes(s.indicator_id));
+                                if (analyticsClass) {
+                                    baseScores = baseScores.filter(s => s.class_name === analyticsClass);
+                                } else if (analyticsGrade) {
+                                    baseScores = baseScores.filter(s => String(s.class_name).split('.')[0] === analyticsGrade);
+                                }
+
+                                const groupScores = new Map<string, number>();
+                                baseScores.forEach(s => {
+                                    const key = `${s.class_name}-${s.group_number}`;
+                                    groupScores.set(key, (groupScores.get(key) || 0) + s.score);
+                                });
+
+                                const entries = Array.from(groupScores.values());
+                                const avgPct = entries.length > 0 && maxPerGroup > 0
+                                    ? Math.round(entries.reduce((a, b) => a + b, 0) / entries.length / maxPerGroup * 100)
+                                    : 0;
+                                chart3Data.push({ dimName: dim.name, avgPct, count: entries.length });
+                            });
+                        }
+
+                        const barColor = (pct: number) => pct >= 80 ? 'bg-emerald-500' : pct >= 60 ? 'bg-amber-500' : 'bg-red-500';
+
+                        return (
+                            <div className="space-y-8">
+                                <h2 className="text-2xl font-bold text-white flex items-center gap-3 mb-6">
+                                    <TrendingUp className="text-amber-500" />
+                                    Analytics Dashboard
+                                </h2>
+
+                                {/* ANALYTICS FILTERS */}
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-[#1c1b14] border border-slate-800 rounded-xl p-4 shadow-xl">
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Grade Filter</label>
+                                        <select
+                                            value={analyticsGrade}
+                                            onChange={(e) => { setAnalyticsGrade(e.target.value); setAnalyticsClass(''); }}
+                                            className="w-full bg-[#1a1811] border border-slate-800 rounded-lg py-2.5 px-3 text-sm text-slate-200 focus:outline-none focus:border-amber-500"
+                                        >
+                                            <option value="">All Grades</option>
+                                            {availableGrades.map(g => <option key={g} value={g}>Grade {g}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Class Filter</label>
+                                        <select
+                                            value={analyticsClass}
+                                            onChange={(e) => setAnalyticsClass(e.target.value)}
+                                            disabled={!analyticsGrade}
+                                            className="w-full bg-[#1a1811] border border-slate-800 rounded-lg py-2.5 px-3 text-sm text-slate-200 focus:outline-none focus:border-amber-500 disabled:opacity-50"
+                                        >
+                                            <option value="">All Classes (in Grade {analyticsGrade || '-'})</option>
+                                            {availableAnalyticsClasses.map(c => <option key={c} value={c}>{c}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Assessment Filter (Charts 2 & 3)</label>
+                                        <select
+                                            value={analyticsCategory}
+                                            onChange={(e) => setAnalyticsCategory(e.target.value)}
+                                            className="w-full bg-[#1a1811] border border-slate-800 rounded-lg py-2.5 px-3 text-sm text-slate-200 focus:outline-none focus:border-emerald-500"
+                                        >
+                                            <option value="">Select an Assessment...</option>
+                                            {assessmentCategories.map(c => <option key={c.id} value={c.id}>{c.code} - {c.name}</option>)}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {allAssessmentScores.length === 0 ? (
+                                    <div className="text-center py-16 bg-[#1a1811]/50 border border-slate-800/50 rounded-2xl">
+                                        <PieChart className="w-12 h-12 text-slate-700 mx-auto mb-4" />
+                                        <h3 className="text-lg font-bold text-slate-300 mb-2">No Assessment Data Yet</h3>
+                                        <p className="text-slate-500 max-w-sm mx-auto">Start assessing projects to see analytics here.</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-6">
+                                        {/* Chart 1: Average by Assessment */}
+                                        <div className="bg-[#1a1811] border border-amber-900/20 rounded-2xl p-6 shadow-xl">
+                                            <h3 className="text-lg font-bold text-white mb-2">Average Score by Assessment</h3>
+                                            <p className="text-xs text-slate-400 mb-6">
+                                                Filtering: {analyticsClass ? `Class ${analyticsClass}` : analyticsGrade ? `Grade ${analyticsGrade}` : 'All Grades'}
+                                            </p>
+                                            <div className="space-y-4">
+                                                {chart1Data.map(c => (
+                                                    <div key={c.code} className="flex items-center gap-4">
+                                                        <span className="w-12 text-sm font-bold text-amber-400 shrink-0" title={c.name}>{c.code}</span>
+                                                        <div className="flex-1 bg-[#1c1b14] rounded-full h-8 border border-slate-800 overflow-hidden">
+                                                            <div className={`h-full rounded-r-full ${barColor(c.avgPct)} transition-all flex items-center justify-end pr-3`} style={{ width: `${Math.max(c.avgPct, 5)}%` }}>
+                                                                <span className="text-xs font-bold text-white drop-shadow-md">{c.avgPct}%</span>
+                                                            </div>
+                                                        </div>
+                                                        <span className="text-xs font-semibold text-slate-500 w-20 text-right shrink-0">{c.groupCount} groups</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                                            {/* Chart 2: Leaderboard */}
+                                            <div className="bg-[#1a1811] border border-emerald-900/20 rounded-2xl p-6 shadow-xl">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                                                        <Star className="w-5 h-5 text-emerald-400" /> Leaderboard (Top 10)
+                                                    </h3>
+                                                </div>
+                                                <p className="text-xs text-slate-400 mb-6">
+                                                    {analyticsCategory ? (
+                                                        <>Based on <strong className="text-emerald-400">{selectedCatForCharts?.code}</strong> • {analyticsClass ? `Class ${analyticsClass}` : analyticsGrade ? `Grade ${analyticsGrade}` : 'All Regions'}</>
+                                                    ) : 'Please select an Assessment Filter above to view.'}
+                                                </p>
+
+                                                {analyticsCategory ? (
+                                                    leaderboardData.length > 0 ? (
+                                                        <div className="space-y-3">
+                                                            {leaderboardData.map((g, idx) => (
+                                                                <div key={idx} className="flex items-center gap-4 p-3 rounded-xl bg-[#1c1b14] border-b border-l-4 border-l-transparent border-slate-800/50 hover:border-l-emerald-500 hover:bg-[#25221b] transition-all">
+                                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${idx === 0 ? 'bg-amber-500/20 text-amber-400 border border-amber-500/50' : idx === 1 ? 'bg-slate-300/20 text-slate-300 border border-slate-400/50' : idx === 2 ? 'bg-orange-700/20 text-orange-400 border border-orange-700/50' : 'bg-[#1a1811] text-slate-500 border border-slate-700'}`}>
+                                                                        {idx + 1}
+                                                                    </div>
+                                                                    <span className="flex-1 text-sm font-bold text-slate-200">{g.label}</span>
+                                                                    <span className={`text-lg font-bold ${g.pct >= 80 ? 'text-emerald-400' : g.pct >= 60 ? 'text-amber-400' : 'text-red-400'}`}>{g.pct}%</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    ) : <p className="text-sm text-slate-500 italic py-8 text-center">No scores found for these filters.</p>
+                                                ) : (
+                                                    <div className="h-48 flex items-center justify-center border-2 border-dashed border-slate-800 rounded-xl">
+                                                        <p className="text-slate-500 flex items-center gap-2 text-sm">
+                                                            <Filter className="w-4 h-4" /> Select an assessment
+                                                        </p>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Chart 3: Dimension Breakdown */}
+                                            <div className="bg-[#1a1811] border border-indigo-900/20 rounded-2xl p-6 shadow-xl relative">
+                                                <h3 className="text-lg font-bold text-white mb-2">Dimension Breakdown</h3>
+                                                <p className="text-xs text-slate-400 mb-6">
+                                                    {analyticsCategory ? (
+                                                        <>Dimensions of <strong className="text-indigo-400">{selectedCatForCharts?.code}</strong> • {analyticsClass ? `Class ${analyticsClass}` : analyticsGrade ? `Grade ${analyticsGrade}` : 'All Regions'}</>
+                                                    ) : 'Please select an Assessment Filter above to view.'}
+                                                </p>
+
+                                                {analyticsCategory ? (
+                                                    chart3Data.length > 0 && chart3Data.some(d => d.count > 0) ? (
+                                                        <div className="space-y-5">
+                                                            {chart3Data.map((d, idx) => (
+                                                                <div key={idx} className="space-y-1.5">
+                                                                    <div className="flex justify-between items-end">
+                                                                        <span className="text-sm font-semibold text-slate-300 truncate pr-4" title={d.dimName}>{d.dimName}</span>
+                                                                        <span className="text-sm font-bold text-slate-400">{d.avgPct}%</span>
+                                                                    </div>
+                                                                    <div className="w-full bg-[#1c1b14] rounded-full h-3 border border-slate-800 overflow-hidden">
+                                                                        <div className={`h-full rounded-r-full ${barColor(d.avgPct)} transition-all`} style={{ width: `${Math.max(d.avgPct, 2)}%` }}></div>
+                                                                    </div>
+                                                                    <p className="text-[10px] text-slate-600 font-medium text-right mt-1">{d.count} groups assessed</p>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    ) : <p className="text-sm text-slate-500 italic py-8 text-center">No dimension data found for these filters.</p>
+                                                ) : (
+                                                    <div className="h-48 flex items-center justify-center border-2 border-dashed border-slate-800 rounded-xl">
+                                                        <p className="text-slate-500 flex items-center gap-2 text-sm">
+                                                            <Filter className="w-4 h-4" /> Select an assessment
+                                                        </p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })()}
 
                 </div>
             </main>
