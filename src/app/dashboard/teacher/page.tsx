@@ -67,6 +67,34 @@ const C2_RUBRIC_TOOLTIPS: Record<string, Record<number, string>> = {
     }
 };
 
+// ─── C3 Rubric Tooltips ─────────────────────────────
+const C3_RUBRIC_TOOLTIPS: Record<string, Record<number, string>> = {
+    'Execution': {
+        4: 'Exhaustive, sequential step-by-step execution plan. Comprehensive material list with a highly detailed, realistic budget/price list. Clear and actionable timeline.',
+        3: 'Solid plan and timeline. Material list is present, but the budget might lack minor details or execution steps skip minor transitional phases.',
+        2: 'Timeline is vague or unrealistic. Material list is incomplete, or budget is entirely missing. Execution steps are out of order or lack necessary detail.',
+        1: 'No timeline, budget, or coherent execution steps are provided.'
+    },
+    'Design': {
+        4: 'High-quality visual representation (diagram, illustration, blueprint) that perfectly maps to the plan. Exceptional, logical rationale defending exactly why this solution is the best choice over alternatives.',
+        3: 'Basic visual representation included. Rationale is present and makes sense, but justification could be stronger or more deeply analyzed.',
+        2: 'Visuals are messy, confusing, or poorly described. Rationale is weak (e.g., "I chose this because it\'s easy to make").',
+        1: 'No visuals or diagrams provided or described. No rationale is given for the chosen solution.'
+    },
+    'Risk': {
+        4: 'Sharp foresight identifying highly specific, realistic risks during the prototype building phase. Strong, actionable, and logical contingency plan ("Plan B") to mitigate these exact problems.',
+        3: 'Identifies potential risks and offers basic mitigation ideas or a general Plan B, though it may lack specific technical details.',
+        2: 'Mentions only generic, surface-level risks (e.g., "it might break") and provides a poor or entirely missing contingency plan.',
+        1: 'Ignores risk assessment completely. Assumes a flawless execution with zero backup plan.'
+    },
+    'STEAM': {
+        4: 'The construction and function of the prototype explicitly require the application of multiple STEAM concepts. The "making" phase is a true interdisciplinary engineering and design challenge.',
+        3: 'The build process applies 1-2 STEAM concepts well, though execution might lean heavily toward a single discipline rather than a fully integrated approach.',
+        2: 'The prototype barely utilizes the STEAM theories discussed in earlier chapters. The actual build is overly simplistic or disconnected from core concepts.',
+        1: 'The prototype has absolutely no connection to STEAM application; it operates more like a basic arts-and-crafts project than a functional STEAM solution.'
+    }
+};
+
 // ─── Toast System ───────────────────────────────────
 type ToastType = 'success' | 'error' | 'info' | 'warning';
 interface ToastData { id: number; message: string; type: ToastType; }
@@ -378,6 +406,11 @@ export default function TeacherDashboardPage() {
             const dims = rubricDimensions.filter(d => d.category_id === assessCategory);
             const inds = rubricIndicators.filter(i => dims.some(d => d.id === i.dimension_id));
 
+            const categoryName = cat?.name || 'Unknown Category';
+            const indicators = inds.map(i => ({ id: i.id, description: i.description }));
+            const googleDocUrl = assessProject?.google_doc_url || null;
+            const project = assessProject; // Alias for clarity
+
             const response = await fetch('/api/ai-assess', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -432,6 +465,8 @@ export default function TeacherDashboardPage() {
                 .eq('category_id', assessCategory)
                 .eq('academic_year', ACADEMIC_YEAR);
             const map: Record<number, boolean> = {};
+            const currentCat = assessmentCategories.find(c => c.id === assessCategory);
+            const isNoStatusCategory = currentCat?.code === 'C2' || currentCat?.code === 'C3'; // Updated to include C3
             if (scores) {
                 scores.forEach(s => { map[s.group_number] = true; });
             }
@@ -493,9 +528,10 @@ export default function TeacherDashboardPage() {
                 setIsAssessmentLocked(false);
             }
 
-            // Load status from project only for non-C2 assessments
+            // Load status from project only for non-C2/C3 assessments
             const currentCat = assessmentCategories.find(c => c.id === assessCategory);
-            if (currentCat?.code !== 'C2') {
+            const isNoStatusCategory = currentCat?.code === 'C2' || currentCat?.code === 'C3'; // Updated to include C3
+            if (!isNoStatusCategory) {
                 setAssessStatus(proj?.status !== 'pending' ? proj?.status : '');
             } else {
                 setAssessStatus('');
@@ -507,8 +543,8 @@ export default function TeacherDashboardPage() {
     const submitAssessment = async () => {
         if (!assessClass || !assessGroup || !assessCategory || !teacherProfile) return;
         const selectedCat = assessmentCategories.find(c => c.id === assessCategory);
-        const isC2Category = selectedCat?.code === 'C2';
-        if (!isC2Category && !assessStatus) {
+        const isNoStatusCategory = selectedCat?.code === 'C2' || selectedCat?.code === 'C3'; // Updated to include C3
+        if (!isNoStatusCategory && !assessStatus) {
             showToast('Please select an approval status before saving.', 'warning');
             return;
         }
@@ -549,7 +585,7 @@ export default function TeacherDashboardPage() {
                     return [...filtered, ...scoreEntries];
                 });
 
-                if (assessProject && !isC2Category) {
+                if (assessProject && !isNoStatusCategory) { // Updated to include C3
                     await supabase.from('projects')
                         .update({
                             status: assessStatus,
@@ -1646,7 +1682,8 @@ export default function TeacherDashboardPage() {
                                                                                             const isSelected = currentScores[ind.id] === val;
                                                                                             const isC1 = cat?.code === 'C1';
                                                                                             const isC2 = cat?.code === 'C2';
-                                                                                            const tooltipText = isC1 ? C1_RUBRIC_TOOLTIPS[dim.name]?.[val] : isC2 ? C2_RUBRIC_TOOLTIPS[dim.name]?.[val] : undefined;
+                                                                                            const isC3 = cat?.code === 'C3';
+                                                                                            const tooltipText = isC1 ? C1_RUBRIC_TOOLTIPS[dim.name]?.[val] : isC2 ? C2_RUBRIC_TOOLTIPS[dim.name]?.[val] : isC3 ? C3_RUBRIC_TOOLTIPS[dim.name]?.[val] : undefined;
 
                                                                                             return (
                                                                                                 <div key={val} className="relative group inline-block">
@@ -1685,13 +1722,15 @@ export default function TeacherDashboardPage() {
                                                     {(() => {
                                                         const selectedCat = assessmentCategories.find(c => c.id === assessCategory);
                                                         const isC2Category = selectedCat?.code === 'C2';
+                                                        const isC3Category = selectedCat?.code === 'C3';
+                                                        const isNoStatusCat = isC2Category || isC3Category;
                                                         return (
                                                             <div className="bg-[#1c1b14] border border-amber-900/50 rounded-xl p-6 shadow-lg mt-8">
                                                                 <h3 className="font-bold text-white mb-4 border-b border-slate-800 pb-3">
-                                                                    {isC2Category ? 'Feedback & Comments' : 'Final Decision & Feedback'}
+                                                                    {isNoStatusCat ? 'Feedback & Comments' : 'Final Decision & Feedback'}
                                                                 </h3>
                                                                 <div className="space-y-5">
-                                                                    {!isC2Category && (
+                                                                    {!isNoStatusCat && (
                                                                         <div>
                                                                             <label className="block text-sm font-semibold text-slate-300 mb-3">Project Status</label>
                                                                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
