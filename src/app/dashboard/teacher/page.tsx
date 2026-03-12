@@ -2190,7 +2190,8 @@ export default function TeacherDashboardPage() {
                                                                                             const isC2 = cat?.code === 'C2';
                                                                                             const isC3 = cat?.code === 'C3';
                                                                                             const isC4 = cat?.code === 'C4';
-                                                                                            const tooltipText = isC1 ? C1_RUBRIC_TOOLTIPS[dim.name]?.[val] : isC2 ? C2_RUBRIC_TOOLTIPS[dim.name]?.[val] : isC3 ? C3_RUBRIC_TOOLTIPS[dim.name]?.[val] : isC4 ? C4_RUBRIC_TOOLTIPS[dim.name]?.[val] : undefined;
+                                                                                            const isC5 = cat?.code === 'C5';
+                                                                                            const tooltipText = isC1 ? C1_RUBRIC_TOOLTIPS[dim.name]?.[val] : isC2 ? C2_RUBRIC_TOOLTIPS[dim.name]?.[val] : isC3 ? C3_RUBRIC_TOOLTIPS[dim.name]?.[val] : isC4 ? C4_RUBRIC_TOOLTIPS[dim.name]?.[val] : isC5 ? C5_RUBRIC_TOOLTIPS[dim.name]?.[val] : undefined;
 
                                                                                             return (
                                                                                                 <div key={val} className="relative group inline-block">
