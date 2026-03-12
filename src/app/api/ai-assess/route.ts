@@ -155,6 +155,37 @@ Dimension: STEAM Application in the Build
 Use these rubric descriptors to determine the exact score for each indicator.`;
     }
 
+    // C4: Logbook & Process rubric
+    if (lowerCat.includes('c4') || lowerCat.includes('logbook') || lowerCat.includes('process')) {
+        return `DETAILED RUBRIC FOR THIS CATEGORY ("${categoryName}"):
+
+* **Dimension 1: Structural Integrity & Consistency**
+* **4 (Excellent):** Professional organization. Entries for every date worked, highly readable structure, and exceptionally clear language documenting a logical start-to-finish progression.
+* **3 (Proficient):** Clear structure and communicative language. Includes most relevant dates and entries, showing logical progression despite minor gaps.
+* **2 (Developing):** Structure is somewhat disorganized, dates are missing, or entries skip major timeframes, making it hard to follow the project flow. Language is occasionally confusing.
+* **1 (Beginning):** Completely incoherent mess. Few entries, no clear dates or timeline, impossible to understand the project progression.
+
+* **Dimension 2: Problem-Solving Loop & Iteration (Failures & Fixes)**
+* **4 (Excellent):** Candidly and precisely documents specific technical failures or struggles. Clearly details the iterative *process* taken to analyze why something failed and how they attempted to fix it ("Plan B" loop). There is a documented solution/follow-up for every single identified issue.
+* **3 (Proficient):** Lists problems encountered and includes successful follow-up solutions. Shows that problem-solving occurred, though it might lack deep detail on the steps between failure and final solution.
+* **2 (Developing):** Vaguely mentions difficulties or lists them without detail. Many problems identified lack corresponding solutions or follow-up actions.
+* **1 (Beginning):** Documents only successes or surface-level work. Zero evidence of technical struggle, failure documentation, or iterative improvement.
+
+* **Dimension 3: Reflection on Progress & Honest Assessment**
+* **4 (Excellent):** Features a deep, honest self-reflection of the journey, balancing analysis of struggles against recognition of achievements and learning points. Evaluates *how* the process made them feel as makers.
+* **3 (Proficient):** Includes reflective summaries that recognize progress and identify key learning milestones, though the analysis of personal growth or struggle could be deeper.
+* **2 (Developing):** Reflection is highly superficial (e.g., "Today went well") and lacks any genuine analysis of struggles or successes. It reads like a dry checklist.
+* **1 (Beginning):** No self-reflection or honest assessment included at all.
+
+* **Dimension 4: Depth of Task Description (Replaces Tangible Evidence)**
+* **4 (Excellent):** Activity descriptions are exceptionally detailed and articulate. The text paints a vivid, precise picture of exactly what specific technical, research, or building tasks were performed during that session, leaving no ambiguity about the work done.
+* **3 (Proficient):** Activity descriptions are clear and specify what was done, though some technical details, materials used, or specific steps might be slightly generalized.
+* **2 (Developing):** Task descriptions are overly vague or repetitive (e.g., "did research," "worked on project," "cut materials"). It is hard to know exactly what was accomplished during the session.
+* **1 (Beginning):** Descriptions are missing, entirely uninformative, or just list the name of the project phase without explaining the actual work done.
+
+Use these rubric descriptors to determine the exact score for each indicator.`;
+    }
+
     // Fallback for other categories — use generic 1-4 guidance
     return `RUBRIC GUIDANCE FOR "${categoryName}":
 Use the 1-4 scoring scale. Match each indicator's score to the level that best describes the student's work:
@@ -167,7 +198,7 @@ Use the 1-4 scoring scale. Match each indicator's score to the level that best d
 export async function POST(req: Request) {
     try {
         const body = await req.json();
-        const { project, categoryName, indicators, googleDocUrl } = body;
+        const { project, categoryName, indicators, googleDocUrl, assessLogbooks } = body;
 
         if (!project || !categoryName || !indicators) {
             return NextResponse.json(
@@ -196,7 +227,8 @@ export async function POST(req: Request) {
         // Determine if this is a category without a decision status (C2, C3)
         const isC2 = categoryName.toLowerCase().includes('c2') || categoryName.toLowerCase().includes('ask');
         const isC3 = categoryName.toLowerCase().includes('c3') || categoryName.toLowerCase().includes('solution') || categoryName.toLowerCase().includes('execution') || categoryName.toLowerCase().includes('imagine') || categoryName.toLowerCase().includes('plan');
-        const isNoStatusCategory = isC2 || isC3;
+        const isC4 = categoryName.toLowerCase().includes('c4') || categoryName.toLowerCase().includes('logbook') || categoryName.toLowerCase().includes('process');
+        const isNoStatusCategory = isC2 || isC3 || isC4;
 
         const responseSchemaProperties: Record<string, any> = {
             scores: {
@@ -206,9 +238,11 @@ export async function POST(req: Request) {
             },
             teacher_comment: {
                 type: SchemaType.STRING,
-                description: isNoStatusCategory
-                    ? "A structured, critical feedback using numbered bullet points. For each of the 4 dimensions, state the score, WHY that score was given with specific evidence, and a concrete IMPROVE action. Be sharp and direct."
-                    : "A single, casual, friendly feedback paragraph written directly to the student. Must mention one specific strength and one specific suggestion for improvement."
+                description: isC4 
+                    ? "A single, coherent, casual paragraph providing sharp, objective feedback based on the logbook rubric. State the final score, process category, an objective compliment, a sharp critique, and an actionable suggestion."
+                    : isNoStatusCategory
+                        ? "A structured, critical feedback using numbered bullet points. For each of the 4 dimensions, state the score, WHY that score was given with specific evidence, and a concrete IMPROVE action. Be sharp and direct."
+                        : "A single, casual, friendly feedback paragraph written directly to the student. Must mention one specific strength and one specific suggestion for improvement."
             }
         };
         const requiredFields = ["scores", "teacher_comment"];
@@ -385,6 +419,53 @@ Then provide a numbered breakdown for EACH of the 4 dimensions:
    - IMPROVE: [Which disciplines are missing and how to integrate them into the build]
 
 Be brutally honest. If the work is weak, say so directly. If a dimension deserves a 1 or 2, explain exactly what is missing. Do NOT be generous — grade strictly according to the rubric.
+
+Do NOT include a 'suggested_status' field. Just provide 'scores' and 'teacher_comment'. Provide your output exactly matching the JSON schema.`;
+
+        } else if (categoryName.toLowerCase().includes('c4') || categoryName.toLowerCase().includes('logbook') || categoryName.toLowerCase().includes('process')) {
+            // ===== C4: Logbook & Process — reads assessLogbooks array =====
+            let logbookText = '';
+            if (assessLogbooks && Array.isArray(assessLogbooks)) {
+                logbookText = assessLogbooks.map((l: any, i: number) => {
+                    return `Log Entry ${i + 1}:\nDate: ${new Date(l.entry_date).toLocaleDateString()}\nAuthor: ${l.student_email}\nTask Describe: ${l.task}\nResult & Reflection: ${l.result}\nFeedback/Thoughts: ${l.feedback || 'None'}\n---`;
+                }).join('\n');
+            }
+
+            prompt = `### System Instructions for STEAM Project Assessment API (Phase: Logbook & Process - C4)
+
+**Role & Objective**
+You are a sharp, analytical STEAM Education Expert and Project Assessment AI. Your job is to evaluate a student's project journal or logbook. The overriding objective of this assessment is to focus on the **process**, not just the final product. You will analyze how well the student documented their journey—including technical failures, personal struggles, unexpected achievements, the specific iterative steps taken to solve problems, and the depth of their written task descriptions. You must be fair and highly critical. Do not sugarcoat your assessments; provide objective feedback that helps students understand the value of engineering documentation.
+
+**Student Project Info**
+* Title: ${project.title}
+* Problem Summary: ${problemDesc || 'N/A'}
+
+**Student Logbook Submissions:**
+<LOGBOOKS>
+${logbookText || 'No logbook entries available. Fail this assessment for lack of effort.'}
+</LOGBOOKS>
+
+**Evaluation Rubric (Score each dimension 1 to 4)**
+${rubricContext}
+
+Assessment Indicators (you MUST score each one using the 1-4 scale above):
+${JSON.stringify(indicators, null, 2)}
+
+**Scoring Logic & Categorization (Max 16 Points)**
+Calculate the total score by adding the points from all 4 dimensions, then determine the project's process category:
+
+* **13 to 16 Points: Exemplary** (Shows deep engagement with the engineering loop. The logbook is a highly descriptive true history of failure, iteration, and achievement).
+* **9 to 12 Points: Proficient** (Solid documentation, covers the basics of progress, but needs deeper descriptive detail on tasks or struggles).
+* **5 to 8 Points: Developing** (Weak documentation of struggle, vague task descriptions, superficial reflections, or inconsistent organization).
+* **4 Points: Beginning** (Incomplete or incoherent record that is useless as documentation of process).
+
+**Strict Output Constraints**
+You MUST output your entire evaluation as a **single, casual paragraph** in the 'teacher_comment' field. Even though the tone is casual, the feedback must be sharp, objective, and analytical—no sugarcoating. Do not use bullet points, numbered lists, or line breaks. Within this single paragraph, you must naturally weave in:
+
+1. The final score (e.g., X/16) and the process category.
+2. An objective compliment highlighting a specific strength in their documentation process.
+3. A sharp, direct critique pointing out a specific weakness, vague task description, or flaw in their documentation logic.
+4. A concrete, actionable suggestion on how to make the written logbook a stronger, more descriptive engineering document.
 
 Do NOT include a 'suggested_status' field. Just provide 'scores' and 'teacher_comment'. Provide your output exactly matching the JSON schema.`;
 

@@ -214,6 +214,7 @@ export default function StudentDashboardPage() {
     const [newLogDate, setNewLogDate] = useState(new Date().toISOString().split('T')[0]);
     const [newLogTask, setNewLogTask] = useState('');
     const [newLogResult, setNewLogResult] = useState('');
+    const [newLogFeedback, setNewLogFeedback] = useState('');
     const [isSubmittingLog, setIsSubmittingLog] = useState(false);
 
     // Assessment Data
@@ -401,7 +402,8 @@ export default function StudentDashboardPage() {
                 student_email: userEmail,
                 entry_date: newLogDate,
                 task: newLogTask,
-                result: newLogResult
+                result: newLogResult,
+                feedback: newLogFeedback
             }
         ]).select();
 
@@ -414,6 +416,7 @@ export default function StudentDashboardPage() {
             setLogbooks([data[0], ...logbooks]);
             setNewLogTask('');
             setNewLogResult('');
+            setNewLogFeedback('');
             setNewLogDate(new Date().toISOString().split('T')[0]);
             setShowLogbookForm(false);
             showToast('Logbook entry saved successfully!', 'success');
@@ -952,6 +955,17 @@ export default function StudentDashboardPage() {
                                                 value={newLogResult}
                                                 onChange={(e) => setNewLogResult(e.target.value)}
                                                 placeholder="What was the outcome of your task?"
+                                                className="w-full bg-[#110e08] border border-slate-800 rounded-lg py-2 px-4 text-slate-200 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 resize-none"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-400 mb-1">Feedback</label>
+                                            <textarea
+                                                rows={2}
+                                                value={newLogFeedback}
+                                                onChange={(e) => setNewLogFeedback(e.target.value)}
+                                                placeholder="Any feedback, reflections, or challenges?"
                                                 className="w-full bg-[#110e08] border border-slate-800 rounded-lg py-2 px-4 text-slate-200 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 resize-none"
                                             />
                                         </div>

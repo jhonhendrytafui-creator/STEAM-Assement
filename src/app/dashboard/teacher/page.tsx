@@ -6,7 +6,7 @@ import {
     GraduationCap, LogOut, LayoutDashboard, BarChart2,
     ClipboardCheck, Users, FileText, CheckCircle2,
     X, AlertTriangle, LinkIcon, TrendingUp, BookOpen, Star, FolderOpen, History, Sparkles,
-    Lock, Unlock, Filter, LayoutGrid, List, PieChart, Clock
+    Lock, Unlock, Filter, LayoutGrid, List, PieChart, Clock, Calendar
 } from 'lucide-react';
 
 const ACADEMIC_YEAR = '2025/2026';
@@ -92,6 +92,62 @@ const C3_RUBRIC_TOOLTIPS: Record<string, Record<number, string>> = {
         3: 'The build process applies 1-2 STEAM concepts well, though execution might lean heavily toward a single discipline rather than a fully integrated approach.',
         2: 'The prototype barely utilizes the STEAM theories discussed in earlier chapters. The actual build is overly simplistic or disconnected from core concepts.',
         1: 'The prototype has absolutely no connection to STEAM application; it operates more like a basic arts-and-crafts project than a functional STEAM solution.'
+    }
+};
+
+// ─── C4 Rubric Tooltips ─────────────────────────────
+const C4_RUBRIC_TOOLTIPS: Record<string, Record<number, string>> = {
+    'Structure': {
+        4: 'Professional organization. Entries for every date worked, highly readable structure, and exceptionally clear language documenting a logical start-to-finish progression.',
+        3: 'Clear structure and communicative language. Includes most relevant dates and entries, showing logical progression despite minor gaps.',
+        2: 'Structure is somewhat disorganized, dates are missing, or entries skip major timeframes, making it hard to follow the project flow. Language is occasionally confusing.',
+        1: 'Completely incoherent mess. Few entries, no clear dates or timeline, impossible to understand the project progression.'
+    },
+    'Iteration': {
+        4: 'Candidly and precisely documents specific technical failures or struggles. Clearly details the iterative process taken to analyze why something failed and how they attempted to fix it. Documented solution for every issue.',
+        3: 'Lists problems encountered and includes successful follow-up solutions. Shows that problem-solving occurred, though it might lack deep detail on the steps between failure and final solution.',
+        2: 'Vaguely mentions difficulties or lists them without detail. Many problems identified lack corresponding solutions or follow-up actions.',
+        1: 'Documents only successes or surface-level work. Zero evidence of technical struggle, failure documentation, or iterative improvement.'
+    },
+    'Reflection': {
+        4: 'Features a deep, honest self-reflection of the journey, balancing analysis of struggles against recognition of achievements and learning points. Evaluates how the process made them feel as makers.',
+        3: 'Includes reflective summaries that recognize progress and identify key learning milestones, though the analysis of personal growth or struggle could be deeper.',
+        2: 'Reflection is highly superficial (e.g., "Today went well") and lacks any genuine analysis of struggles or successes. It reads like a dry checklist.',
+        1: 'No self-reflection or honest assessment included at all.'
+    },
+    'Task': {
+        4: 'Activity descriptions are exceptionally detailed and articulate. The text paints a vivid, precise picture of exactly what specific technical, research, or building tasks were performed during that session, leaving no ambiguity about the work done.',
+        3: 'Activity descriptions are clear and specify what was done, though some technical details, materials used, or specific steps might be slightly generalized.',
+        2: 'Task descriptions are overly vague or repetitive (e.g., "did research," "worked on project," "cut materials"). It is hard to know exactly what was accomplished during the session.',
+        1: 'Descriptions are missing, entirely uninformative, or just list the name of the project phase without explaining the actual work done.'
+    }
+};
+
+// ─── C5 Rubric Tooltips ─────────────────────────────
+const C5_RUBRIC_TOOLTIPS: Record<string, Record<number, string>> = {
+    'Problem Articulation': {
+        4: 'Masterfully defines the problem, deeply justifies its significance to a specific target audience, and thoroughly accounts for real-world constraints.',
+        3: 'Clearly states the problem and audience but lacks deep justification or detailed constraints.',
+        2: 'Vague problem and generic audience with little context.',
+        1: 'Fails to define the problem, audience, or constraints entirely.'
+    },
+    'Scientific Foundation & Math': {
+        4: 'Flawless scientific accuracy, precise mathematical data supporting their claims, and explicit links between at least two STEAM fields.',
+        3: 'Mostly accurate science and math with clear STEAM connections.',
+        2: 'Shaky scientific theories, weak math, and forced interdisciplinary links.',
+        1: 'Major factual errors, no mathematical backing, and zero STEAM integration.'
+    },
+    'Solution & Architecture': {
+        4: 'The prototype directly solves the problem with exceptional documentation of the Engineering Design Process (EDP), clear iterations, and strong aesthetic choices.',
+        3: 'A solid solution with good EDP documentation and helpful visuals.',
+        2: 'Partially solves the problem but lacks evidence of testing, iteration, or clear visuals.',
+        1: 'Does not solve the problem and shows zero evidence of design iteration or visual planning.'
+    },
+    'Presentation Delivery': {
+        4: 'Seamless, equal team participation, highly organized visual aids, and confident, deeply knowledgeable answers during the Q&A.',
+        3: 'Even participation and clear visuals, with adequate but surface-level Q&A answers.',
+        2: 'Uneven speaking time, cluttered slides, and significant struggle during the Q&A.',
+        1: 'Poor delivery, missing visuals, and a complete inability to answer questions.'
     }
 };
 
@@ -373,6 +429,66 @@ export default function TeacherDashboardPage() {
         setCurrentSubmissionIndex(0);
     };
 
+    // Logbook Tab State
+    const [logbookGrade, setLogbookGrade] = useState<string>('');
+    const [gradeLogbooksList, setGradeLogbooksList] = useState<any[]>([]);
+    const [selectedGroupForLogbook, setSelectedGroupForLogbook] = useState<{ class_name: string, group_number: number } | null>(null);
+    const [groupLogbooks, setGroupLogbooks] = useState<any[]>([]);
+    const [isFetchingLogbooks, setIsFetchingLogbooks] = useState(false);
+    const [logbookClassFilter, setLogbookClassFilter] = useState<string>('');
+    const [logbookViewMode, setLogbookViewMode] = useState<'card' | 'list'>('card');
+    const [logbookGroupByClass, setLogbookGroupByClass] = useState(false);
+
+    const fetchGradeLogbooksList = async () => {
+        if (!logbookGrade) return;
+        setIsFetchingLogbooks(true);
+        setSelectedGroupForLogbook(null);
+        setGroupLogbooks([]);
+
+        const groupsInGrade = allStudents.filter(s => String(s.class_name).split('.')[0] === logbookGrade);
+        const uniqueGroups = new Map();
+        groupsInGrade.forEach(s => {
+            uniqueGroups.set(`${s.class_name}-${s.group_number}`, { class_name: s.class_name, group_number: s.group_number });
+        });
+
+        const { data: logs } = await supabase
+            .from('logbooks')
+            .select('*')
+            .eq('academic_year', ACADEMIC_YEAR)
+            .ilike('class_name', `${logbookGrade}.%`)
+            .order('entry_date', { ascending: false });
+
+        const listView: any[] = [];
+        uniqueGroups.forEach((group) => {
+            const groupLogs = logs?.filter(l => l.class_name === group.class_name && l.group_number === group.group_number) || [];
+            if (groupLogs.length > 0) {
+                listView.push({
+                    class_name: group.class_name,
+                    group_number: group.group_number,
+                    entriesCount: groupLogs.length,
+                    latestEntryDate: groupLogs[0].entry_date,
+                    allEntries: groupLogs
+                });
+            } else {
+                listView.push({
+                    class_name: group.class_name,
+                    group_number: group.group_number,
+                    entriesCount: 0,
+                    latestEntryDate: null,
+                    allEntries: []
+                });
+            }
+        });
+
+        setGradeLogbooksList(listView.sort((a, b) => a.class_name.localeCompare(b.class_name) || a.group_number - b.group_number));
+        setIsFetchingLogbooks(false);
+    };
+
+    const handleSelectLogbookGroup = (group: any) => {
+        setSelectedGroupForLogbook({ class_name: group.class_name, group_number: group.group_number });
+        setGroupLogbooks(group.allEntries);
+    };
+
     // Assess Tab State
     const [assessGrade, setAssessGrade] = useState<string>('');
     const [assessClass, setAssessClass] = useState<string>('');
@@ -385,6 +501,9 @@ export default function TeacherDashboardPage() {
     const [currentScores, setCurrentScores] = useState<Record<string, number>>({});
     const [assessStatus, setAssessStatus] = useState<string>('');
     const [assessComment, setAssessComment] = useState<string>('');
+    const [assessLogbooks, setAssessLogbooks] = useState<any[]>([]);
+    const [c5Questions, setC5Questions] = useState<string>('');
+    const [isGeneratingC5, setIsGeneratingC5] = useState(false);
     const [isSubmittingScore, setIsSubmittingScore] = useState(false);
     const [isAutoAssessing, setIsAutoAssessing] = useState(false);
     const [isAssessmentLocked, setIsAssessmentLocked] = useState(false);
@@ -418,7 +537,8 @@ export default function TeacherDashboardPage() {
                     project: assessProject,
                     categoryName: cat?.name || 'Unknown Category',
                     indicators: inds.map(i => ({ id: i.id, description: i.description })),
-                    googleDocUrl: assessProject?.google_doc_url || null
+                    googleDocUrl: assessProject?.google_doc_url || null,
+                    assessLogbooks: cat?.code === 'C4' ? assessLogbooks : undefined
                 })
             });
 
@@ -436,6 +556,42 @@ export default function TeacherDashboardPage() {
             showToast(error.message, 'error');
         } finally {
             setIsAutoAssessing(false);
+        }
+    };
+
+    const handleGenerateC5Questions = async () => {
+        if (!assessProject) return;
+        setIsGeneratingC5(true);
+        showToast('Gemini AI is analyzing the project presentation outline...', 'info');
+
+        try {
+            const response = await fetch('/api/generate-c5-questions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ projectData: assessProject })
+            });
+
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.error || 'Failed to generate C5 context questions');
+            }
+
+            if (data.generatedQuestions) {
+                setC5Questions(data.generatedQuestions);
+                
+                // Save immediately to cache in database so we don't need to generate again later
+                const { error: dbError } = await supabase
+                    .from('projects')
+                    .update({ c5_generated_questions: data.generatedQuestions })
+                    .eq('id', assessProject.id);
+
+                if (dbError) throw dbError;
+                showToast('Q&A context generated & saved successfully!', 'success');
+            }
+        } catch (error: any) {
+            showToast(error.message, 'error');
+        } finally {
+            setIsGeneratingC5(false);
         }
     };
 
@@ -466,7 +622,7 @@ export default function TeacherDashboardPage() {
                 .eq('academic_year', ACADEMIC_YEAR);
             const map: Record<number, boolean> = {};
             const currentCat = assessmentCategories.find(c => c.id === assessCategory);
-            const isNoStatusCategory = currentCat?.code === 'C2' || currentCat?.code === 'C3'; // Updated to include C3
+            const isNoStatusCategory = currentCat?.code === 'C2' || currentCat?.code === 'C3' || currentCat?.code === 'C4'; 
             if (scores) {
                 scores.forEach(s => { map[s.group_number] = true; });
             }
@@ -482,6 +638,7 @@ export default function TeacherDashboardPage() {
                 setCurrentScores({});
                 setAssessComment('');
                 setAssessStatus('');
+                setC5Questions('');
                 return;
             }
 
@@ -489,6 +646,8 @@ export default function TeacherDashboardPage() {
             setCurrentScores({});
             setAssessComment('');
             setAssessStatus('');
+            setAssessLogbooks([]);
+            setC5Questions('');
 
             // Load project (get latest iteration)
             const { data: projs } = await supabase
@@ -528,13 +687,32 @@ export default function TeacherDashboardPage() {
                 setIsAssessmentLocked(false);
             }
 
-            // Load status from project only for non-C2/C3 assessments
+            // Load status from project only for non-C2/C3/C4/C5 assessments
             const currentCat = assessmentCategories.find(c => c.id === assessCategory);
-            const isNoStatusCategory = currentCat?.code === 'C2' || currentCat?.code === 'C3'; // Updated to include C3
+            const isNoStatusCategory = currentCat?.code === 'C2' || currentCat?.code === 'C3' || currentCat?.code === 'C4' || currentCat?.code === 'C5';
             if (!isNoStatusCategory) {
                 setAssessStatus(proj?.status !== 'pending' ? proj?.status : '');
             } else {
                 setAssessStatus('');
+            }
+
+            // Fetch Logbooks if category is C4
+            if (currentCat?.code === 'C4') {
+                const { data: logs } = await supabase
+                    .from('logbooks')
+                    .select('*')
+                    .eq('class_name', assessClass)
+                    .eq('group_number', parseInt(assessGroup))
+                    .eq('academic_year', ACADEMIC_YEAR)
+                    .order('entry_date', { ascending: true });
+                if (logs) {
+                    setAssessLogbooks(logs);
+                }
+            }
+
+            // Load C5 Questions if category is C5
+            if (currentCat?.code === 'C5' && proj) {
+                setC5Questions(proj.c5_generated_questions || '');
             }
         };
         loadAssessData();
@@ -543,7 +721,7 @@ export default function TeacherDashboardPage() {
     const submitAssessment = async () => {
         if (!assessClass || !assessGroup || !assessCategory || !teacherProfile) return;
         const selectedCat = assessmentCategories.find(c => c.id === assessCategory);
-        const isNoStatusCategory = selectedCat?.code === 'C2' || selectedCat?.code === 'C3'; // Updated to include C3
+        const isNoStatusCategory = selectedCat?.code === 'C2' || selectedCat?.code === 'C3' || selectedCat?.code === 'C4';
         if (!isNoStatusCategory && !assessStatus) {
             showToast('Please select an approval status before saving.', 'warning');
             return;
@@ -642,7 +820,7 @@ export default function TeacherDashboardPage() {
             // 1. Get unique groups and all student profiles
             const { data: students } = await supabase
                 .from('student_master')
-                .select('full_name, class_name, group_number')
+                .select('full_name, class_name, group_number, email')
                 .eq('academic_year', ACADEMIC_YEAR);
 
             if (students) {
@@ -734,6 +912,7 @@ export default function TeacherDashboardPage() {
                     {[
                         { id: 'overview', label: 'Projects Overview', icon: LayoutDashboard },
                         { id: 'submissions', label: 'Project Submissions', icon: FolderOpen },
+                        { id: 'logbook', label: 'Student Logbook', icon: BookOpen },
                         { id: 'score', label: 'Student Score', icon: BarChart2 },
                         { id: 'assess', label: 'Project Assessment', icon: ClipboardCheck },
                         { id: 'analytics', label: 'Analytics', icon: TrendingUp },
@@ -856,7 +1035,7 @@ export default function TeacherDashboardPage() {
                                             </thead>
                                             <tbody className="divide-y divide-slate-800/30 text-sm">
                                                 {filteredProjects.length > 0 ? (
-                                                    filteredProjects.map((proj) => (
+                                                    filteredProjects.slice(0, 10).map((proj) => (
                                                         <tr key={proj.id} className="hover:bg-[#1c1b14]/50 transition-colors">
                                                             <td className="p-4 whitespace-nowrap text-amber-400 font-medium">
                                                                 {proj.class_name} - {proj.group_number}
@@ -1304,6 +1483,282 @@ export default function TeacherDashboardPage() {
                         </div>
                     )}
 
+                    {/* TAB 1.6: LOGBOOK */}
+                    {activeTab === 'logbook' && (
+                        <div className="bg-[#1a1811] border border-amber-900/20 rounded-2xl p-6 sm:p-8 shadow-2xl">
+                            <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+                                <BookOpen className="text-amber-500" />
+                                Student Logbook
+                            </h2>
+
+                            {/* Logbook Filters */}
+                            {!selectedGroupForLogbook ? (() => {
+                                const logbookAvailableClasses = Array.from(new Set(gradeLogbooksList.map(g => g.class_name))).sort();
+                                
+                                let filtered = gradeLogbooksList;
+                                if (logbookClassFilter) filtered = filtered.filter(g => g.class_name === logbookClassFilter);
+
+                                const classesSorted = Array.from(new Set(filtered.map(g => g.class_name))).sort();
+
+                                const renderGroupCard = (group: any, idx: number) => (
+                                    <div
+                                        key={`${group.class_name}-${group.group_number}`}
+                                        onClick={() => handleSelectLogbookGroup(group)}
+                                        className="bg-[#1c1b14] border border-slate-800 hover:border-amber-500/50 rounded-xl p-5 cursor-pointer transition-all hover:shadow-lg hover:shadow-amber-900/10 group"
+                                    >
+                                        <div className="flex items-center justify-between mb-3 border-b border-slate-800/50 pb-3">
+                                            <h3 className="font-bold text-slate-200 group-hover:text-amber-400 transition-colors">
+                                                {group.class_name} - Group {group.group_number}
+                                            </h3>
+                                            <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider border ${group.entriesCount > 0 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-slate-800/50 text-slate-400 border-slate-700'}`}>
+                                                {group.entriesCount > 0 ? 'Active' : 'No Logs'}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-2 text-xs text-slate-500 mt-2">
+                                            <BookOpen className="w-3.5 h-3.5" />
+                                            {group.entriesCount} Entr{group.entriesCount !== 1 ? 'ies' : 'y'}
+                                        </div>
+                                        {group.latestEntryDate && (
+                                            <div className="flex items-center gap-2 text-xs text-slate-500 mt-2">
+                                                <Calendar className="w-3.5 h-3.5" />
+                                                Latest: {new Date(group.latestEntryDate).toLocaleDateString()}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+
+                                const renderGroupRow = (group: any) => (
+                                    <tr
+                                        key={`${group.class_name}-${group.group_number}`}
+                                        onClick={() => handleSelectLogbookGroup(group)}
+                                        className="hover:bg-[#1c1b14]/50 transition-colors cursor-pointer"
+                                    >
+                                        <td className="p-4 whitespace-nowrap text-amber-400 font-medium">{group.class_name} - G{group.group_number}</td>
+                                        <td className="p-4 text-center text-slate-400">{group.entriesCount}</td>
+                                        <td className="p-4 text-slate-400 whitespace-nowrap">{group.latestEntryDate ? new Date(group.latestEntryDate).toLocaleDateString() : '-'}</td>
+                                        <td className="p-4 whitespace-nowrap">
+                                            <span className={`inline-flex px-2 py-1 rounded-md text-xs font-medium border ${group.entriesCount > 0 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-slate-800/50 text-slate-400 border-slate-700'}`}>
+                                                {group.entriesCount > 0 ? 'Active' : 'No Logs'}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                );
+
+                                return (
+                                    <>
+                                        <div className="flex flex-col sm:flex-row gap-4 mb-4 bg-[#1c1b14] border border-slate-800 rounded-xl p-4">
+                                            <div className="flex-1">
+                                                <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Grade</label>
+                                                <select
+                                                    value={logbookGrade}
+                                                    onChange={(e) => { setLogbookGrade(e.target.value); setGradeLogbooksList([]); setLogbookClassFilter(''); }}
+                                                    className="w-full bg-[#1a1811] border border-slate-800 rounded-lg py-2.5 px-3 text-sm text-slate-200 focus:outline-none focus:border-amber-500"
+                                                >
+                                                    <option value="">Select Grade</option>
+                                                    {availableGrades.map(g => <option key={g} value={g}>Grade {g}</option>)}
+                                                </select>
+                                            </div>
+                                            <div className="flex items-end sm:w-48 shrink-0">
+                                                <button
+                                                    onClick={fetchGradeLogbooksList}
+                                                    disabled={!logbookGrade || isFetchingLogbooks}
+                                                    className="w-full bg-amber-500 hover:bg-amber-400 text-[#1a1811] font-bold py-2.5 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                                                >
+                                                    {isFetchingLogbooks ? 'Loading...' : 'Search Grade'}
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {gradeLogbooksList.length > 0 && (
+                                            <div className="bg-[#1c1b14] border border-slate-800 rounded-xl p-4 mb-6 space-y-4">
+                                                <div className="flex flex-col sm:flex-row gap-4">
+                                                    <div className="w-full sm:w-48">
+                                                        <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Filter by Class</label>
+                                                        <select
+                                                            value={logbookClassFilter}
+                                                            onChange={(e) => setLogbookClassFilter(e.target.value)}
+                                                            className="w-full bg-[#1a1811] border border-slate-800 rounded-lg py-2 px-3 text-sm text-slate-200 focus:outline-none focus:border-amber-500"
+                                                        >
+                                                            <option value="">All Classes</option>
+                                                            {logbookAvailableClasses.map(c => <option key={c} value={c}>{c}</option>)}
+                                                        </select>
+                                                    </div>
+                                                    <div className="flex items-end gap-2 ml-auto">
+                                                        <button
+                                                            onClick={() => setLogbookGroupByClass(!logbookGroupByClass)}
+                                                            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-semibold transition-all ${logbookGroupByClass ? 'bg-amber-500/20 text-amber-400 border-amber-500/50' : 'bg-[#1a1811] text-slate-400 border-slate-800 hover:border-slate-600'}`}
+                                                        >
+                                                            <Users className="w-3.5 h-3.5" /> Group by Class
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setLogbookViewMode('card')}
+                                                            className={`p-2 rounded-lg border transition-all ${logbookViewMode === 'card' ? 'bg-amber-500/20 text-amber-400 border-amber-500/50' : 'bg-[#1a1811] text-slate-400 border-slate-800 hover:border-slate-600'}`}
+                                                            title="Card View"
+                                                        >
+                                                            <LayoutGrid className="w-4 h-4" />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setLogbookViewMode('list')}
+                                                            className={`p-2 rounded-lg border transition-all ${logbookViewMode === 'list' ? 'bg-amber-500/20 text-amber-400 border-amber-500/50' : 'bg-[#1a1811] text-slate-400 border-slate-800 hover:border-slate-600'}`}
+                                                            title="List View"
+                                                        >
+                                                            <List className="w-4 h-4" />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {filtered.length > 0 ? (
+                                            logbookViewMode === 'card' ? (
+                                                logbookGroupByClass ? (
+                                                    <div className="space-y-6">
+                                                        {classesSorted.map(cls => (
+                                                            <div key={cls}>
+                                                                <h3 className="text-sm font-bold text-amber-400 uppercase tracking-wider mb-3 pl-1">Class {cls}</h3>
+                                                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                                                    {filtered.filter(g => g.class_name === cls).map((group, idx) => renderGroupCard(group, idx))}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                                        {filtered.map((group, idx) => renderGroupCard(group, idx))}
+                                                    </div>
+                                                )
+                                            ) : (
+                                                logbookGroupByClass ? (
+                                                    <div className="space-y-6">
+                                                        {classesSorted.map(cls => (
+                                                            <div key={cls}>
+                                                                <h3 className="text-sm font-bold text-amber-400 uppercase tracking-wider mb-3 pl-1">Class {cls}</h3>
+                                                                <div className="bg-[#1c1b14] border border-slate-800 rounded-xl overflow-hidden">
+                                                                    <table className="w-full text-left border-collapse">
+                                                                        <thead><tr className="bg-[#1a1811] border-b border-slate-800/50 text-xs uppercase tracking-wider text-slate-500">
+                                                                            <th className="p-3 font-semibold">Group</th><th className="p-3 font-semibold text-center">Entries</th><th className="p-3 font-semibold">Latest Entry</th><th className="p-3 font-semibold">Status</th>
+                                                                        </tr></thead>
+                                                                        <tbody className="divide-y divide-slate-800/30 text-sm">
+                                                                            {filtered.filter(g => g.class_name === cls).map(g => renderGroupRow(g))}
+                                                                        </tbody>
+                                                                    </table>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <div className="bg-[#1c1b14] border border-slate-800 rounded-xl overflow-hidden">
+                                                        <table className="w-full text-left border-collapse">
+                                                            <thead><tr className="bg-[#1a1811] border-b border-slate-800/50 text-xs uppercase tracking-wider text-slate-500">
+                                                                <th className="p-3 font-semibold">Group</th><th className="p-3 font-semibold text-center">Entries</th><th className="p-3 font-semibold">Latest Entry</th><th className="p-3 font-semibold">Status</th>
+                                                            </tr></thead>
+                                                            <tbody className="divide-y divide-slate-800/30 text-sm">
+                                                                {filtered.map(g => renderGroupRow(g))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                )
+                                            )
+                                        ) : (
+                                            logbookGrade && !isFetchingLogbooks && (
+                                                <div className="text-center py-12 border border-slate-800 rounded-xl bg-[#1c1b14]">
+                                                    <BookOpen className="w-10 h-10 text-slate-500 mx-auto mb-3" />
+                                                    <p className="text-sm text-slate-400">{gradeLogbooksList.length > 0 ? 'No groups match your filters.' : `Click Search to load logbooks for Grade ${logbookGrade}.`}</p>
+                                                </div>
+                                            )
+                                        )}
+                                    </>
+                                );
+                            })() : (
+                                <div>
+                                    <div className="flex items-center gap-4 mb-6">
+                                        <button
+                                            onClick={() => setSelectedGroupForLogbook(null)}
+                                            className="px-4 py-2 bg-[#1c1b14] border border-slate-800 rounded-lg text-sm font-bold text-slate-300 hover:text-white hover:border-slate-600 transition-colors flex items-center gap-2"
+                                        >
+                                            &larr; Back to List
+                                        </button>
+                                        <h3 className="text-lg font-bold text-amber-400">
+                                            {selectedGroupForLogbook.class_name} - Group {selectedGroupForLogbook.group_number} Logbook
+                                        </h3>
+                                    </div>
+
+                                    <div className="flex flex-col xl:flex-row gap-8">
+                                        <div className="flex-1">
+                                            {groupLogbooks.length > 0 ? (
+                                                <div className="bg-[#1c1b14] border border-slate-800 rounded-xl overflow-hidden shadow-2xl">
+                                                    <div className="overflow-x-auto custom-scrollbar">
+                                                        <table className="w-full text-left border-collapse table-fixed">
+                                                            <thead>
+                                                                <tr className="bg-[#1a1811] border-b border-slate-800/50 text-xs uppercase tracking-wider text-slate-500">
+                                                                    <th className="p-4 font-semibold w-24">Date</th>
+                                                                    <th className="p-4 font-semibold w-24">Submitted By</th>
+                                                                    <th className="p-4 font-semibold w-[28%]">Task / Meeting Focus</th>
+                                                                    <th className="p-4 font-semibold w-[28%]">Result / Progress</th>
+                                                                    <th className="p-4 font-semibold">Student Feedback</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody className="divide-y divide-slate-800/30 text-sm">
+                                                                {groupLogbooks.map((log: any, idx: number) => (
+                                                                    <tr key={idx} className="hover:bg-[#1a1811]/50 transition-colors">
+                                                                        <td className="p-4 text-amber-500 font-medium align-top">
+                                                                            {new Date(log.entry_date).toLocaleDateString()}
+                                                                        </td>
+                                                                        <td className="p-4 text-slate-400 align-top">
+                                                                            {allStudents.find(s => s.email === log.student_email)?.full_name || log.student_email?.split('@')[0]}
+                                                                        </td>
+                                                                        <td className="p-4 text-slate-300 align-top">
+                                                                            <div className="whitespace-pre-wrap">{log.task}</div>
+                                                                        </td>
+                                                                        <td className="p-4 text-slate-300 align-top">
+                                                                            <div className="whitespace-pre-wrap">{log.result}</div>
+                                                                        </td>
+                                                                        <td className="p-4 text-slate-300 align-top">
+                                                                            <div className="whitespace-pre-wrap">{log.feedback || <span className="text-slate-600 italic">No feedback</span>}</div>
+                                                                        </td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="text-center py-12 border border-slate-800 rounded-xl bg-[#1c1b14]">
+                                                    <BookOpen className="w-10 h-10 text-slate-500 mx-auto mb-3" />
+                                                    <p className="text-sm text-slate-400">No logbook entries found for this group.</p>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Quick Navigation Sidebar */}
+                                        <div className="w-full xl:w-64 shrink-0">
+                                            <div className="bg-[#1c1b14] border border-slate-800 rounded-xl p-4 sticky top-24">
+                                                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Quick Navigation</h4>
+                                                <p className="text-sm font-bold text-white mb-4">Class {selectedGroupForLogbook.class_name}</p>
+                                                <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+                                                    {gradeLogbooksList.filter(g => g.class_name === selectedGroupForLogbook.class_name).map(g => (
+                                                        <button
+                                                            key={g.group_number}
+                                                            onClick={() => handleSelectLogbookGroup(g)}
+                                                            className={`w-full text-left px-4 py-2.5 rounded-lg border transition-all text-sm font-semibold flex items-center justify-between ${selectedGroupForLogbook.group_number === g.group_number
+                                                                ? 'bg-amber-500/10 border-amber-500/50 text-amber-400 shadow-lg shadow-amber-900/10'
+                                                                : 'bg-[#1a1811] border-slate-800/50 text-slate-400 hover:border-slate-600 hover:text-slate-200 hover:bg-[#25221b]'
+                                                                }`}
+                                                        >
+                                                            <span>Group {g.group_number}</span>
+                                                            {g.entriesCount > 0 && <span className="text-xs bg-emerald-500/10 text-emerald-400 px-2 rounded-full font-bold">{g.entriesCount}</span>}
+                                                            {g.entriesCount === 0 && <span className="w-2 h-2 rounded-full bg-slate-700 block"></span>}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {/* TAB 2: SCORE */}
                     {activeTab === 'score' && (
                         <div className="bg-[#1a1811] border border-amber-900/20 rounded-2xl p-6 sm:p-8 shadow-2xl">
@@ -1518,67 +1973,118 @@ export default function TeacherDashboardPage() {
                             {/* Evaluation Area */}
                             {assessClass && assessGroup && assessCategory ? (
                                 <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-                                    {/* Left sidebar: Project Overview */}
+                                    {/* Left sidebar: Project Overview or Logbook Overview */}
                                     <div className="xl:col-span-4 space-y-6">
                                         <div className="bg-[#1c1b14] border border-slate-800 rounded-xl p-5 sticky top-24">
-                                            <h3 className="font-bold text-white mb-4 border-b border-slate-800 pb-3">Project Info</h3>
+                                            {(() => {
+                                                const currentCat = assessmentCategories.find(c => c.id === assessCategory);
+                                                const isC4 = currentCat?.code === 'C4';
 
-                                            {assessProject ? (
-                                                <div className="space-y-4">
-                                                    <div>
-                                                        <span className="text-xs text-slate-500 uppercase tracking-wider block mb-1">Title</span>
-                                                        <p className="text-sm font-medium text-slate-200 leading-snug">{assessProject.title}</p>
-                                                    </div>
-
-                                                    {assessProject.abstract && (() => {
-                                                        let absData: any = {};
-                                                        try { absData = JSON.parse(assessProject.abstract); } catch (e) { }
-                                                        return (
-                                                            <div className="space-y-4">
-                                                                <div>
-                                                                    <span className="text-xs text-slate-500 uppercase tracking-wider block mb-1">Problem</span>
-                                                                    <p className="text-sm text-slate-300 bg-[#1a1811] p-3 rounded-lg border border-slate-800/50 italic leading-relaxed">
-                                                                        "{absData.problem || 'No description.'}"
-                                                                    </p>
-                                                                </div>
-                                                                <div>
-                                                                    <span className="text-xs text-slate-500 uppercase tracking-wider block mb-1">Solution</span>
-                                                                    <p className="text-sm text-slate-300 bg-[#1a1811] p-3 rounded-lg border border-slate-800/50 italic leading-relaxed">
-                                                                        "{absData.solution || 'No description.'}"
-                                                                    </p>
-                                                                </div>
-                                                                {absData.keyConcepts && absData.keyConcepts.length > 0 && (
-                                                                    <div>
-                                                                        <span className="text-xs text-slate-500 uppercase tracking-wider block mb-2">Subject Key Concepts</span>
-                                                                        <div className="space-y-2">
-                                                                            {absData.keyConcepts.map((item: any, idx: number) => {
-                                                                                return (
-                                                                                    <div key={idx} className="bg-[#1a1811] border border-slate-800/50 p-2.5 rounded-lg flex flex-col sm:flex-row sm:items-start gap-2">
-                                                                                        <span className="inline-block bg-amber-500/10 text-amber-500 border border-amber-500/20 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider whitespace-nowrap">{item.subject}</span>
-                                                                                        <span className="text-sm text-slate-300 flex-1 leading-snug">{item.concept || 'No concept provided'}</span>
-                                                                                    </div>
-                                                                                );
-                                                                            })}
+                                                if (isC4) {
+                                                    return (
+                                                        <>
+                                                            <h3 className="font-bold text-white mb-4 border-b border-slate-800 pb-3 flex items-center gap-2">
+                                                                <BookOpen className="w-5 h-5 text-amber-500" />
+                                                                Logbook Entries
+                                                            </h3>
+                                                            {assessLogbooks && assessLogbooks.length > 0 ? (
+                                                                <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+                                                                    {assessLogbooks.map((log: any, idx: number) => (
+                                                                        <div key={idx} className="bg-[#1a1811] p-4 rounded-xl border border-slate-800/50 space-y-3">
+                                                                            <div className="flex justify-between items-start border-b border-slate-800/50 pb-2">
+                                                                                <span className="text-xs font-bold text-amber-500">{new Date(log.entry_date).toLocaleDateString()}</span>
+                                                                                <span className="text-[10px] text-slate-500 uppercase">{allStudents.find(s => s.email === log.student_email)?.full_name || log.student_email?.split('@')[0]}</span>
+                                                                            </div>
+                                                                            <div>
+                                                                                <span className="text-[10px] text-slate-500 uppercase tracking-wider block mb-1">Task/Focus</span>
+                                                                                <p className="text-xs text-slate-300 whitespace-pre-wrap leading-relaxed">{log.task}</p>
+                                                                            </div>
+                                                                            <div>
+                                                                                <span className="text-[10px] text-slate-500 uppercase tracking-wider block mb-1">Result</span>
+                                                                                <p className="text-xs text-slate-300 whitespace-pre-wrap leading-relaxed">{log.result}</p>
+                                                                            </div>
+                                                                            {log.feedback && (
+                                                                                <div>
+                                                                                    <span className="text-[10px] text-slate-500 uppercase tracking-wider block mb-1">Feedback</span>
+                                                                                    <p className="text-xs text-slate-400 whitespace-pre-wrap italic">{log.feedback}</p>
+                                                                                </div>
+                                                                            )}
                                                                         </div>
-                                                                    </div>
+                                                                    ))}
+                                                                </div>
+                                                            ) : (
+                                                                <div className="text-center py-8">
+                                                                    <BookOpen className="w-8 h-8 text-slate-500 mx-auto mb-3 opacity-50" />
+                                                                    <p className="text-sm text-slate-400">No logbooks found for this group.</p>
+                                                                </div>
+                                                            )}
+                                                        </>
+                                                    );
+                                                }
+
+                                                return (
+                                                    <>
+                                                        <h3 className="font-bold text-white mb-4 border-b border-slate-800 pb-3">Project Info</h3>
+
+                                                        {assessProject ? (
+                                                            <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+                                                                <div>
+                                                                    <span className="text-xs text-slate-500 uppercase tracking-wider block mb-1">Title</span>
+                                                                    <p className="text-sm font-medium text-slate-200 leading-snug">{assessProject.title}</p>
+                                                                </div>
+
+                                                                {assessProject.abstract && (() => {
+                                                                    let absData: any = {};
+                                                                    try { absData = JSON.parse(assessProject.abstract); } catch (e) { }
+                                                                    return (
+                                                                        <div className="space-y-4">
+                                                                            <div>
+                                                                                <span className="text-xs text-slate-500 uppercase tracking-wider block mb-1">Problem</span>
+                                                                                <p className="text-sm text-slate-300 bg-[#1a1811] p-3 rounded-lg border border-slate-800/50 italic leading-relaxed">
+                                                                                    "{absData.problem || 'No description.'}"
+                                                                                </p>
+                                                                            </div>
+                                                                            <div>
+                                                                                <span className="text-xs text-slate-500 uppercase tracking-wider block mb-1">Solution</span>
+                                                                                <p className="text-sm text-slate-300 bg-[#1a1811] p-3 rounded-lg border border-slate-800/50 italic leading-relaxed">
+                                                                                    "{absData.solution || 'No description.'}"
+                                                                                </p>
+                                                                            </div>
+                                                                            {absData.keyConcepts && absData.keyConcepts.length > 0 && (
+                                                                                <div>
+                                                                                    <span className="text-xs text-slate-500 uppercase tracking-wider block mb-2">Subject Key Concepts</span>
+                                                                                    <div className="space-y-2">
+                                                                                        {absData.keyConcepts.map((item: any, idx: number) => {
+                                                                                            return (
+                                                                                                <div key={idx} className="bg-[#1a1811] border border-slate-800/50 p-2.5 rounded-lg flex flex-col sm:flex-row sm:items-start gap-2">
+                                                                                                    <span className="inline-block bg-amber-500/10 text-amber-500 border border-amber-500/20 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider whitespace-nowrap">{item.subject}</span>
+                                                                                                    <span className="text-sm text-slate-300 flex-1 leading-snug">{item.concept || 'No concept provided'}</span>
+                                                                                                </div>
+                                                                                            );
+                                                                                        })}
+                                                                                    </div>
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    )
+                                                                })()}
+
+                                                                {assessProject.google_doc_url && (
+                                                                    <a href={assessProject.google_doc_url} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 w-full bg-blue-500/10 text-blue-400 border border-blue-500/20 py-2.5 px-4 rounded-lg hover:bg-blue-500/20 transition-colors text-sm font-semibold mt-4">
+                                                                        <LinkIcon className="w-4 h-4" />
+                                                                        Open Google Doc
+                                                                    </a>
                                                                 )}
                                                             </div>
-                                                        )
-                                                    })()}
-
-                                                    {assessProject.google_doc_url && (
-                                                        <a href={assessProject.google_doc_url} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 w-full bg-blue-500/10 text-blue-400 border border-blue-500/20 py-2.5 px-4 rounded-lg hover:bg-blue-500/20 transition-colors text-sm font-semibold mt-4">
-                                                            <LinkIcon className="w-4 h-4" />
-                                                            Open Google Doc
-                                                        </a>
-                                                    )}
-                                                </div>
-                                            ) : (
-                                                <div className="text-center py-8">
-                                                    <AlertTriangle className="w-8 h-8 text-slate-500 mx-auto mb-3" />
-                                                    <p className="text-sm text-slate-400">No project submitted by this group yet.</p>
-                                                </div>
-                                            )}
+                                                        ) : (
+                                                            <div className="text-center py-8">
+                                                                <AlertTriangle className="w-8 h-8 text-slate-500 mx-auto mb-3" />
+                                                                <p className="text-sm text-slate-400">No project submitted by this group yet.</p>
+                                                            </div>
+                                                        )}
+                                                    </>
+                                                );
+                                            })()}
                                         </div>
                                     </div>
 
@@ -1683,7 +2189,8 @@ export default function TeacherDashboardPage() {
                                                                                             const isC1 = cat?.code === 'C1';
                                                                                             const isC2 = cat?.code === 'C2';
                                                                                             const isC3 = cat?.code === 'C3';
-                                                                                            const tooltipText = isC1 ? C1_RUBRIC_TOOLTIPS[dim.name]?.[val] : isC2 ? C2_RUBRIC_TOOLTIPS[dim.name]?.[val] : isC3 ? C3_RUBRIC_TOOLTIPS[dim.name]?.[val] : undefined;
+                                                                                            const isC4 = cat?.code === 'C4';
+                                                                                            const tooltipText = isC1 ? C1_RUBRIC_TOOLTIPS[dim.name]?.[val] : isC2 ? C2_RUBRIC_TOOLTIPS[dim.name]?.[val] : isC3 ? C3_RUBRIC_TOOLTIPS[dim.name]?.[val] : isC4 ? C4_RUBRIC_TOOLTIPS[dim.name]?.[val] : undefined;
 
                                                                                             return (
                                                                                                 <div key={val} className="relative group inline-block">
@@ -1718,12 +2225,14 @@ export default function TeacherDashboardPage() {
                                                         );
                                                     })}
 
-                                                    {/* Approval Status & Comments — hide status for C2 */}
+                                                    {/* Approval Status & Comments — hide status for C2, C3, C4, C5 */}
                                                     {(() => {
                                                         const selectedCat = assessmentCategories.find(c => c.id === assessCategory);
                                                         const isC2Category = selectedCat?.code === 'C2';
                                                         const isC3Category = selectedCat?.code === 'C3';
-                                                        const isNoStatusCat = isC2Category || isC3Category;
+                                                        const isC4Category = selectedCat?.code === 'C4';
+                                                        const isC5Category = selectedCat?.code === 'C5';
+                                                        const isNoStatusCat = isC2Category || isC3Category || isC4Category || isC5Category;
                                                         return (
                                                             <div className="bg-[#1c1b14] border border-amber-900/50 rounded-xl p-6 shadow-lg mt-8">
                                                                 <h3 className="font-bold text-white mb-4 border-b border-slate-800 pb-3">
@@ -1770,19 +2279,118 @@ export default function TeacherDashboardPage() {
                                                         );
                                                     })()}
 
+                                                    {/* Generated C5 Questions Display */}
+                                                    {cat?.code === 'C5' && (c5Questions || isGeneratingC5) && (
+                                                        <div className="bg-[#1c1b14] border border-amber-500/30 rounded-xl p-6 shadow-lg mt-8">
+                                                            <div className="flex items-center gap-3 mb-4 border-b border-slate-800 pb-3">
+                                                                <FileText className="w-5 h-5 text-amber-500" />
+                                                                <h3 className="font-bold text-white">Generated Q&A Context</h3>
+                                                            </div>
+                                                            {isGeneratingC5 ? (
+                                                                <div className="flex items-center justify-center py-8 text-amber-500/70 space-x-2">
+                                                                    <div className="w-4 h-4 rounded-full border-2 border-amber-500/30 border-t-amber-500 animate-spin"></div>
+                                                                    <span className="text-sm font-medium">Analyzing project data & generating questions...</span>
+                                                                </div>
+                                                            ) : (
+                                                                <div className="space-y-6 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+                                                                    {(() => {
+                                                                        if (!c5Questions) return null;
+                                                                        // The prompt enforces 1 summary paragraph, followed by a numbered list.
+                                                                        // We can roughly split by observing \n1. or splitting by double newlines.
+                                                                        const parts = c5Questions.split(/(?=\n1\.\s)/);
+                                                                        const summary = parts[0]?.trim();
+                                                                        const questions = parts.length > 1 ? parts.slice(1).join('').trim() : '';
+                                                                        
+                                                                        const questionsList = questions ? questions.split(/\n(?=\d+\.\s)/).map(q => q.trim()).filter(Boolean) : [];
+
+                                                                        return (
+                                                                            <>
+                                                                                {summary && (
+                                                                                    <div className="bg-[#1a1811] border border-slate-800/50 p-4 rounded-xl">
+                                                                                         <p className="text-sm text-slate-300 leading-relaxed italic">
+                                                                                            {summary}
+                                                                                        </p>
+                                                                                    </div>
+                                                                                )}
+
+                                                                                {questionsList.length > 0 ? (
+                                                                                    <div className="grid grid-cols-1 gap-3">
+                                                                                        {questionsList.map((q, idx) => {
+                                                                                            // Extract the question number and text
+                                                                                            const match = q.match(/^(\d+)\.\s*([\s\S]*)/);
+                                                                                            const num = match ? match[1] : (idx + 1).toString();
+                                                                                            const text = match ? match[2] : q;
+
+                                                                                            // Attempt to extract the bolded category if it exists like "**Problem Articulation (2 Questions):**"
+                                                                                            // Wait, the prompt structured it as: 1. **Problem Articulation:** What is...
+                                                                                            let category = '';
+                                                                                            let cleanText = text;
+                                                                                            const catMatch = text.match(/^\*\*(.*?)\*\*\s*([\s\S]*)/);
+                                                                                            if (catMatch) {
+                                                                                                category = catMatch[1].replace(':', '').trim();
+                                                                                                cleanText = catMatch[2].trim();
+                                                                                            }
+
+                                                                                            return (
+                                                                                                <div key={idx} className="bg-gradient-to-br from-[#1c1b14] to-[#1a1811] border border-amber-500/20 hover:border-amber-500/40 p-4 rounded-xl shadow-sm transition-colors group relative overflow-hidden">
+                                                                                                    <div className="absolute top-0 left-0 w-1 h-full bg-amber-500/50 group-hover:bg-amber-500 transition-colors"></div>
+                                                                                                    <div className="flex items-start gap-4">
+                                                                                                        <div className="w-8 h-8 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-center justify-center font-bold text-sm shrink-0">
+                                                                                                            {num}
+                                                                                                        </div>
+                                                                                                        <div className="flex-1 pt-1">
+                                                                                                            {category && (
+                                                                                                                <span className="inline-block text-[10px] font-bold uppercase tracking-wider text-amber-500/80 mb-1.5">
+                                                                                                                    {category}
+                                                                                                                </span>
+                                                                                                            )}
+                                                                                                            <p className="text-sm text-slate-200 leading-relaxed font-medium">
+                                                                                                                {cleanText.replace(/\*\*/g, '') /* Remove any stray markdown bolds */}
+                                                                                                            </p>
+                                                                                                        </div>
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                            );
+                                                                                        })}
+                                                                                    </div>
+                                                                                ) : (
+                                                                                    <div className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">
+                                                                                        {c5Questions}
+                                                                                    </div>
+                                                                                )}
+                                                                            </>
+                                                                        );
+                                                                    })()}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+
                                                     {/* Submit Button */}
                                                     <div className="flex justify-end gap-3 pt-4">
-                                                        <button
-                                                            onClick={handleAutoAssess}
-                                                            disabled={isAutoAssessing || isSubmittingScore || isAssessmentLocked}
-                                                            className="flex items-center gap-2 bg-[#1c1b2e] border border-indigo-500/30 text-indigo-400 px-6 py-3.5 rounded-xl font-bold hover:bg-indigo-900/40 hover:text-indigo-300 transition-all shadow-xl shadow-indigo-900/10 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                        >
-                                                            {isAutoAssessing ? 'AI is Thinking...' : 'Auto-Assess with Gemini'}
-                                                            {!isAutoAssessing && <Sparkles className="w-5 h-5" />}
-                                                        </button>
+                                                        {cat?.code === 'C5' ? (
+                                                            <button
+                                                                onClick={handleGenerateC5Questions}
+                                                                disabled={isGeneratingC5 || isSubmittingScore || isAssessmentLocked}
+                                                                className="flex items-center gap-2 bg-[#1c1b2e] border border-indigo-500/30 text-indigo-400 px-6 py-3.5 rounded-xl font-bold hover:bg-indigo-900/40 hover:text-indigo-300 transition-all shadow-xl shadow-indigo-900/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                            >
+                                                                {isGeneratingC5 ? 'Generating...' : c5Questions ? 'Regenerate Q&A' : 'Generate Q&A'}
+                                                                {!isGeneratingC5 && <Sparkles className="w-5 h-5" />}
+                                                            </button>
+                                                        ) : (
+                                                            <button
+                                                                onClick={handleAutoAssess}
+                                                                disabled={isAutoAssessing || isSubmittingScore || isAssessmentLocked}
+                                                                className="flex items-center gap-2 bg-[#1c1b2e] border border-indigo-500/30 text-indigo-400 px-6 py-3.5 rounded-xl font-bold hover:bg-indigo-900/40 hover:text-indigo-300 transition-all shadow-xl shadow-indigo-900/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                            >
+                                                                {isAutoAssessing ? 'AI is Thinking...' : 'Auto-Assess with Gemini'}
+                                                                {!isAutoAssessing && <Sparkles className="w-5 h-5" />}
+                                                            </button>
+                                                        )}
+                                                        
                                                         <button
                                                             onClick={submitAssessment}
-                                                            disabled={isSubmittingScore || isAutoAssessing || isAssessmentLocked}
+                                                            disabled={isSubmittingScore || isAutoAssessing || isGeneratingC5 || isAssessmentLocked}
                                                             className="flex items-center gap-2 bg-gradient-to-r from-amber-600 to-amber-500 text-[#1a1811] px-8 py-3.5 rounded-xl font-bold hover:from-amber-500 hover:to-amber-400 transition-all shadow-xl shadow-amber-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
                                                         >
                                                             {isSubmittingScore ? 'Saving Assessment...' : 'Save Assessment'}
