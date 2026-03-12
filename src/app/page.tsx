@@ -34,8 +34,8 @@ export default function LoginPage() {
 
       {/* Top Left Header */}
       <div className="absolute top-0 left-0 p-6 flex items-center gap-3">
-        <Cpu className="w-6 h-6 text-amber-500" strokeWidth={2} />
-        <span className="text-white font-bold text-lg tracking-wide">Pahoa STEAM</span>
+        <img src="/logo.ico" alt="Logo" className="w-6 h-6 object-contain" />
+        <span className="text-white font-bold text-lg tracking-wide">Pahoa STEAM Assessment</span>
       </div>
 
       {/* Main Content Area */}

@@ -7,7 +7,7 @@ import {
     Plus, Trash2, Link as LinkIcon, Calculator,
     FlaskConical, Paintbrush, Globe, Cpu, Wrench, BookOpen, Calendar, Save, X, Users,
     TrendingUp, Award, ChevronDown, CheckCircle2, AlertTriangle, XCircle, Info,
-    MessageSquare, History
+    MessageSquare, History, Sparkles
 } from 'lucide-react';
 
 // ─── Toast Notification System ────────────────────────
@@ -207,6 +207,11 @@ export default function StudentDashboardPage() {
     const [keyConcepts, setKeyConcepts] = useState([{ subject: 'matematika', concept: '' }]);
     const [themesList, setThemesList] = useState<Theme[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // AI Precheck State
+    const [isPrechecking, setIsPrechecking] = useState(false);
+    const [precheckResult, setPrecheckResult] = useState('');
+    const [showPrecheckModal, setShowPrecheckModal] = useState(false);
 
     // Logbook State
     const [logbooks, setLogbooks] = useState<LogbookEntry[]>([]);
@@ -447,6 +452,42 @@ export default function StudentDashboardPage() {
         );
     };
 
+    // ─── AI Pre-Check ──────────────────────────────────
+    const handlePreCheck = async () => {
+        if (!problem.trim() || !solution.trim()) {
+            showToast('Please fill in both the Problem and Solution fields before running the AI Pre-Check.', 'warning');
+            return;
+        }
+
+        setIsPrechecking(true);
+        setPrecheckResult('');
+
+        try {
+            const res = await fetch('/api/precheck', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    problem,
+                    solution,
+                    keyConcepts: keyConcepts.filter(c => c.concept.trim() !== '')
+                })
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+                throw new Error(data.error || 'Failed to analyze project');
+            }
+
+            setPrecheckResult(data.result);
+            setShowPrecheckModal(true);
+        } catch (error: any) {
+            showToast(error.message || 'An error occurred during AI Pre-Check.', 'error');
+        } finally {
+            setIsPrechecking(false);
+        }
+    };
+
     // ─── Project Submit ────────────────────────────────
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -588,9 +629,9 @@ export default function StudentDashboardPage() {
             {/* Navbar */}
             <nav className="bg-[#1a1811] border-b border-amber-900/40 px-6 py-4 flex justify-between items-center sticky top-0 z-50">
                 <div className="flex items-center gap-3">
-                    <Star className="text-amber-400 w-6 h-6" fill="currentColor" strokeWidth={0} />
+                    <img src="/logo.ico" alt="Logo" className="w-6 h-6 object-contain" />
                     <span className="font-bold text-xl text-transparent bg-clip-text bg-gradient-to-r from-amber-100 to-amber-500">
-                        PAHOA STEAM
+                        PAHOA STEAM ASSESSMENT
                     </span>
                     <span className="ml-2 bg-amber-900/30 text-amber-400 text-xs px-3 py-1 rounded-full border border-amber-500/20 hidden sm:inline-block">
                         Student Portal
@@ -1239,19 +1280,35 @@ export default function StudentDashboardPage() {
                                             </p>
                                         </div>
 
-                                        {/* Submit Button */}
-                                        <button
-                                            type="submit"
-                                            disabled={isSubmitting}
-                                            className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-[#1a160d] font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-amber-900/20 mt-8 disabled:opacity-50 disabled:cursor-not-allowed"
-                                        >
-                                            {isSubmitting ? (
-                                                <div className="w-5 h-5 border-2 border-[#1a160d] border-t-transparent rounded-full animate-spin"></div>
-                                            ) : (
-                                                <PenSquare className="w-5 h-5" />
-                                            )}
-                                            {isSubmitting ? 'Submitting...' : 'Submit Project Review'}
-                                        </button>
+                                        {/* Submit & PreCheck Buttons */}
+                                        <div className="flex flex-col sm:flex-row gap-4 mt-8">
+                                            <button
+                                                type="button"
+                                                onClick={handlePreCheck}
+                                                disabled={isPrechecking || isSubmitting}
+                                                className="w-full sm:w-1/2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-indigo-900/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                {isPrechecking ? (
+                                                    <div className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin"></div>
+                                                ) : (
+                                                    <Sparkles className="w-5 h-5" />
+                                                )}
+                                                {isPrechecking ? 'Analyzing...' : 'AI Pre-Check'}
+                                            </button>
+
+                                            <button
+                                                type="submit"
+                                                disabled={isSubmitting || isPrechecking}
+                                                className="w-full sm:w-1/2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-[#1a160d] font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-amber-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                {isSubmitting ? (
+                                                    <div className="w-5 h-5 border-2 border-[#1a160d] border-t-transparent rounded-full animate-spin"></div>
+                                                ) : (
+                                                    <PenSquare className="w-5 h-5" />
+                                                )}
+                                                {isSubmitting ? 'Submitting...' : 'Submit Project Review'}
+                                            </button>
+                                        </div>
                                     </form>
                                 )}
                             </div>
@@ -1566,6 +1623,58 @@ export default function StudentDashboardPage() {
                                     Open Google Document
                                 </a>
                             )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* AI Pre-Check Modal */}
+            {showPrecheckModal && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center px-4 bg-black/60 backdrop-blur-sm">
+                    <div className="bg-[#1a1811] border border-indigo-500/30 rounded-2xl p-6 sm:p-8 w-full max-w-2xl shadow-2xl relative max-h-[90vh] overflow-y-auto">
+                        <button
+                            onClick={() => setShowPrecheckModal(false)}
+                            className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors p-2"
+                        >
+                            <X className="w-5 h-5" />
+                        </button>
+
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="w-10 h-10 rounded-full bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20">
+                                <Sparkles className="w-5 h-5 text-indigo-400" />
+                            </div>
+                            <div>
+                                <h3 className="text-xl font-bold text-white leading-tight">AI Pre-Check Results</h3>
+                                <p className="text-xs text-indigo-400/80 mb-0">Powered by Pahoa STEAM AI</p>
+                            </div>
+                        </div>
+
+                        <div className="prose prose-sm prose-invert max-w-none text-slate-300">
+                            {precheckResult.split('\n').map((line, idx) => {
+                                if (line.startsWith('### ')) {
+                                    return <h4 key={idx} className="text-indigo-400 font-bold mt-6 mb-3 text-lg">{line.replace('### ', '')}</h4>;
+                                }
+                                if (line.startsWith('- ')) {
+                                    return (
+                                        <div key={idx} className="flex gap-2 mb-2 items-start text-[15px]">
+                                            <span className="text-indigo-500 mt-1.5">•</span>
+                                            {/* Render inline bolding rudimentary */}
+                                            <span dangerouslySetInnerHTML={{ __html: line.substring(2).replace(/\*\*(.*?)\*\*/g, '<strong class="text-white">$1</strong>') }} />
+                                        </div>
+                                    );
+                                }
+                                if (line.trim() === '') return <div key={idx} className="h-2"></div>;
+                                return <p key={idx} className="mb-2 leading-relaxed">{line}</p>;
+                            })}
+                        </div>
+
+                        <div className="mt-8 pt-6 border-t border-slate-800 flex justify-end">
+                            <button
+                                onClick={() => setShowPrecheckModal(false)}
+                                className="bg-[#292314] hover:bg-[#3d341e] text-indigo-400 font-semibold py-2.5 px-6 rounded-xl transition-colors border border-indigo-900/40 text-sm"
+                            >
+                                Close & Continue Editing
+                            </button>
                         </div>
                     </div>
                 </div>

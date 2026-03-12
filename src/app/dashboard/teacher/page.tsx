@@ -622,7 +622,7 @@ export default function TeacherDashboardPage() {
                 .eq('academic_year', ACADEMIC_YEAR);
             const map: Record<number, boolean> = {};
             const currentCat = assessmentCategories.find(c => c.id === assessCategory);
-            const isNoStatusCategory = currentCat?.code === 'C2' || currentCat?.code === 'C3' || currentCat?.code === 'C4'; 
+            // We just need map of group_number -> true if they have any scores in this category
             if (scores) {
                 scores.forEach(s => { map[s.group_number] = true; });
             }
@@ -687,10 +687,10 @@ export default function TeacherDashboardPage() {
                 setIsAssessmentLocked(false);
             }
 
-            // Load status from project only for non-C2/C3/C4/C5 assessments
+            // Load status from project only for C1 assessments
             const currentCat = assessmentCategories.find(c => c.id === assessCategory);
-            const isNoStatusCategory = currentCat?.code === 'C2' || currentCat?.code === 'C3' || currentCat?.code === 'C4' || currentCat?.code === 'C5';
-            if (!isNoStatusCategory) {
+            const isC1Category = currentCat?.code === 'C1';
+            if (isC1Category) {
                 setAssessStatus(proj?.status !== 'pending' ? proj?.status : '');
             } else {
                 setAssessStatus('');
@@ -721,8 +721,10 @@ export default function TeacherDashboardPage() {
     const submitAssessment = async () => {
         if (!assessClass || !assessGroup || !assessCategory || !teacherProfile) return;
         const selectedCat = assessmentCategories.find(c => c.id === assessCategory);
-        const isNoStatusCategory = selectedCat?.code === 'C2' || selectedCat?.code === 'C3' || selectedCat?.code === 'C4';
-        if (!isNoStatusCategory && !assessStatus) {
+        const isC1Category = selectedCat?.code === 'C1';
+        
+        // Only C1 assessments require an approval status
+        if (isC1Category && !assessStatus) {
             showToast('Please select an approval status before saving.', 'warning');
             return;
         }
@@ -763,7 +765,7 @@ export default function TeacherDashboardPage() {
                     return [...filtered, ...scoreEntries];
                 });
 
-                if (assessProject && !isNoStatusCategory) { // Updated to include C3
+                if (assessProject && isC1Category) { // Only update the global project status for C1 (Proposals)
                     await supabase.from('projects')
                         .update({
                             status: assessStatus,
@@ -880,9 +882,9 @@ export default function TeacherDashboardPage() {
             {/* Navbar */}
             <nav className="bg-[#1a1811] border-b border-amber-900/40 px-6 py-4 flex justify-between items-center sticky top-0 z-50">
                 <div className="flex items-center gap-3">
-                    <GraduationCap className="text-amber-400 w-6 h-6" />
+                    <img src="/logo.ico" alt="Logo" className="w-6 h-6 object-contain" />
                     <span className="font-bold text-xl text-transparent bg-clip-text bg-gradient-to-r from-amber-100 to-amber-500">
-                        PAHOA STEAM
+                        PAHOA STEAM ASSESSMENT
                     </span>
                     <span className="ml-2 bg-amber-900/30 text-amber-400 text-xs px-3 py-1 rounded-full border border-amber-500/20 hidden sm:inline-block">
                         Teacher Portal
@@ -2226,14 +2228,12 @@ export default function TeacherDashboardPage() {
                                                         );
                                                     })}
 
-                                                    {/* Approval Status & Comments — hide status for C2, C3, C4, C5 */}
+                                                    {/* Approval Status & Comments — hide status for anything except C1 */}
                                                     {(() => {
                                                         const selectedCat = assessmentCategories.find(c => c.id === assessCategory);
-                                                        const isC2Category = selectedCat?.code === 'C2';
-                                                        const isC3Category = selectedCat?.code === 'C3';
-                                                        const isC4Category = selectedCat?.code === 'C4';
+                                                        const isC1Category = selectedCat?.code === 'C1';
                                                         const isC5Category = selectedCat?.code === 'C5';
-                                                        const isNoStatusCat = isC2Category || isC3Category || isC4Category || isC5Category;
+                                                        const isNoStatusCat = !isC1Category;
                                                         return (
                                                             <div className="bg-[#1c1b14] border border-amber-900/50 rounded-xl p-6 shadow-lg mt-8">
                                                                 <h3 className="font-bold text-white mb-4 border-b border-slate-800 pb-3">
