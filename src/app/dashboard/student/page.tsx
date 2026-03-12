@@ -1214,44 +1214,6 @@ export default function StudentDashboardPage() {
                                             )}
                                             {isSavingPresentation ? 'Saving...' : 'Save Presentation Link'}
                                         </button>
-
-                                        {/* Preview Section */}
-                                        {projectData.presentation_url && (() => {
-                                            // Convert Canva view URL to embed URL
-                                            let embedUrl = projectData.presentation_url;
-                                            if (embedUrl.includes('canva.com') && !embedUrl.includes('?embed')) {
-                                                embedUrl = embedUrl.split('?')[0] + '?embed';
-                                            }
-                                            return (
-                                                <div className="mt-8 pt-8 border-t border-slate-800/50">
-                                                    <div className="flex items-center justify-between mb-4">
-                                                        <h3 className="text-lg font-bold text-slate-300 flex items-center gap-2">
-                                                            <Monitor className="w-5 h-5 text-amber-500" />
-                                                            Presentation Preview
-                                                        </h3>
-                                                        <a
-                                                            href={projectData.presentation_url}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            className="text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1 transition-colors"
-                                                        >
-                                                            <ExternalLink className="w-3.5 h-3.5" />
-                                                            Open in new tab
-                                                        </a>
-                                                    </div>
-                                                    <div className="bg-[#1c1b14] border border-slate-800 rounded-xl overflow-hidden">
-                                                        <div style={{ position: 'relative', width: '100%', paddingTop: '56.25%' }}>
-                                                            <iframe
-                                                                src={embedUrl}
-                                                                style={{ position: 'absolute', width: '100%', height: '100%', top: 0, left: 0, border: 'none' }}
-                                                                allow="fullscreen"
-                                                                allowFullScreen
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })()}
                                     </div>
                                 )}
                             </div>
