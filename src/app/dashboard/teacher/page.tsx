@@ -2077,6 +2077,13 @@ export default function TeacherDashboardPage() {
                                                                         Open Google Doc
                                                                     </a>
                                                                 )}
+
+                                                                {assessProject.presentation_url && (
+                                                                    <a href={assessProject.presentation_url} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 w-full bg-purple-500/10 text-purple-400 border border-purple-500/20 py-2.5 px-4 rounded-lg hover:bg-purple-500/20 transition-colors text-sm font-semibold mt-3">
+                                                                        <Star className="w-4 h-4" />
+                                                                        View Canva Presentation
+                                                                    </a>
+                                                                )}
                                                             </div>
                                                         ) : (
                                                             <div className="text-center py-8">

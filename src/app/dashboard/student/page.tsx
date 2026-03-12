@@ -7,7 +7,7 @@ import {
     Plus, Trash2, Link as LinkIcon, Calculator,
     FlaskConical, Paintbrush, Globe, Cpu, Wrench, BookOpen, Calendar, Save, X, Users,
     TrendingUp, Award, ChevronDown, CheckCircle2, AlertTriangle, XCircle, Info,
-    MessageSquare, History, Sparkles
+    MessageSquare, History, Sparkles, Monitor, Lock, ExternalLink
 } from 'lucide-react';
 
 // ─── Toast Notification System ────────────────────────
@@ -132,6 +132,7 @@ interface ProjectData {
     title: string;
     abstract: string;
     google_doc_url: string;
+    presentation_url?: string | null;
     status: string;
     theme_id: string;
     iteration?: number;
@@ -207,6 +208,10 @@ export default function StudentDashboardPage() {
     const [keyConcepts, setKeyConcepts] = useState([{ subject: 'matematika', concept: '' }]);
     const [themesList, setThemesList] = useState<Theme[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // Presentation State
+    const [presentationUrl, setPresentationUrl] = useState('');
+    const [isSavingPresentation, setIsSavingPresentation] = useState(false);
 
     // AI Precheck State
     const [isPrechecking, setIsPrechecking] = useState(false);
@@ -326,6 +331,7 @@ export default function StudentDashboardPage() {
         if (fetchedProjects && fetchedProjects.length > 0) {
             setProjectHistory(fetchedProjects);
             setProjectData(fetchedProjects[0]);
+            setPresentationUrl(fetchedProjects[0].presentation_url || '');
         }
 
         // 5. Fetch logbooks for this group (all members' entries)
@@ -586,12 +592,27 @@ export default function StudentDashboardPage() {
             showToast(nextIteration > 1 ? 'Project resubmitted successfully!' : 'Project submitted successfully!', 'success');
             setProjectHistory(prev => [data[0], ...prev]);
             setProjectData(data[0]);
+            setPresentationUrl('');
             setActiveTab('data');
             setTitle('');
             setProblem('');
             setSolution('');
             setDocUrl('');
             setKeyConcepts([{ subject: 'mathematics', concept: '' }]);
+
+            // Reset C1 assessment scores for this group so the new iteration gets a fresh start
+            if (nextIteration > 1) {
+                const c1Category = assessmentCategories.find(c => c.code === 'C1');
+                if (c1Category) {
+                    await supabase
+                        .from('assessment_scores')
+                        .delete()
+                        .eq('class_name', studentInfo.class_name)
+                        .eq('group_number', studentInfo.group_number)
+                        .eq('category_id', c1Category.id)
+                        .eq('academic_year', ACADEMIC_YEAR);
+                }
+            }
         }
     };
 
@@ -687,6 +708,7 @@ export default function StudentDashboardPage() {
                             { id: 'data', label: 'My Project Data', icon: Database },
                             { id: 'submit', label: 'Submit a Project', icon: PenSquare },
                             { id: 'logbook', label: 'My Logbook', icon: BookOpen },
+                            { id: 'presentation', label: 'My Presentation', icon: Monitor },
                             { id: 'result', label: 'Assessment Result', icon: FileCheck },
                         ].map((tab) => (
                             <button
@@ -1099,6 +1121,139 @@ export default function StudentDashboardPage() {
                                         </tbody>
                                     </table>
                                 </div>
+                            </div>
+                        )}
+
+                        {/* ═══════════════════════════════════════════ */}
+                        {/* TAB: MY PRESENTATION                       */}
+                        {/* ═══════════════════════════════════════════ */}
+                        {activeTab === 'presentation' && (
+                            <div className="bg-[#1a1811] border border-amber-900/20 rounded-2xl p-6 sm:p-8 shadow-2xl">
+                                <h2 className="text-2xl font-bold text-white mb-2 flex items-center gap-3">
+                                    <Monitor className="text-amber-500" />
+                                    My Presentation
+                                </h2>
+                                <p className="text-slate-400 text-sm mb-8">Submit your Canva presentation link here. A preview will be shown below.</p>
+
+                                {!projectData ? (
+                                    <div className="bg-[#1c1b14] border border-dashed border-slate-700 rounded-xl p-10 text-center flex flex-col items-center justify-center">
+                                        <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mb-4">
+                                            <PenSquare className="w-7 h-7 text-amber-500" />
+                                        </div>
+                                        <h3 className="text-lg font-bold text-slate-300 mb-2">No Project Submitted Yet</h3>
+                                        <p className="text-slate-500 text-sm max-w-sm mx-auto">
+                                            You need to submit a project first before adding a presentation link.
+                                        </p>
+                                    </div>
+                                ) : projectData.status !== 'approved' ? (
+                                    <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-6 flex items-start gap-4">
+                                        <div className="w-12 h-12 bg-amber-500/10 rounded-full flex items-center justify-center shrink-0">
+                                            <Lock className="w-6 h-6 text-amber-500" />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-lg font-bold text-amber-400 mb-1">Presentation Locked</h3>
+                                            <p className="text-sm text-amber-200/80">
+                                                You can only add a presentation link after your project has been <strong>approved</strong> by a teacher (C1 approval).
+                                                Your current project status is: <span className={`font-bold ${projectData.status === 'revision' ? 'text-red-400' : 'text-amber-400'}`}>{projectData.status}</span>
+                                            </p>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-6">
+                                        {/* Canva URL Input */}
+                                        <div>
+                                            <label className="block text-sm font-semibold text-slate-300 mb-2">Canva Presentation URL</label>
+                                            <div className="relative">
+                                                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
+                                                    <LinkIcon className="w-5 h-5" />
+                                                </div>
+                                                <input
+                                                    type="url"
+                                                    value={presentationUrl}
+                                                    onChange={(e) => setPresentationUrl(e.target.value)}
+                                                    className="w-full bg-[#1c1b14] border border-slate-800 rounded-xl py-3 pl-10 pr-4 text-slate-200 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all font-mono text-sm"
+                                                    placeholder="https://www.canva.com/design/.../view"
+                                                />
+                                            </div>
+                                            <p className="text-xs text-amber-500/80 mt-2">
+                                                * Paste the public view link of your Canva presentation. Make sure the presentation is set to &quot;Anyone with the link can view&quot;.
+                                            </p>
+                                        </div>
+
+                                        {/* Save Button */}
+                                        <button
+                                            onClick={async () => {
+                                                if (!presentationUrl.trim()) {
+                                                    showToast('Please enter a Canva presentation URL.', 'warning');
+                                                    return;
+                                                }
+                                                if (!presentationUrl.includes('canva.com')) {
+                                                    showToast('Please provide a valid Canva URL.', 'error');
+                                                    return;
+                                                }
+                                                setIsSavingPresentation(true);
+                                                const { error } = await supabase
+                                                    .from('projects')
+                                                    .update({ presentation_url: presentationUrl.trim() })
+                                                    .eq('id', projectData.id);
+                                                setIsSavingPresentation(false);
+                                                if (error) {
+                                                    showToast('Failed to save presentation URL: ' + error.message, 'error');
+                                                } else {
+                                                    setProjectData({ ...projectData, presentation_url: presentationUrl.trim() });
+                                                    showToast('Presentation link saved successfully!', 'success');
+                                                }
+                                            }}
+                                            disabled={isSavingPresentation}
+                                            className="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-[#1a160d] font-bold py-3 px-8 rounded-xl flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-amber-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            {isSavingPresentation ? (
+                                                <div className="w-5 h-5 border-2 border-[#1a160d] border-t-transparent rounded-full animate-spin"></div>
+                                            ) : (
+                                                <Save className="w-5 h-5" />
+                                            )}
+                                            {isSavingPresentation ? 'Saving...' : 'Save Presentation Link'}
+                                        </button>
+
+                                        {/* Preview Section */}
+                                        {projectData.presentation_url && (() => {
+                                            // Convert Canva view URL to embed URL
+                                            let embedUrl = projectData.presentation_url;
+                                            if (embedUrl.includes('canva.com') && !embedUrl.includes('?embed')) {
+                                                embedUrl = embedUrl.split('?')[0] + '?embed';
+                                            }
+                                            return (
+                                                <div className="mt-8 pt-8 border-t border-slate-800/50">
+                                                    <div className="flex items-center justify-between mb-4">
+                                                        <h3 className="text-lg font-bold text-slate-300 flex items-center gap-2">
+                                                            <Monitor className="w-5 h-5 text-amber-500" />
+                                                            Presentation Preview
+                                                        </h3>
+                                                        <a
+                                                            href={projectData.presentation_url}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1 transition-colors"
+                                                        >
+                                                            <ExternalLink className="w-3.5 h-3.5" />
+                                                            Open in new tab
+                                                        </a>
+                                                    </div>
+                                                    <div className="bg-[#1c1b14] border border-slate-800 rounded-xl overflow-hidden">
+                                                        <div style={{ position: 'relative', width: '100%', paddingTop: '56.25%' }}>
+                                                            <iframe
+                                                                src={embedUrl}
+                                                                style={{ position: 'absolute', width: '100%', height: '100%', top: 0, left: 0, border: 'none' }}
+                                                                allow="fullscreen"
+                                                                allowFullScreen
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
+                                    </div>
+                                )}
                             </div>
                         )}
 
