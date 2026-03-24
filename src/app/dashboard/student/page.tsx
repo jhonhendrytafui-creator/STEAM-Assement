@@ -651,7 +651,7 @@ export default function StudentDashboardPage() {
             <nav className="bg-[#1a1811] border-b border-amber-900/40 px-6 py-4 flex justify-between items-center sticky top-0 z-50">
                 <div className="flex items-center gap-3">
                     <img src="/logo.ico" alt="Logo" className="w-6 h-6 object-contain" />
-                    <span className="font-bold text-xl text-transparent bg-clip-text bg-gradient-to-r from-amber-100 to-amber-500">
+                    <span className="font-bold text-xl text-amber-500">
                         PAHOA STEAM ASSESSMENT
                     </span>
                     <span className="ml-2 bg-amber-900/30 text-amber-400 text-xs px-3 py-1 rounded-full border border-amber-500/20 hidden sm:inline-block">

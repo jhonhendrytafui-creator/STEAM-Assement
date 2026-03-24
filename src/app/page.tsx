@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Network, Cpu, Lock, LogIn } from 'lucide-react';
+import { Cpu, Lock, LogIn, Star } from 'lucide-react';
 import { createBrowserClient } from '@supabase/ssr';
 
 export default function LoginPage() {
@@ -25,18 +25,15 @@ export default function LoginPage() {
       provider: 'google',
       options: {
         redirectTo: `${window.location.origin}/auth/callback`,
+        queryParams: {
+          prompt: 'select_account',
+        },
       },
     });
   };
 
   return (
     <div className="min-h-screen bg-[#1c1b14] text-[#d4d4d4] flex flex-col font-sans relative">
-
-      {/* Top Left Header */}
-      <div className="absolute top-0 left-0 p-6 flex items-center gap-3">
-        <img src="/logo.ico" alt="Logo" className="w-6 h-6 object-contain" />
-        <span className="text-white font-bold text-lg tracking-wide">Pahoa STEAM Assessment</span>
-      </div>
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col items-center justify-center p-4">
@@ -46,7 +43,7 @@ export default function LoginPage() {
 
           {/* Circular Icon Top */}
           <div className="w-16 h-16 rounded-full border border-amber-500 bg-[#29220c] flex items-center justify-center mb-6 shadow-[0_0_15px_rgba(245,158,11,0.3)]">
-            <Network className="w-8 h-8 text-amber-500" strokeWidth={2.5} />
+            <Star className="w-8 h-8 text-amber-500 fill-amber-500" strokeWidth={2} />
           </div>
 
           {/* Titles & Description */}
