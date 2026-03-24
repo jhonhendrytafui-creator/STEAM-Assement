@@ -3,19 +3,40 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 
 // Subject constants for mapping IDs to readable names
 const SUBJECTS = [
-    { id: 'matematika', label: 'Matematika' },
-    { id: 'fisika', label: 'Fisika' },
-    { id: 'biologi', label: 'Biologi' },
-    { id: 'kimia', label: 'Kimia' },
-    { id: 'informatika', label: 'Informatika' },
-    { id: 'seni', label: 'Seni Rupa/Musik' },
-    { id: 'ekonomi', label: 'Ekonomi' },
-    { id: 'sosiologi', label: 'Sosiologi' },
-    { id: 'geografi', label: 'Geografi' },
-    { id: 'sejarah', label: 'Sejarah' },
-    { id: 'bahasa_indo', label: 'Bahasa Indonesia' },
-    { id: 'bahasa_inggris', label: 'Bahasa Inggris' },
-    { id: 'bahasa_mandarin', label: 'Bahasa Mandarin' },
+    { id: 'biology_marine', label: 'Biology & Marine Biology' },
+    { id: 'chemistry', label: 'Chemistry' },
+    { id: 'physics', label: 'Physics' },
+    { id: 'environmental_science', label: 'Environmental Science' },
+    { id: 'astronomy', label: 'Astronomy' },
+    { id: 'geology_meteorology', label: 'Geology & Meteorology' },
+    { id: 'psychology', label: 'Psychology' },
+    
+    { id: 'cs_programming', label: 'Computer Science & Programming' },
+    { id: 'it', label: 'Information Technology (IT)' },
+    { id: 'cybersecurity_data', label: 'Cybersecurity & Data Science' },
+    { id: 'ai_ml', label: 'Artificial Intelligence & Machine Learning' },
+    { id: 'robotics', label: 'Robotics' },
+    { id: 'web_development', label: 'Web Development' },
+    
+    { id: 'civil_structural', label: 'Civil & Structural Engineering' },
+    { id: 'mechanical', label: 'Mechanical Engineering' },
+    { id: 'aerospace', label: 'Aerospace Engineering' },
+    { id: 'electrical_electronic', label: 'Electrical & Electronic Engineering' },
+    { id: 'chemical', label: 'Chemical Engineering' },
+    { id: 'biomedical', label: 'Biomedical Engineering' },
+    
+    { id: 'visual_design', label: 'Visual Arts & Design' },
+    { id: 'graphic_digital', label: 'Graphic Design & Digital Media' },
+    { id: 'industrial_product', label: 'Industrial/Product Design' },
+    { id: 'architecture', label: 'Architecture' },
+    { id: 'creative_language', label: 'Creative Arts & Language Arts' },
+    { id: 'performing_arts', label: 'Performing Arts' },
+    
+    { id: 'calculus_linear', label: 'Calculus & Linear Algebra' },
+    { id: 'statistics_probability', label: 'Statistics & Probability' },
+    { id: 'differential_equations', label: 'Differential Equations' },
+    { id: 'discrete_mathematics', label: 'Discrete Mathematics' },
+    { id: 'financial_mathematics', label: 'Financial Mathematics' },
 ];
 
 export async function POST(req: Request) {
