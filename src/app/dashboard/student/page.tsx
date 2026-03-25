@@ -713,11 +713,11 @@ export default function StudentDashboardPage() {
 
             {/* Main Layout (only if registered) */}
             {studentInfo && (
-                <main className="w-full px-3 sm:px-6 lg:px-8 py-4 sm:py-6 flex flex-col md:flex-row gap-4 md:gap-6 lg:gap-8">
+                <main className="w-full px-3 sm:px-6 lg:px-8 py-4 sm:py-6 flex flex-col md:flex-row gap-4 md:gap-6 lg:gap-8 h-[calc(100vh-65px)] overflow-hidden">
 
                     {/* Sidebar / Tabs */}
                     <aside
-                        className="w-full md:w-64 shrink-0 flex flex-row md:flex-col gap-2 md:gap-0 md:space-y-2 overflow-x-auto md:overflow-visible pb-2 md:pb-0 sticky top-20 md:top-24 h-fit z-40 bg-[#1c1b14] pt-2 md:pt-0"
+                        className="w-full md:w-64 shrink-0 flex flex-row md:flex-col gap-2 md:gap-0 md:space-y-2 overflow-x-auto md:overflow-y-auto pb-2 md:pb-0 z-40 bg-[#1c1b14] pt-2 md:pt-0"
                         style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
                     >
                         <style dangerouslySetInnerHTML={{ __html: `aside::-webkit-scrollbar { display: none; }` }} />
@@ -753,7 +753,7 @@ export default function StudentDashboardPage() {
                     </aside>
 
                     {/* Tab Content Area */}
-                    <div className="flex-1 min-h-[500px]">
+                    <div className="flex-1 min-h-0 overflow-y-auto">
 
                         {/* ═══════════════════════════════════════════ */}
                         {/* TAB 1: MY PROJECT DATA                     */}
