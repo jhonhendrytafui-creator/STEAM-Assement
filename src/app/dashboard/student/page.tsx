@@ -217,6 +217,17 @@ export default function StudentDashboardPage() {
     const [loading, setLoading] = useState(true);
     const [userEmail, setUserEmail] = useState<string | null>(null);
 
+    // Helper: render text with **bold** markdown converted to <strong> tags
+    const renderFormattedText = (text: string) => {
+        const parts = text.split(/(\*\*.*?\*\*)/g);
+        return parts.map((part, i) => {
+            if (part.startsWith('**') && part.endsWith('**')) {
+                return <strong key={i} className="text-white font-semibold">{part.slice(2, -2)}</strong>;
+            }
+            return <span key={i}>{part}</span>;
+        });
+    };
+
     // Student & group info
     const [studentInfo, setStudentInfo] = useState<StudentInfo | null>(null);
     const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
@@ -1578,7 +1589,12 @@ export default function StudentDashboardPage() {
                                                 {teacherComment && (
                                                     <div className="mt-5 pt-4 border-t border-amber-500/20">
                                                         <span className="text-[10px] uppercase text-amber-500/70 font-bold block mb-1">Teacher Assessment Comment</span>
-                                                        <p className="text-sm text-amber-100 whitespace-pre-wrap leading-relaxed">"{teacherComment}"</p>
+                                                        <p className="text-sm text-amber-100 whitespace-pre-wrap leading-relaxed">"{teacherComment.split('\n').map((line: string, idx: number) => (
+                                                            <React.Fragment key={idx}>
+                                                                {idx > 0 && <br />}
+                                                                {renderFormattedText(line)}
+                                                            </React.Fragment>
+                                                        ))}"</p>
                                                     </div>
                                                 )}
                                             </div>
@@ -1704,7 +1720,12 @@ export default function StudentDashboardPage() {
                                         <MessageSquare className="w-4 h-4" /> Teacher Feedback
                                     </span>
                                     <p className="text-sm text-amber-100/90 whitespace-pre-line bg-amber-500/5 p-4 rounded-lg border border-amber-500/10">
-                                        {viewingPastIteration.teacher_comment}
+                                        {viewingPastIteration.teacher_comment.split('\n').map((line: string, idx: number) => (
+                                            <React.Fragment key={idx}>
+                                                {idx > 0 && <br />}
+                                                {renderFormattedText(line)}
+                                            </React.Fragment>
+                                        ))}
                                     </p>
                                 </div>
                             )}
@@ -1806,13 +1827,12 @@ export default function StudentDashboardPage() {
                                     return (
                                         <div key={idx} className="flex gap-2 mb-2 items-start text-[15px]">
                                             <span className="text-indigo-500 mt-1.5">•</span>
-                                            {/* Render inline bolding rudimentary */}
-                                            <span dangerouslySetInnerHTML={{ __html: line.substring(2).replace(/\*\*(.*?)\*\*/g, '<strong class="text-white">$1</strong>') }} />
+                                            <span>{renderFormattedText(line.substring(2))}</span>
                                         </div>
                                     );
                                 }
                                 if (line.trim() === '') return <div key={idx} className="h-2"></div>;
-                                return <p key={idx} className="mb-2 leading-relaxed">{line}</p>;
+                                return <p key={idx} className="mb-2 leading-relaxed">{renderFormattedText(line)}</p>;
                             })}
                         </div>
 
