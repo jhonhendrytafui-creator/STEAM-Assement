@@ -6,6 +6,10 @@ export async function GET(request: Request) {
     const requestUrl = new URL(request.url);
     const code = requestUrl.searchParams.get('code');
 
+    // Use NEXT_PUBLIC_SITE_URL to ensure redirects go to the custom domain,
+    // not the internal Netlify domain. Falls back to request origin for local dev.
+    const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || requestUrl.origin).replace(/\/$/, '');
+
     if (code) {
         const cookieStore = await cookies();
 
@@ -37,7 +41,7 @@ export async function GET(request: Request) {
             if (!user.email?.endsWith('@sekolah.pahoa.sch.id')) {
                 // Logout user jika tidak sesuai domain
                 await supabase.auth.signOut();
-                return NextResponse.redirect(`${requestUrl.origin}/?error=unauthorized_email`);
+                return NextResponse.redirect(`${siteUrl}/?error=unauthorized_email`);
             }
 
             // Cek apakah email ada di tabel teacher_emails
@@ -60,13 +64,13 @@ export async function GET(request: Request) {
 
             // Redirect berdasarkan role
             if (role === 'teacher') {
-                return NextResponse.redirect(`${requestUrl.origin}/dashboard/teacher`);
+                return NextResponse.redirect(`${siteUrl}/dashboard/teacher`);
             } else {
-                return NextResponse.redirect(`${requestUrl.origin}/dashboard/student`);
+                return NextResponse.redirect(`${siteUrl}/dashboard/student`);
             }
         }
     }
 
     // Jika gagal, kembalikan ke halaman utama (login)
-    return NextResponse.redirect(`${requestUrl.origin}/`);
+    return NextResponse.redirect(`${siteUrl}/`);
 }
