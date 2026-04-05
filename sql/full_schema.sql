@@ -50,14 +50,17 @@ CREATE TABLE IF NOT EXISTS teacher_emails (
 -- ════════════════════════════════════════════════════════════════
 
 -- 2.1 Student Master (source of truth for group assignments)
+-- NOTE: email is unique PER academic_year, not globally.
+-- This allows the same student to have different class/group each year.
 CREATE TABLE IF NOT EXISTS student_master (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    email TEXT UNIQUE NOT NULL,
+    email TEXT NOT NULL,
     full_name TEXT NOT NULL,
     class_name TEXT NOT NULL,               -- e.g., '7.1', '7.2', '8.1', '10.3'
     group_number INT NOT NULL,              -- e.g., 1, 2, 3, 4...
     academic_year TEXT NOT NULL DEFAULT '2025/2026',
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(email, academic_year)
 );
 
 -- 2.2 Themes (teacher-defined, per grade, per year)
