@@ -165,6 +165,7 @@ interface ProjectData {
     iteration?: number;
     teacher_comment?: string | null;
     created_at: string;
+    additional_documents?: { type: string, url: string }[] | null;
 }
 
 interface LogbookEntry {
@@ -247,9 +248,11 @@ export default function StudentDashboardPage() {
     const [themesList, setThemesList] = useState<Theme[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    // Presentation State
-    const [presentationUrl, setPresentationUrl] = useState('');
-    const [isSavingPresentation, setIsSavingPresentation] = useState(false);
+    // Presentation / Documents State
+    const [documents, setDocuments] = useState<{ type: string, url: string }[]>([]);
+    const [newDocType, setNewDocType] = useState('Website');
+    const [newDocUrl, setNewDocUrl] = useState('');
+    const [isSavingDoc, setIsSavingDoc] = useState(false);
 
     // AI Precheck State
     const [isPrechecking, setIsPrechecking] = useState(false);
@@ -369,7 +372,7 @@ export default function StudentDashboardPage() {
         if (fetchedProjects && fetchedProjects.length > 0) {
             setProjectHistory(fetchedProjects);
             setProjectData(fetchedProjects[0]);
-            setPresentationUrl(fetchedProjects[0].presentation_url || '');
+            setDocuments(fetchedProjects[0].additional_documents || []);
         }
 
         // 5. Fetch logbooks for this group (all members' entries)
@@ -630,7 +633,7 @@ export default function StudentDashboardPage() {
             showToast(nextIteration > 1 ? 'Project resubmitted successfully!' : 'Project submitted successfully!', 'success');
             setProjectHistory(prev => [data[0], ...prev]);
             setProjectData(data[0]);
-            setPresentationUrl('');
+            setDocuments([]);
             setActiveTab('data');
             setTitle('');
             setProblem('');
@@ -746,7 +749,7 @@ export default function StudentDashboardPage() {
                             { id: 'data', label: 'My Project Data', icon: Database },
                             { id: 'submit', label: 'Submit a Project', icon: PenSquare },
                             { id: 'logbook', label: 'My Logbook', icon: BookOpen },
-                            { id: 'presentation', label: 'My Presentation', icon: Monitor },
+                            { id: 'presentation', label: 'Project Documents', icon: Monitor },
                             { id: 'result', label: 'Assessment Result', icon: FileCheck },
                         ].map((tab) => (
                             <button
@@ -1163,15 +1166,15 @@ export default function StudentDashboardPage() {
                         )}
 
                         {/* ═══════════════════════════════════════════ */}
-                        {/* TAB: MY PRESENTATION                       */}
+                        {/* TAB: PROJECT DOCUMENTS                       */}
                         {/* ═══════════════════════════════════════════ */}
                         {activeTab === 'presentation' && (
                             <div className="bg-[#1a1811] border border-amber-900/20 rounded-2xl p-6 sm:p-8 shadow-2xl">
                                 <h2 className="text-2xl font-bold text-white mb-2 flex items-center gap-3">
                                     <Monitor className="text-amber-500" />
-                                    My Presentation
+                                    Project Documents
                                 </h2>
-                                <p className="text-slate-400 text-sm mb-8">Submit your Canva presentation link here. A preview will be shown below.</p>
+                                <p className="text-slate-400 text-sm mb-8">Submit any relevant project links here (e.g., Website, Canva Presentation, GitHub, Demo Video). They will be visible to your teacher during assessment.</p>
 
                                 {!projectData ? (
                                     <div className="bg-[#1c1b14] border border-dashed border-slate-700 rounded-xl p-10 text-center flex flex-col items-center justify-center">
@@ -1180,7 +1183,7 @@ export default function StudentDashboardPage() {
                                         </div>
                                         <h3 className="text-lg font-bold text-slate-300 mb-2">No Project Submitted Yet</h3>
                                         <p className="text-slate-500 text-sm max-w-sm mx-auto">
-                                            You need to submit a project first before adding a presentation link.
+                                            You need to submit a project first before adding project documents.
                                         </p>
                                     </div>
                                 ) : projectData.status !== 'approved' ? (
@@ -1189,69 +1192,131 @@ export default function StudentDashboardPage() {
                                             <Lock className="w-6 h-6 text-amber-500" />
                                         </div>
                                         <div>
-                                            <h3 className="text-lg font-bold text-amber-400 mb-1">Presentation Locked</h3>
+                                            <h3 className="text-lg font-bold text-amber-400 mb-1">Documents Locked</h3>
                                             <p className="text-sm text-amber-200/80">
-                                                You can only add a presentation link after your project has been <strong>approved</strong> by a teacher (C1 approval).
+                                                You can only add external document links after your project has been <strong>approved</strong> by a teacher (C1 approval).
                                                 Your current project status is: <span className={`font-bold ${projectData.status === 'revision' ? 'text-red-400' : 'text-amber-400'}`}>{projectData.status}</span>
                                             </p>
                                         </div>
                                     </div>
                                 ) : (
                                     <div className="space-y-6">
-                                        {/* Canva URL Input */}
-                                        <div>
-                                            <label className="block text-sm font-semibold text-slate-300 mb-2">Canva Presentation URL</label>
-                                            <div className="relative">
-                                                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
-                                                    <LinkIcon className="w-5 h-5" />
+                                        {/* Document List */}
+                                        {documents.length > 0 && (
+                                            <div className="mb-8">
+                                                <h3 className="text-sm font-semibold text-slate-300 mb-4">Saved Documents</h3>
+                                                <div className="space-y-3">
+                                                    {documents.map((doc, idx) => (
+                                                        <div key={idx} className="bg-[#1c1b14] border border-slate-800 rounded-xl p-4 flex items-center justify-between">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="bg-amber-500/10 p-2 rounded-lg text-amber-500">
+                                                                    <LinkIcon className="w-4 h-4" />
+                                                                </div>
+                                                                <div>
+                                                                    <p className="text-sm font-bold text-slate-300">{doc.type}</p>
+                                                                    <a href={doc.url} target="_blank" rel="noopener noreferrer" className="text-xs text-amber-500/80 hover:text-amber-400 block truncate max-w-[200px] sm:max-w-md">
+                                                                        {doc.url}
+                                                                    </a>
+                                                                </div>
+                                                            </div>
+                                                            <button
+                                                                onClick={async () => {
+                                                                    const newDocs = documents.filter((_, i) => i !== idx);
+                                                                    setIsSavingDoc(true);
+                                                                    const { error } = await supabase
+                                                                        .from('projects')
+                                                                        .update({ additional_documents: newDocs })
+                                                                        .eq('id', projectData.id);
+                                                                    setIsSavingDoc(false);
+                                                                    if (error) {
+                                                                        showToast('Failed to remove document', 'error');
+                                                                    } else {
+                                                                        setDocuments(newDocs);
+                                                                        showToast('Document removed', 'success');
+                                                                    }
+                                                                }}
+                                                                className="text-slate-500 hover:text-red-400 p-2 transition-colors"
+                                                            >
+                                                                <Trash2 className="w-4 h-4" />
+                                                            </button>
+                                                        </div>
+                                                    ))}
                                                 </div>
-                                                <input
-                                                    type="url"
-                                                    value={presentationUrl}
-                                                    onChange={(e) => setPresentationUrl(e.target.value)}
-                                                    className="w-full bg-[#1c1b14] border border-slate-800 rounded-xl py-3 pl-10 pr-4 text-slate-200 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all font-mono text-sm"
-                                                    placeholder="https://www.canva.com/design/.../view"
-                                                />
                                             </div>
-                                            <p className="text-xs text-amber-500/80 mt-2">
-                                                * Paste the public view link of your Canva presentation. Make sure the presentation is set to &quot;Anyone with the link can view&quot;.
-                                            </p>
-                                        </div>
+                                        )}
 
-                                        {/* Save Button */}
-                                        <button
-                                            onClick={async () => {
-                                                if (!presentationUrl.trim()) {
-                                                    showToast('Please enter a Canva presentation URL.', 'warning');
-                                                    return;
-                                                }
-                                                if (!presentationUrl.includes('canva.com')) {
-                                                    showToast('Please provide a valid Canva URL.', 'error');
-                                                    return;
-                                                }
-                                                setIsSavingPresentation(true);
-                                                const { error } = await supabase
-                                                    .from('projects')
-                                                    .update({ presentation_url: presentationUrl.trim() })
-                                                    .eq('id', projectData.id);
-                                                setIsSavingPresentation(false);
-                                                if (error) {
-                                                    showToast('Failed to save presentation URL: ' + error.message, 'error');
-                                                } else {
-                                                    setProjectData({ ...projectData, presentation_url: presentationUrl.trim() });
-                                                    showToast('Presentation link saved successfully!', 'success');
-                                                }
-                                            }}
-                                            disabled={isSavingPresentation}
-                                            className="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-[#1a160d] font-bold py-3 px-8 rounded-xl flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-amber-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
-                                        >
-                                            {isSavingPresentation ? (
-                                                <div className="w-5 h-5 border-2 border-[#1a160d] border-t-transparent rounded-full animate-spin"></div>
-                                            ) : (
-                                                <Save className="w-5 h-5" />
-                                            )}
-                                            {isSavingPresentation ? 'Saving...' : 'Save Presentation Link'}
-                                        </button>
+                                        <div className="pt-6 border-t border-slate-800/50">
+                                            <h3 className="text-sm font-semibold text-slate-300 mb-4">Add New Document</h3>
+                                            
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                                                <div>
+                                                    <label className="block text-xs font-semibold text-slate-400 mb-2">Type</label>
+                                                    <div className="relative">
+                                                        <select
+                                                            value={newDocType}
+                                                            onChange={(e) => setNewDocType(e.target.value)}
+                                                            className="w-full bg-[#1c1b14] border border-slate-800 rounded-xl py-3 px-4 text-slate-200 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all appearance-none text-sm"
+                                                        >
+                                                            <option value="Website">Website</option>
+                                                            <option value="Canva Presentation">Canva Presentation</option>
+                                                            <option value="Figma Prototype">Figma Prototype</option>
+                                                            <option value="GitHub Repo">GitHub Repo</option>
+                                                            <option value="Video Demo">Video Demo</option>
+                                                            <option value="Other">Other Link</option>
+                                                        </select>
+                                                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
+                                                    </div>
+                                                </div>
+                                                <div className="md:col-span-2">
+                                                    <label className="block text-xs font-semibold text-slate-400 mb-2">Document URL</label>
+                                                    <div className="relative">
+                                                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
+                                                            <LinkIcon className="w-4 h-4" />
+                                                        </div>
+                                                        <input
+                                                            type="url"
+                                                            value={newDocUrl}
+                                                            onChange={(e) => setNewDocUrl(e.target.value)}
+                                                            className="w-full bg-[#1c1b14] border border-slate-800 rounded-xl py-3 pl-10 pr-4 text-slate-200 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all font-mono text-sm"
+                                                            placeholder="https://..."
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Add Button */}
+                                            <button
+                                                onClick={async () => {
+                                                    if (!newDocUrl.trim() || !newDocUrl.startsWith('http')) {
+                                                        showToast('Please enter a valid URL starting with http:// or https://', 'warning');
+                                                        return;
+                                                    }
+                                                    setIsSavingDoc(true);
+                                                    const updatedDocs = [...documents, { type: newDocType, url: newDocUrl.trim() }];
+                                                    const { error } = await supabase
+                                                        .from('projects')
+                                                        .update({ additional_documents: updatedDocs })
+                                                        .eq('id', projectData.id);
+                                                    setIsSavingDoc(false);
+                                                    if (error) {
+                                                        showToast('Failed to add document: ' + error.message, 'error');
+                                                    } else {
+                                                        setDocuments(updatedDocs);
+                                                        setNewDocUrl('');
+                                                        showToast('Document added successfully!', 'success');
+                                                    }
+                                                }}
+                                                disabled={isSavingDoc}
+                                                className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/20 font-bold py-3 px-6 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                                            >
+                                                {isSavingDoc ? (
+                                                    <div className="w-4 h-4 border-2 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+                                                ) : (
+                                                    <Plus className="w-4 h-4" />
+                                                )}
+                                                Add Document
+                                            </button>
+                                        </div>
                                     </div>
                                 )}
                             </div>
