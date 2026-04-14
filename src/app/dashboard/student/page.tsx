@@ -253,6 +253,7 @@ export default function StudentDashboardPage() {
     const [newDocType, setNewDocType] = useState('Website');
     const [newDocUrl, setNewDocUrl] = useState('');
     const [isSavingDoc, setIsSavingDoc] = useState(false);
+    const [isSavingGoogleDoc, setIsSavingGoogleDoc] = useState(false);
 
     // AI Precheck State
     const [isPrechecking, setIsPrechecking] = useState(false);
@@ -373,6 +374,7 @@ export default function StudentDashboardPage() {
             setProjectHistory(fetchedProjects);
             setProjectData(fetchedProjects[0]);
             setDocuments(fetchedProjects[0].additional_documents || []);
+            setDocUrl(fetchedProjects[0].google_doc_url || '');
         }
 
         // 5. Fetch logbooks for this group (all members' entries)
@@ -568,39 +570,6 @@ export default function StudentDashboardPage() {
             setIsSubmitting(false);
             return;
         }
-        if (!docUrl.trim()) {
-            showToast('Please provide a Google Docs URL.', 'warning');
-            setIsSubmitting(false);
-            return;
-        }
-
-        // URL validation
-        if (!docUrl.includes('docs.google.com')) {
-            showToast('Please provide a valid Google Docs URL.', 'error');
-            setIsSubmitting(false);
-            return;
-        }
-
-        // Check if the Google Doc is public (always enforced)
-        try {
-            const docCheck = await fetch('/api/check-doc', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ url: docUrl })
-            });
-            const checkResult = await docCheck.json();
-
-            if (!checkResult.isPublic) {
-                showToast(checkResult.error || 'The Google Doc is not publicly accessible. Please set sharing to "Anyone with the link".', 'error');
-                setIsSubmitting(false);
-                return;
-            }
-        } catch (err) {
-            console.error(err);
-            showToast('Failed to verify Google Doc access. Please make sure the URL is correct and try again.', 'error');
-            setIsSubmitting(false);
-            return;
-        }
 
         const combinedAbstract = JSON.stringify({
             problem,
@@ -619,7 +588,7 @@ export default function StudentDashboardPage() {
                 title: title,
                 abstract: combinedAbstract,
                 status: 'pending',
-                google_doc_url: docUrl,
+                google_doc_url: projectHistory.length > 0 ? projectHistory[0].google_doc_url : null,
                 iteration: nextIteration
             }
         ]).select();
@@ -638,7 +607,6 @@ export default function StudentDashboardPage() {
             setTitle('');
             setProblem('');
             setSolution('');
-            setDocUrl('');
             setKeyConcepts([{ subject: 'biology_marine', concept: '' }]);
 
             // Reset C1 assessment scores for this group so the new iteration gets a fresh start
@@ -663,6 +631,57 @@ export default function StudentDashboardPage() {
         return member?.full_name || email;
     };
 
+    // ─── Save Google Doc ───────────────────────────────
+    const handleSaveGoogleDoc = async () => {
+        if (!docUrl.trim()) {
+            showToast('Please provide a Google Docs URL.', 'warning');
+            return;
+        }
+
+        if (!docUrl.includes('docs.google.com')) {
+            showToast('Please provide a valid Google Docs URL.', 'error');
+            return;
+        }
+
+        setIsSavingGoogleDoc(true);
+        try {
+            const docCheck = await fetch('/api/check-doc', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: docUrl })
+            });
+            const checkResult = await docCheck.json();
+
+            if (!checkResult.isPublic) {
+                showToast(checkResult.error || 'The Google Doc is not publicly accessible. Please set sharing to "Anyone with the link".', 'error');
+                setIsSavingGoogleDoc(false);
+                return;
+            }
+
+            const { error } = await supabase
+                .from('projects')
+                .update({ google_doc_url: docUrl })
+                .eq('id', projectData!.id);
+
+            if (error) throw error;
+            
+            // update local state
+            setProjectData({ ...projectData!, google_doc_url: docUrl });
+            setProjectHistory(prev => {
+                const newHistory = [...prev];
+                if (newHistory.length > 0) newHistory[0].google_doc_url = docUrl;
+                return newHistory;
+            });
+            
+            showToast('Google Doc link saved successfully!', 'success');
+        } catch (err: any) {
+            console.error(err);
+            showToast(err.message || 'Failed to verify Google Doc access.', 'error');
+        } finally {
+            setIsSavingGoogleDoc(false);
+        }
+    };
+
     // ─── Loading State ─────────────────────────────────
     if (loading) return (
         <div className="min-h-screen bg-[#1c1b14] flex items-center justify-center">
@@ -675,6 +694,17 @@ export default function StudentDashboardPage() {
 
     return (
         <div className="min-h-screen bg-[#1c1b14] text-[#d4d4d4] font-sans">
+            {/* Loading Overlay for Pre-check */}
+            {isPrechecking && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-[2px]">
+                    <div className="bg-[#1a1811] border border-indigo-500/30 rounded-2xl p-8 flex flex-col items-center max-w-sm w-full mx-4 shadow-2xl">
+                        <div className="w-16 h-16 border-4 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin mb-6"></div>
+                        <h3 className="text-xl font-bold text-white mb-2 text-center">AI Pre-Check in Progress</h3>
+                        <p className="text-slate-400 text-sm text-center">Please wait while Gemini is analyzing your project details. This may take a few seconds...</p>
+                    </div>
+                </div>
+            )}
+
             {/* Toast Notifications */}
             <ToastContainer toasts={toasts} onDismiss={dismissToast} />
 
@@ -1201,6 +1231,47 @@ export default function StudentDashboardPage() {
                                     </div>
                                 ) : (
                                     <div className="space-y-6">
+                                        {/* Compulsory Main Project Document */}
+                                        <div className="bg-[#1c1b14] border border-slate-800 rounded-xl p-6 relative overflow-hidden">
+                                            <div className="absolute top-0 right-0 py-1 px-3 bg-amber-500/20 text-amber-500 text-[10px] font-bold tracking-wider uppercase rounded-bl-lg border-b border-l border-amber-500/20">
+                                                Compulsory
+                                            </div>
+                                            <h3 className="text-sm font-semibold text-slate-300 mb-4 flex items-center gap-2">
+                                                <svg className="w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                                                Main Project Document (Google Doc)
+                                            </h3>
+                                            
+                                            <div className="flex flex-col sm:flex-row gap-4 mb-2">
+                                                <div className="flex-1 relative">
+                                                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
+                                                        <LinkIcon className="w-4 h-4" />
+                                                    </div>
+                                                    <input
+                                                        type="url"
+                                                        value={docUrl}
+                                                        onChange={(e) => setDocUrl(e.target.value)}
+                                                        className="w-full bg-[#110e08] border border-slate-700 rounded-xl py-3 pl-10 pr-4 text-slate-200 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all font-mono text-sm"
+                                                        placeholder="https://docs.google.com/document/d/..."
+                                                    />
+                                                </div>
+                                                <button
+                                                    onClick={handleSaveGoogleDoc}
+                                                    disabled={isSavingGoogleDoc || !docUrl.trim()}
+                                                    className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/20 font-bold py-3 px-6 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-sm whitespace-nowrap"
+                                                >
+                                                    {isSavingGoogleDoc ? (
+                                                        <div className="w-4 h-4 border-2 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+                                                    ) : (
+                                                        <Save className="w-4 h-4" />
+                                                    )}
+                                                    Save & Check
+                                                </button>
+                                            </div>
+                                            <p className="text-xs text-amber-500/80 mb-2">
+                                                * Make sure the document sharing setting is set to "Anyone with the link can view". This is required.
+                                            </p>
+                                        </div>
+
                                         {/* Document List */}
                                         {documents.length > 0 && (
                                             <div className="mb-8">
@@ -1245,8 +1316,12 @@ export default function StudentDashboardPage() {
                                             </div>
                                         )}
 
+                                        {/* Optional Other Documents */}
                                         <div className="pt-6 border-t border-slate-800/50">
-                                            <h3 className="text-sm font-semibold text-slate-300 mb-4">Add New Document</h3>
+                                            <h3 className="text-sm font-semibold text-slate-300 mb-4 flex items-center gap-2">
+                                                <Plus className="w-4 h-4 text-slate-400" />
+                                                Add Other Optional Documents
+                                            </h3>
 
                                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                                                 <div>
@@ -1484,24 +1559,6 @@ export default function StudentDashboardPage() {
                                             </div>
                                         </div>
 
-                                        {/* Google Doc URL */}
-                                        <div className="pt-4 border-t border-slate-800/50">
-                                            <label className="block text-sm font-semibold text-slate-300 mb-2">Google Doc URL (Public)</label>
-                                            <div className="relative">
-                                                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
-                                                    <LinkIcon className="w-5 h-5" />
-                                                </div>
-                                                <input
-                                                    type="url"
-                                                    value={docUrl}
-                                                    onChange={(e) => setDocUrl(e.target.value)}
-                                                    className="w-full bg-[#1c1b14] border border-slate-800 rounded-xl py-3 pl-10 pr-4 text-slate-200 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all font-mono text-sm"
-                                                    placeholder="https://docs.google.com/document/d/..."
-                                                />
-                                            </div>
-                                            <p className="text-xs text-amber-500/80 mt-2">
-                                                * Make sure the document sharing setting is set to &quot;Anyone with the link can view&quot;.
-                                            </p>
                                         </div>
 
                                         {/* Submit & PreCheck Buttons */}

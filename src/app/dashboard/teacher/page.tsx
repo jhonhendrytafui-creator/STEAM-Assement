@@ -942,6 +942,17 @@ export default function TeacherDashboardPage() {
 
     return (
         <div className="min-h-screen bg-[#1c1b14] text-[#d4d4d4] font-sans">
+            {/* Loading Overlay for Auto-assessment */}
+            {isAutoAssessing && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-[2px]">
+                    <div className="bg-[#1a1811] border border-indigo-500/30 rounded-2xl p-8 flex flex-col items-center max-w-sm w-full mx-4 shadow-2xl">
+                        <div className="w-16 h-16 border-4 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin mb-6"></div>
+                        <h3 className="text-xl font-bold text-white mb-2 text-center">AI Auto-Assessment</h3>
+                        <p className="text-slate-400 text-sm text-center">Please wait while Gemini is evaluating the project against the rubrics. This may take a few seconds...</p>
+                    </div>
+                </div>
+            )}
+
             <ToastContainer toasts={toasts} onDismiss={dismissToast} />
 
             {/* Navbar */}
