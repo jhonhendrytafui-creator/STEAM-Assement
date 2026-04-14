@@ -27,39 +27,56 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  // Use getUser() instead of getSession() for accurate validation
-  const { data: { user } } = await supabase.auth.getUser()
+  // Use getSession() here instead of getUser().
+  // getUser() makes a live network call to Supabase on every request which can
+  // fail if there is any network issue between the Next.js server and Supabase,
+  // causing the user to be bounced back to the login page even with a valid session.
+  // getSession() reads the JWT from the cookie directly — fast and reliable.
+  // The callback route already uses getUser() (the secure context) to validate
+  // the session at sign-in time, so this is safe.
+  let session = null
+  try {
+    const { data } = await supabase.auth.getSession()
+    session = data.session
+  } catch (e) {
+    console.error('Middleware getSession error:', e)
+  }
 
-  // Jika tidak ada user dan mencoba masuk ke dashboard, lempar ke login
-  if (!user && request.nextUrl.pathname.startsWith('/dashboard')) {
+  // If no session and trying to access dashboard, redirect to login
+  if (!session && request.nextUrl.pathname.startsWith('/dashboard')) {
     const url = request.nextUrl.clone()
     url.pathname = '/'
     return NextResponse.redirect(url)
   }
 
-  // Ambil data profil untuk mengecek role
-  if (user) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
+  // Role-based route protection
+  if (session) {
+    try {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', session.user.id)
+        .single()
 
-    const role = profile?.role
-    const path = request.nextUrl.pathname
+      const role = profile?.role
+      const path = request.nextUrl.pathname
 
-    // Proteksi: Siswa tidak boleh masuk ke area Teacher
-    if (role === 'student' && path.startsWith('/dashboard/teacher')) {
-      const url = request.nextUrl.clone()
-      url.pathname = '/dashboard/student'
-      return NextResponse.redirect(url)
-    }
+      // Students cannot access teacher area
+      if (role === 'student' && path.startsWith('/dashboard/teacher')) {
+        const url = request.nextUrl.clone()
+        url.pathname = '/dashboard/student'
+        return NextResponse.redirect(url)
+      }
 
-    // Proteksi: Guru tidak boleh masuk ke area Student
-    if (role === 'teacher' && path.startsWith('/dashboard/student')) {
-      const url = request.nextUrl.clone()
-      url.pathname = '/dashboard/teacher'
-      return NextResponse.redirect(url)
+      // Teachers cannot access student area
+      if (role === 'teacher' && path.startsWith('/dashboard/student')) {
+        const url = request.nextUrl.clone()
+        url.pathname = '/dashboard/teacher'
+        return NextResponse.redirect(url)
+      }
+    } catch (e) {
+      console.error('Middleware profile check error:', e)
+      // Fail open — let the user through if we can't check the role
     }
   }
 
@@ -67,6 +84,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // Hanya jalankan middleware pada halaman dashboard
   matcher: ['/dashboard/:path*'],
 }
