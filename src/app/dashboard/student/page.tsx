@@ -1559,7 +1559,6 @@ export default function StudentDashboardPage() {
                                             </div>
                                         </div>
 
-                                        </div>
 
                                         {/* Submit & PreCheck Buttons */}
                                         <div className="flex flex-col sm:flex-row gap-4 mt-8">
