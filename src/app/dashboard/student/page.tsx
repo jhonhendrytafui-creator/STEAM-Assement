@@ -238,6 +238,10 @@ export default function StudentDashboardPage() {
     const [projectHistory, setProjectHistory] = useState<ProjectData[]>([]);
     const [viewingPastIteration, setViewingPastIteration] = useState<ProjectData | null>(null);
 
+    // UI state
+    const [confirmDeleteDocIdx, setConfirmDeleteDocIdx] = useState<number | null>(null);
+    const [isEditingMainDoc, setIsEditingMainDoc] = useState(false);
+
     // Form State for Project Submission
     const [title, setTitle] = useState('');
     const [theme, setTheme] = useState('');
@@ -672,7 +676,7 @@ export default function StudentDashboardPage() {
                 if (newHistory.length > 0) newHistory[0].google_doc_url = docUrl;
                 return newHistory;
             });
-            
+            setIsEditingMainDoc(false);
             showToast('Google Doc link saved successfully!', 'success');
         } catch (err: any) {
             console.error(err);
@@ -1241,35 +1245,72 @@ export default function StudentDashboardPage() {
                                                 Main Project Document (Google Doc)
                                             </h3>
                                             
-                                            <div className="flex flex-col sm:flex-row gap-4 mb-2">
-                                                <div className="flex-1 relative">
-                                                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
-                                                        <LinkIcon className="w-4 h-4" />
+                                            {projectData?.google_doc_url && !isEditingMainDoc ? (
+                                                <div className="mt-2 mb-2 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-4">
+                                                    <div className="flex items-center gap-3 overflow-hidden w-full">
+                                                        <div className="bg-emerald-500/20 p-2.5 rounded-xl text-emerald-400 shrink-0">
+                                                            <CheckCircle2 className="w-6 h-6" />
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <p className="text-sm font-bold text-emerald-400 mb-0.5">Google Doc Linked Successfully</p>
+                                                            <a href={projectData.google_doc_url} target="_blank" rel="noopener noreferrer" className="text-xs text-emerald-500/80 hover:text-emerald-400 block truncate">
+                                                                {projectData.google_doc_url}
+                                                            </a>
+                                                        </div>
                                                     </div>
-                                                    <input
-                                                        type="url"
-                                                        value={docUrl}
-                                                        onChange={(e) => setDocUrl(e.target.value)}
-                                                        className="w-full bg-[#110e08] border border-slate-700 rounded-xl py-3 pl-10 pr-4 text-slate-200 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all font-mono text-sm"
-                                                        placeholder="https://docs.google.com/document/d/..."
-                                                    />
+                                                    <button
+                                                        onClick={() => {
+                                                            setDocUrl(projectData.google_doc_url || '');
+                                                            setIsEditingMainDoc(true);
+                                                        }}
+                                                        className="shrink-0 text-xs font-bold px-4 py-2 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30 transition-colors w-full sm:w-auto"
+                                                    >
+                                                        Edit Link
+                                                    </button>
                                                 </div>
-                                                <button
-                                                    onClick={handleSaveGoogleDoc}
-                                                    disabled={isSavingGoogleDoc || !docUrl.trim()}
-                                                    className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/20 font-bold py-3 px-6 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-sm whitespace-nowrap"
-                                                >
-                                                    {isSavingGoogleDoc ? (
-                                                        <div className="w-4 h-4 border-2 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
-                                                    ) : (
-                                                        <Save className="w-4 h-4" />
-                                                    )}
-                                                    Save & Check
-                                                </button>
-                                            </div>
-                                            <p className="text-xs text-amber-500/80 mb-2">
-                                                * Make sure the document sharing setting is set to "Anyone with the link can view". This is required.
-                                            </p>
+                                            ) : (
+                                                <>
+                                                    <div className="flex flex-col sm:flex-row gap-4 mb-2">
+                                                        <div className="flex-1 relative">
+                                                            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
+                                                                <LinkIcon className="w-4 h-4" />
+                                                            </div>
+                                                            <input
+                                                                type="url"
+                                                                value={docUrl}
+                                                                onChange={(e) => setDocUrl(e.target.value)}
+                                                                className="w-full bg-[#110e08] border border-slate-700 rounded-xl py-3 pl-10 pr-4 text-slate-200 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all font-mono text-sm"
+                                                                placeholder="https://docs.google.com/document/d/..."
+                                                            />
+                                                        </div>
+                                                        <div className="flex gap-2 w-full sm:w-auto">
+                                                            <button
+                                                                onClick={handleSaveGoogleDoc}
+                                                                disabled={isSavingGoogleDoc || !docUrl.trim()}
+                                                                className="flex-1 sm:flex-none bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/20 font-bold py-3 px-6 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-sm whitespace-nowrap"
+                                                            >
+                                                                {isSavingGoogleDoc ? (
+                                                                    <div className="w-4 h-4 border-2 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+                                                                ) : (
+                                                                    <Save className="w-4 h-4" />
+                                                                )}
+                                                                Save & Check
+                                                            </button>
+                                                            {isEditingMainDoc && (
+                                                                <button
+                                                                    onClick={() => setIsEditingMainDoc(false)}
+                                                                    className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-3 px-4 rounded-xl transition-all active:scale-95 text-sm"
+                                                                >
+                                                                    Cancel
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    <p className="text-xs text-amber-500/80 mb-2">
+                                                        * Make sure the document sharing setting is set to "Anyone with the link can view". This is required.
+                                                    </p>
+                                                </>
+                                            )}
                                         </div>
 
                                         {/* Document List */}
@@ -1290,26 +1331,50 @@ export default function StudentDashboardPage() {
                                                                     </a>
                                                                 </div>
                                                             </div>
-                                                            <button
-                                                                onClick={async () => {
-                                                                    const newDocs = documents.filter((_, i) => i !== idx);
-                                                                    setIsSavingDoc(true);
-                                                                    const { error } = await supabase
-                                                                        .from('projects')
-                                                                        .update({ additional_documents: newDocs })
-                                                                        .eq('id', projectData.id);
-                                                                    setIsSavingDoc(false);
-                                                                    if (error) {
-                                                                        showToast('Failed to remove document', 'error');
-                                                                    } else {
-                                                                        setDocuments(newDocs);
-                                                                        showToast('Document removed', 'success');
-                                                                    }
-                                                                }}
-                                                                className="text-slate-500 hover:text-red-400 p-2 transition-colors"
-                                                            >
-                                                                <Trash2 className="w-4 h-4" />
-                                                            </button>
+                                                            <div className="relative">
+                                                                <button
+                                                                    onClick={() => setConfirmDeleteDocIdx(idx)}
+                                                                    className="text-slate-500 hover:text-red-400 p-2 transition-colors"
+                                                                >
+                                                                    <Trash2 className="w-4 h-4" />
+                                                                </button>
+                                                                
+                                                                {confirmDeleteDocIdx === idx && (
+                                                                    <div className="absolute right-0 bottom-full mb-2 w-48 bg-[#292314] border border-amber-500/30 rounded-xl p-3 shadow-2xl z-20 flex flex-col items-center animate-[slideIn_0.2s_ease-out]">
+                                                                        <p className="text-xs font-semibold text-slate-200 mb-3 text-center">Remove this link?</p>
+                                                                        <div className="flex gap-2 w-full">
+                                                                            <button 
+                                                                                onClick={() => setConfirmDeleteDocIdx(null)} 
+                                                                                className="flex-1 text-xs font-medium py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 transition-colors"
+                                                                            >
+                                                                                Cancel
+                                                                            </button>
+                                                                            <button 
+                                                                                onClick={async () => {
+                                                                                    const newDocs = documents.filter((_, i) => i !== idx);
+                                                                                    setIsSavingDoc(true);
+                                                                                    const { error } = await supabase
+                                                                                        .from('projects')
+                                                                                        .update({ additional_documents: newDocs })
+                                                                                        .eq('id', projectData.id);
+                                                                                    setIsSavingDoc(false);
+                                                                                    setConfirmDeleteDocIdx(null);
+                                                                                    if (error) {
+                                                                                        showToast('Failed to remove document', 'error');
+                                                                                    } else {
+                                                                                        setDocuments(newDocs);
+                                                                                        showToast('Document removed', 'success');
+                                                                                    }
+                                                                                }} 
+                                                                                className="flex-1 text-xs font-bold py-1.5 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/20 transition-colors"
+                                                                            >
+                                                                                Remove
+                                                                            </button>
+                                                                        </div>
+                                                                        <div className="absolute top-full right-4 -mt-[1px] w-0 h-0 border-l-[6px] border-r-[6px] border-t-[6px] border-transparent border-t-amber-500/30"></div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     ))}
                                                 </div>
