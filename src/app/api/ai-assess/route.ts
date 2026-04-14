@@ -570,15 +570,29 @@ Provide your output exactly matching the JSON schema.
 `;
         }
 
-        const result = await model.generateContent(prompt);
-        const responseText = result.response.text();
-
+        let responseText = '';
         let jsonPayload;
-        try {
-            jsonPayload = JSON.parse(responseText);
-        } catch (e) {
-            console.error("Failed to parse Gemini JSON:", responseText);
-            return NextResponse.json({ error: 'Failed to process AI response formatting.' }, { status: 500 });
+        let retries = 3;
+        
+        while (retries > 0) {
+            try {
+                const result = await model.generateContent(prompt);
+                responseText = result.response.text();
+                jsonPayload = JSON.parse(responseText);
+                break; // Success, exit retry loop
+            } catch (e: any) {
+                retries--;
+                console.error(`Gemini fetch error, retries left: ${retries}`, e);
+                
+                if (retries === 0) {
+                    throw new Error(e?.message && e.message.includes('503') 
+                        ? 'Google AI is currently overloaded (503). We automatically tried 3 times, but it is still busy. Please try again in a few minutes.' 
+                        : (e.message || 'Failed to process AI response formatting.'));
+                }
+                
+                // Wait for 2 seconds before retrying
+                await new Promise(res => setTimeout(res, 2000));
+            }
         }
 
         return NextResponse.json(jsonPayload);

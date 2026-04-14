@@ -149,6 +149,7 @@ CREATE TABLE IF NOT EXISTS assessment_scores (
     category_id UUID NOT NULL REFERENCES assessment_categories(id) ON DELETE CASCADE,
     indicator_id UUID NOT NULL REFERENCES rubric_indicators(id) ON DELETE CASCADE,
     score INT NOT NULL DEFAULT 0,           -- 0-1 for checklist, 1-3/4/5 for scales
+    teacher_comment TEXT,                   -- General feedback from the teacher for this specific score evaluation
     assessed_by UUID REFERENCES profiles(id),
     assessed_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(class_name, group_number, academic_year, indicator_id)
