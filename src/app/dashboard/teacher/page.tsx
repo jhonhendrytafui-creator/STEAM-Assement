@@ -13,7 +13,7 @@ import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Responsi
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 
-const ACADEMIC_YEAR = '2025/2026';
+const ACADEMIC_YEAR = '2026/2027';
 
 // ─── C1 Rubric Tooltips ─────────────────────────────
 const C1_RUBRIC_TOOLTIPS: Record<string, Record<number, string>> = {
@@ -163,28 +163,28 @@ const SUBJECTS = [
     { id: 'astronomy', label: 'Astronomy', group: 'Science (S)', icon: Sparkles },
     { id: 'geology_meteorology', label: 'Geology & Meteorology', group: 'Science (S)', icon: Globe },
     { id: 'psychology', label: 'Psychology', group: 'Science (S)', icon: Users },
-    
+
     { id: 'cs_programming', label: 'Computer Science & Programming', group: 'Technology (T)', icon: Monitor },
     { id: 'it', label: 'Information Technology (IT)', group: 'Technology (T)', icon: Database },
     { id: 'cybersecurity_data', label: 'Cybersecurity & Data Science', group: 'Technology (T)', icon: Lock },
     { id: 'ai_ml', label: 'Artificial Intelligence & Machine Learning', group: 'Technology (T)', icon: Cpu },
     { id: 'robotics', label: 'Robotics', group: 'Technology (T)', icon: Wrench },
     { id: 'web_development', label: 'Web Development', group: 'Technology (T)', icon: Globe },
-    
+
     { id: 'civil_structural', label: 'Civil & Structural Engineering', group: 'Engineering (E)', icon: Wrench },
     { id: 'mechanical', label: 'Mechanical Engineering', group: 'Engineering (E)', icon: Wrench },
     { id: 'aerospace', label: 'Aerospace Engineering', group: 'Engineering (E)', icon: Wrench },
     { id: 'electrical_electronic', label: 'Electrical & Electronic Engineering', group: 'Engineering (E)', icon: Cpu },
     { id: 'chemical', label: 'Chemical Engineering', group: 'Engineering (E)', icon: FlaskConical },
     { id: 'biomedical', label: 'Biomedical Engineering', group: 'Engineering (E)', icon: Plus },
-    
+
     { id: 'visual_design', label: 'Visual Arts & Design', group: 'Arts (A)', icon: Paintbrush },
     { id: 'graphic_digital', label: 'Graphic Design & Digital Media', group: 'Arts (A)', icon: Monitor },
     { id: 'industrial_product', label: 'Industrial/Product Design', group: 'Arts (A)', icon: Wrench },
     { id: 'architecture', label: 'Architecture', group: 'Arts (A)', icon: Paintbrush },
     { id: 'creative_language', label: 'Creative Arts & Language Arts', group: 'Arts (A)', icon: BookOpen },
     { id: 'performing_arts', label: 'Performing Arts', group: 'Arts (A)', icon: Users },
-    
+
     { id: 'calculus_linear', label: 'Calculus & Linear Algebra', group: 'Mathematics (M)', icon: Calculator },
     { id: 'statistics_probability', label: 'Statistics & Probability', group: 'Mathematics (M)', icon: TrendingUp },
     { id: 'differential_equations', label: 'Differential Equations', group: 'Mathematics (M)', icon: Calculator },
@@ -643,7 +643,7 @@ export default function TeacherDashboardPage() {
 
             if (data.generatedQuestions) {
                 setC5Questions(data.generatedQuestions);
-                
+
                 // Save immediately to cache in database so we don't need to generate again later
                 const { error: dbError } = await supabase
                     .from('projects')
@@ -787,7 +787,7 @@ export default function TeacherDashboardPage() {
         if (!assessClass || !assessGroup || !assessCategory || !teacherProfile) return;
         const selectedCat = assessmentCategories.find(c => c.id === assessCategory);
         const isC1Category = selectedCat?.code === 'C1';
-        
+
         // Only C1 assessments require an approval status
         if (isC1Category && !assessStatus) {
             showToast('Please select an approval status before saving.', 'warning');
@@ -1463,7 +1463,7 @@ export default function TeacherDashboardPage() {
                                                                                 Open Google Doc
                                                                             </a>
                                                                         )}
-                                                                        
+
                                                                         {sub.presentation_url && (
                                                                             <a href={sub.presentation_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-purple-500/10 text-purple-400 border border-purple-500/20 py-2.5 px-5 rounded-lg hover:bg-purple-500/20 transition-colors text-sm font-semibold">
                                                                                 <Star className="w-4 h-4" />
@@ -1575,7 +1575,7 @@ export default function TeacherDashboardPage() {
                             {/* Logbook Filters */}
                             {!selectedGroupForLogbook ? (() => {
                                 const logbookAvailableClasses = Array.from(new Set(gradeLogbooksList.map(g => g.class_name))).sort();
-                                
+
                                 let filtered = gradeLogbooksList;
                                 if (logbookClassFilter) filtered = filtered.filter(g => g.class_name === logbookClassFilter);
 
@@ -2406,14 +2406,14 @@ export default function TeacherDashboardPage() {
                                                                         const parts = c5Questions.split(/(?=\n1\.\s)/);
                                                                         const summary = parts[0]?.trim();
                                                                         const questions = parts.length > 1 ? parts.slice(1).join('').trim() : '';
-                                                                        
+
                                                                         const questionsList = questions ? questions.split(/\n(?=\d+\.\s)/).map(q => q.trim()).filter(Boolean) : [];
 
                                                                         return (
                                                                             <>
                                                                                 {summary && (
                                                                                     <div className="bg-[#1a1811] border border-slate-800/50 p-4 rounded-xl">
-                                                                                         <p className="text-sm text-slate-300 leading-relaxed italic">
+                                                                                        <p className="text-sm text-slate-300 leading-relaxed italic">
                                                                                             {summary}
                                                                                         </p>
                                                                                     </div>
@@ -2493,7 +2493,7 @@ export default function TeacherDashboardPage() {
                                                                 {!isAutoAssessing && <Sparkles className="w-5 h-5" />}
                                                             </button>
                                                         )}
-                                                        
+
                                                         <button
                                                             onClick={submitAssessment}
                                                             disabled={isSubmittingScore || isAutoAssessing || isGeneratingC5 || isAssessmentLocked}
@@ -2847,7 +2847,7 @@ export default function TeacherDashboardPage() {
                         <h3 className="text-3xl font-bold text-slate-800 leading-tight mb-2">{assessProject?.title || 'Unknown Project'}</h3>
                         <p className="text-slate-500 font-bold uppercase tracking-wider">Group {assessGroup} • Class {assessClass} • Grade {assessGrade}</p>
                         {assessmentCategories.find(c => c.id === assessCategory)?.name && (
-                             <p className="text-indigo-600 font-bold mt-2">Assessment: {assessmentCategories.find(c => c.id === assessCategory)?.name}</p>
+                            <p className="text-indigo-600 font-bold mt-2">Assessment: {assessmentCategories.find(c => c.id === assessCategory)?.name}</p>
                         )}
                     </div>
 
@@ -2893,7 +2893,7 @@ export default function TeacherDashboardPage() {
                                 const maxPerGroup = isChecklist ? inds.length : inds.length * maxScale;
                                 const earned = inds.reduce((sum, i) => sum + (currentScores[i.id] || 0), 0);
                                 const pct = maxPerGroup > 0 ? Math.round((earned / maxPerGroup) * 100) : 0;
-                                
+
                                 return (
                                     <div key={dim.id} className="bg-slate-50 rounded-lg p-4 border border-slate-200">
                                         <div className="flex justify-between items-end mb-2">
