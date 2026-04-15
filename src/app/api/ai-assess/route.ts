@@ -354,6 +354,8 @@ You must always output your final evaluation as a **single, casual paragraph** i
 
 In both cases: if any Key Concept seems unrelated or forced, mention it. If an important STEAM field is missing, suggest it.
 
+**CRITICAL RULE:** For ANY indicator that you scored 2 or below, you MUST mention it in your comment — explain WHY you gave that low score and give a specific suggestion on how to improve it. Do not skip low-scoring indicators.
+
 Do not use bullet points or numbered lists. Write as one flowing paragraph. Keep language simple and clear (ESL-friendly). Provide your output exactly matching the JSON schema.`;
 
         } else {
