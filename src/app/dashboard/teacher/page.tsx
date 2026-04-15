@@ -15,145 +15,9 @@ import { jsPDF } from 'jspdf';
 
 const ACADEMIC_YEAR = '2026/2027';
 
-// ─── C1 Rubric Tooltips ─────────────────────────────
-const C1_RUBRIC_TOOLTIPS: Record<string, Record<number, string>> = {
-    'Title Quality & Originality': {
-        4: 'Concise, highly original, and immediately makes the core purpose clear to teachers and colleagues.',
-        3: 'Clear and easy to understand, but standard or slightly wordy.',
-        2: 'Somewhat confusing, too long, or misses the core focus of the project.',
-        1: 'Missing, completely unrelated, or extremely difficult to understand.'
-    },
-    'Problem & Contextual Relevance': {
-        4: 'Problem connects deeply to the theme/real-life context. Solution is logical and perfectly aligns with students\' grade/ability level.',
-        3: 'Problem relates to the theme/real-life but is generic. Solution is mostly grade-appropriate.',
-        2: 'Weak connection to theme/real-world. Solution is a mismatch for students\' ability (too easy/hard).',
-        1: 'No clear connection to a real-life problem/theme. Completely disconnected from grade level.'
-    },
-    'STEAM Integration & Conceptual Depth': {
-        4: 'Seamlessly integrates 3+ STEAM fields. Massive potential for applying deep conceptual understanding.',
-        3: 'Integrates 2-3 STEAM fields well. Good potential for applying conceptual understanding.',
-        2: 'Attempts 2 disciplines, but integration feels forced or superficial.',
-        1: 'Focuses entirely on a single subject area with no cross-disciplinary connections.'
-    },
-    'Prototype Focus': {
-        4: 'Highly actionable, clear plan for a functional physical or digital prototype. Making is central to the solution.',
-        3: 'Proposes a prototype, but lacks some functional details, materials, or building clarity.',
-        2: 'Vaguely mentions a prototype; leans heavily toward a theoretical model or presentation.',
-        1: 'No prototype planned. Strictly a research paper, essay, or standard presentation.'
-    }
-};
-
-// ─── C2 Rubric Tooltips ─────────────────────────────
-const C2_RUBRIC_TOOLTIPS: Record<string, Record<number, string>> = {
-    'Ask': {
-        4: 'Masterfully defines a clear problem relevant to the student\'s life. Explicitly breaks down causes and real-world impacts. Relies entirely on hard facts and data, not personal opinions.',
-        3: 'Clearly states the problem and touches on causes/impacts. Uses some data but might occasionally rely on assumptions or general statements.',
-        2: 'The problem is vague. Briefly mentions causes/impacts but lacks depth. Heavily reliant on personal opinions rather than factual data.',
-        1: 'Unclear, irrelevant, lacks explanation of causes/impacts. Zero facts or data provided.'
-    },
-    'Research': {
-        4: 'Gathers highly credible data from academic resources. Elevates research by incorporating real-world data from expert interviews and/or deep analysis of existing solutions/products.',
-        3: 'Uses good, credible academic or online resources. May mention existing products but lacks deep analysis or expert input.',
-        2: 'Research relies on basic, potentially non-credible sources. No mention of existing solutions, expert input, or deep academic literature.',
-        1: 'No meaningful research, data, or credible sources provided.'
-    },
-    'Interdisciplinary': {
-        4: 'Masterfully explains how specific, advanced concepts from 2 or more STEAM fields intertwine to explain the problem and theory. Connections are deeply analyzed.',
-        3: 'Clearly explains the theoretical involvement of 2 or more STEAM fields. Connections make sense but might lack deep, critical analysis.',
-        2: 'Mentions different STEAM fields but fails to clearly elaborate on how their theoretical concepts specifically connect to the problem.',
-        1: 'Focuses entirely on the theory of a single subject, missing the interdisciplinary nature of STEAM.'
-    },
-    'Analysis': {
-        4: 'Brilliantly critiques the problem space and research. Uses data to identify a specific, clear opportunity to create something genuinely new or significantly better than existing solutions.',
-        3: 'Analyzes the research well enough to spot an opportunity for a project, though the proposed innovation might be slightly standard or generic.',
-        2: 'Takes data at face value without critical thought. Struggles to identify a clear, specific opportunity to improve upon existing solutions.',
-        1: 'Shows no critical analysis. Fails entirely to identify any opportunity to create a solution or improve upon existing ideas.'
-    }
-};
-
-// ─── C3 Rubric Tooltips ─────────────────────────────
-const C3_RUBRIC_TOOLTIPS: Record<string, Record<number, string>> = {
-    'Execution': {
-        4: 'Exhaustive, sequential step-by-step execution plan. Comprehensive material list with a highly detailed, realistic budget/price list. Clear and actionable timeline.',
-        3: 'Solid plan and timeline. Material list is present, but the budget might lack minor details or execution steps skip minor transitional phases.',
-        2: 'Timeline is vague or unrealistic. Material list is incomplete, or budget is entirely missing. Execution steps are out of order or lack necessary detail.',
-        1: 'No timeline, budget, or coherent execution steps are provided.'
-    },
-    'Design': {
-        4: 'High-quality visual representation (diagram, illustration, blueprint) that perfectly maps to the plan. Exceptional, logical rationale defending exactly why this solution is the best choice over alternatives.',
-        3: 'Basic visual representation included. Rationale is present and makes sense, but justification could be stronger or more deeply analyzed.',
-        2: 'Visuals are messy, confusing, or poorly described. Rationale is weak (e.g., "I chose this because it\'s easy to make").',
-        1: 'No visuals or diagrams provided or described. No rationale is given for the chosen solution.'
-    },
-    'Risk': {
-        4: 'Sharp foresight identifying highly specific, realistic risks during the prototype building phase. Strong, actionable, and logical contingency plan ("Plan B") to mitigate these exact problems.',
-        3: 'Identifies potential risks and offers basic mitigation ideas or a general Plan B, though it may lack specific technical details.',
-        2: 'Mentions only generic, surface-level risks (e.g., "it might break") and provides a poor or entirely missing contingency plan.',
-        1: 'Ignores risk assessment completely. Assumes a flawless execution with zero backup plan.'
-    },
-    'STEAM': {
-        4: 'The construction and function of the prototype explicitly require the application of multiple STEAM concepts. The "making" phase is a true interdisciplinary engineering and design challenge.',
-        3: 'The build process applies 1-2 STEAM concepts well, though execution might lean heavily toward a single discipline rather than a fully integrated approach.',
-        2: 'The prototype barely utilizes the STEAM theories discussed in earlier chapters. The actual build is overly simplistic or disconnected from core concepts.',
-        1: 'The prototype has absolutely no connection to STEAM application; it operates more like a basic arts-and-crafts project than a functional STEAM solution.'
-    }
-};
-
-// ─── C4 Rubric Tooltips ─────────────────────────────
-const C4_RUBRIC_TOOLTIPS: Record<string, Record<number, string>> = {
-    'Structure': {
-        4: 'Professional organization. Entries for every date worked, highly readable structure, and exceptionally clear language documenting a logical start-to-finish progression.',
-        3: 'Clear structure and communicative language. Includes most relevant dates and entries, showing logical progression despite minor gaps.',
-        2: 'Structure is somewhat disorganized, dates are missing, or entries skip major timeframes, making it hard to follow the project flow. Language is occasionally confusing.',
-        1: 'Completely incoherent mess. Few entries, no clear dates or timeline, impossible to understand the project progression.'
-    },
-    'Iteration': {
-        4: 'Candidly and precisely documents specific technical failures or struggles. Clearly details the iterative process taken to analyze why something failed and how they attempted to fix it. Documented solution for every issue.',
-        3: 'Lists problems encountered and includes successful follow-up solutions. Shows that problem-solving occurred, though it might lack deep detail on the steps between failure and final solution.',
-        2: 'Vaguely mentions difficulties or lists them without detail. Many problems identified lack corresponding solutions or follow-up actions.',
-        1: 'Documents only successes or surface-level work. Zero evidence of technical struggle, failure documentation, or iterative improvement.'
-    },
-    'Reflection': {
-        4: 'Features a deep, honest self-reflection of the journey, balancing analysis of struggles against recognition of achievements and learning points. Evaluates how the process made them feel as makers.',
-        3: 'Includes reflective summaries that recognize progress and identify key learning milestones, though the analysis of personal growth or struggle could be deeper.',
-        2: 'Reflection is highly superficial (e.g., "Today went well") and lacks any genuine analysis of struggles or successes. It reads like a dry checklist.',
-        1: 'No self-reflection or honest assessment included at all.'
-    },
-    'Task': {
-        4: 'Activity descriptions are exceptionally detailed and articulate. The text paints a vivid, precise picture of exactly what specific technical, research, or building tasks were performed during that session, leaving no ambiguity about the work done.',
-        3: 'Activity descriptions are clear and specify what was done, though some technical details, materials used, or specific steps might be slightly generalized.',
-        2: 'Task descriptions are overly vague or repetitive (e.g., "did research," "worked on project," "cut materials"). It is hard to know exactly what was accomplished during the session.',
-        1: 'Descriptions are missing, entirely uninformative, or just list the name of the project phase without explaining the actual work done.'
-    }
-};
-
-// ─── C5 Rubric Tooltips ─────────────────────────────
-const C5_RUBRIC_TOOLTIPS: Record<string, Record<number, string>> = {
-    'Problem Articulation': {
-        4: 'Masterfully defines the problem, deeply justifies its significance to a specific target audience, and thoroughly accounts for real-world constraints.',
-        3: 'Clearly states the problem and audience but lacks deep justification or detailed constraints.',
-        2: 'Vague problem and generic audience with little context.',
-        1: 'Fails to define the problem, audience, or constraints entirely.'
-    },
-    'Scientific Foundation & Math': {
-        4: 'Flawless scientific accuracy, precise mathematical data supporting their claims, and explicit links between at least two STEAM fields.',
-        3: 'Mostly accurate science and math with clear STEAM connections.',
-        2: 'Shaky scientific theories, weak math, and forced interdisciplinary links.',
-        1: 'Major factual errors, no mathematical backing, and zero STEAM integration.'
-    },
-    'Solution & Architecture': {
-        4: 'The prototype directly solves the problem with exceptional documentation of the Engineering Design Process (EDP), clear iterations, and strong aesthetic choices.',
-        3: 'A solid solution with good EDP documentation and helpful visuals.',
-        2: 'Partially solves the problem but lacks evidence of testing, iteration, or clear visuals.',
-        1: 'Does not solve the problem and shows zero evidence of design iteration or visual planning.'
-    },
-    'Presentation Delivery': {
-        4: 'Seamless, equal team participation, highly organized visual aids, and confident, deeply knowledgeable answers during the Q&A.',
-        3: 'Even participation and clear visuals, with adequate but surface-level Q&A answers.',
-        2: 'Uneven speaking time, cluttered slides, and significant struggle during the Q&A.',
-        1: 'Poor delivery, missing visuals, and a complete inability to answer questions.'
-    }
-};
+// ─── Rubric Tooltips ─────────────────────────────────
+// Criteria are now stored in the DB (rubric_indicators.criteria JSONB column)
+// and loaded dynamically — no more hardcoded tooltip constants needed.
 
 const SUBJECTS = [
     { id: 'biology_marine', label: 'Biology & Marine Biology', group: 'Science (S)', icon: Globe },
@@ -263,6 +127,7 @@ interface RubricIndicator {
     id: string;
     dimension_id: string;
     description: string;
+    criteria: Record<string, string>; // { "1": "...", "2": "...", "3": "...", "4": "..." }
     sort_order: number;
 }
 
@@ -601,7 +466,7 @@ export default function TeacherDashboardPage() {
                 body: JSON.stringify({
                     project: assessProject,
                     categoryName: cat?.name || 'Unknown Category',
-                    indicators: inds.map(i => ({ id: i.id, description: i.description })),
+                    indicators: inds.map(i => ({ id: i.id, description: i.description, criteria: i.criteria || {} })),
                     googleDocUrl: assessProject?.google_doc_url || null,
                     assessLogbooks: cat?.code === 'C4' ? assessLogbooks : undefined
                 })
@@ -2304,12 +2169,8 @@ export default function TeacherDashboardPage() {
                                                                                         {Array.from({ length: maxScale }).map((_, i) => {
                                                                                             const val = i + 1;
                                                                                             const isSelected = currentScores[ind.id] === val;
-                                                                                            const isC1 = cat?.code === 'C1';
-                                                                                            const isC2 = cat?.code === 'C2';
-                                                                                            const isC3 = cat?.code === 'C3';
-                                                                                            const isC4 = cat?.code === 'C4';
-                                                                                            const isC5 = cat?.code === 'C5';
-                                                                                            const tooltipText = isC1 ? C1_RUBRIC_TOOLTIPS[dim.name]?.[val] : isC2 ? C2_RUBRIC_TOOLTIPS[dim.name]?.[val] : isC3 ? C3_RUBRIC_TOOLTIPS[dim.name]?.[val] : isC4 ? C4_RUBRIC_TOOLTIPS[dim.name]?.[val] : isC5 ? C5_RUBRIC_TOOLTIPS[dim.name]?.[val] : undefined;
+                                                                                            // Read criteria directly from the indicator's DB-stored criteria field
+                                                                                            const tooltipText = ind.criteria?.[val.toString()] || undefined;
 
                                                                                             return (
                                                                                                 <div key={val} className="relative group inline-block">
