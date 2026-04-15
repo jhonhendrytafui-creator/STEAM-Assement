@@ -105,7 +105,7 @@ export async function POST(req: Request) {
                     ? "A single, coherent, casual paragraph providing sharp, objective feedback based on the logbook rubric. State the final score, process category, an objective compliment, a sharp critique, and an actionable suggestion."
                     : isNoStatusCategory
                         ? "A structured, critical feedback using numbered bullet points. For each indicator, state the score, WHY that score was given with specific evidence, and a concrete IMPROVE action. Be sharp and direct."
-                        : "A single, casual, friendly feedback paragraph written directly to the student. Must mention one specific strength and one specific suggestion for improvement."
+                    : "A single, casual, friendly feedback paragraph written directly to the student. Must focus on 3 things only: one specific strength, one specific weakness, and one actionable suggestion. Do NOT mention scores or percentages."
             }
         };
         const requiredFields = ["scores", "teacher_comment"];
@@ -346,13 +346,14 @@ ${JSON.stringify(indicators.map((i: any) => ({ id: i.id, description: i.descript
 ${decisionBlock}
 
 **Output Constraints**
-You must always output your final evaluation as a **single, casual paragraph** in the 'teacher_comment' field. This paragraph must naturally include:
-1. The final decision and the total score out of ${maxScore} (with percentage).
-2. A brief highlight of what they did well.
-3. Specific feedback on what needs to be fixed based on the rubric.
-4. **Key Concept Feedback**: Comment on the student's Key Concepts listed above. Mention which concepts connect well to their project. If any concept seems unrelated or forced, point it out. If an important STEAM field is missing from their key concepts, suggest it briefly.
+You must always output your final evaluation as a **single, casual paragraph** in the 'teacher_comment' field. Focus ONLY on these 3 things — do NOT mention the score or percentage in your comment:
+1. **Strength**: What is the strongest part of this proposal? Be specific (e.g., "Your problem about coastal erosion in your hometown is very real and personal").
+2. **Weakness**: What is the biggest gap or flaw? Be honest but constructive (e.g., "Your solution does not explain how you will actually build it").
+3. **Suggestion**: Give one clear, actionable next step the student should do to improve their proposal (e.g., "Add a step-by-step plan for building your prototype, including materials you need").
 
-Do not use bullet points or multiple paragraphs. Keep the language simple and clear (ESL-friendly). Provide your output exactly matching the JSON schema.`;
+If any Key Concept seems unrelated or forced, mention it briefly. If an important STEAM field is missing, suggest it.
+
+Do not use bullet points or numbered lists. Write as one flowing paragraph. Keep language simple and clear (ESL-friendly). Provide your output exactly matching the JSON schema.`;
 
         } else {
             // ===== General prompt for other categories (BCM, ENG, IND, etc.) =====
