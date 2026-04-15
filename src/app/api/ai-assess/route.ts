@@ -105,7 +105,7 @@ export async function POST(req: Request) {
                     ? "A single, coherent, casual paragraph providing sharp, objective feedback based on the logbook rubric. State the final score, process category, an objective compliment, a sharp critique, and an actionable suggestion."
                     : isNoStatusCategory
                         ? "A structured, critical feedback using numbered bullet points. For each indicator, state the score, WHY that score was given with specific evidence, and a concrete IMPROVE action. Be sharp and direct."
-                    : "A single, casual, friendly feedback paragraph written directly to the student. Must focus on 3 things only: one specific strength, one specific weakness, and one actionable suggestion. Do NOT mention scores or percentages."
+                    : "A single casual paragraph. If approved: encouraging with forward-looking guidance. If revision/disapproved: critical and thorough, listing ALL weak areas with what to fix. Do NOT mention scores or percentages."
             }
         };
         const requiredFields = ["scores", "teacher_comment"];
@@ -346,12 +346,13 @@ ${JSON.stringify(indicators.map((i: any) => ({ id: i.id, description: i.descript
 ${decisionBlock}
 
 **Output Constraints**
-You must always output your final evaluation as a **single, casual paragraph** in the 'teacher_comment' field. Focus ONLY on these 3 things — do NOT mention the score or percentage in your comment:
-1. **Strength**: What is the strongest part of this proposal? Be specific (e.g., "Your problem about coastal erosion in your hometown is very real and personal").
-2. **Weakness**: What is the biggest gap or flaw? Be honest but constructive (e.g., "Your solution does not explain how you will actually build it").
-3. **Suggestion**: Give one clear, actionable next step the student should do to improve their proposal (e.g., "Add a step-by-step plan for building your prototype, including materials you need").
+You must always output your final evaluation as a **single, casual paragraph** in the 'teacher_comment' field. Do NOT mention the score or percentage in your comment. The tone and focus of your comment MUST change based on your suggested_status decision:
 
-If any Key Concept seems unrelated or forced, mention it briefly. If an important STEAM field is missing, suggest it.
+**If 'approved':** The project is strong — your comment should be encouraging. Briefly acknowledge what they did well, then spend most of the comment giving forward-looking suggestions and guidance to make their project even better as they move to the next phase. Think like a mentor preparing them for success.
+
+**If 'revision' or 'disapproved':** Your comment must be critical and thorough. Go through ALL the weak parts of the proposal — do not limit yourself to just one weakness. For each weak area, clearly state what is wrong and what the student needs to fix or rewrite. End with a clear, prioritized suggestion on the most important thing they should revise first. Be direct and honest — the student needs to understand exactly what to improve before resubmitting.
+
+In both cases: if any Key Concept seems unrelated or forced, mention it. If an important STEAM field is missing, suggest it.
 
 Do not use bullet points or numbered lists. Write as one flowing paragraph. Keep language simple and clear (ESL-friendly). Provide your output exactly matching the JSON schema.`;
 
