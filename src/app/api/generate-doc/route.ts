@@ -52,8 +52,28 @@ export async function POST(request: Request) {
         const drive = google.drive({ version: 'v3', auth });
         const docs = google.docs({ version: 'v1', auth });
 
-        // Step 1: Copy the template into the service account's own drive first (no parents)
-        // This avoids the quota error from trying to write directly to a shared folder
+        // Step 0: Clean up the service account's Drive to free quota
+        // Previous copies may have filled the service account's limited 15GB storage
+        try {
+            const ownedFiles = await drive.files.list({
+                q: "'me' in owners",
+                fields: 'files(id)',
+                pageSize: 100,
+            });
+            if (ownedFiles.data.files && ownedFiles.data.files.length > 0) {
+                for (const file of ownedFiles.data.files) {
+                    if (file.id) {
+                        await drive.files.delete({ fileId: file.id }).catch(() => {});
+                    }
+                }
+            }
+            // Also empty the trash
+            await drive.files.emptyTrash().catch(() => {});
+        } catch (cleanupErr) {
+            console.warn('Drive cleanup warning (non-fatal):', cleanupErr);
+        }
+
+        // Step 1: Copy the template into the service account's own drive first
         const copyResponse = await drive.files.copy({
             fileId: TEMPLATE_DOC_ID,
             requestBody: {
