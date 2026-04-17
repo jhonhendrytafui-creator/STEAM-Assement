@@ -3,6 +3,7 @@ import { google } from 'googleapis';
 
 const TEMPLATE_DOC_ID = '1A8c7jl0mgwDDpZKNA6Af169eBYX7Zm5LK29Esc23BbY';
 const TARGET_FOLDER_ID = '1szME7BfDsdm28ukYXFIDB0KjiujiD6E6';
+const DRIVE_OWNER_EMAIL = 'jhon.hendry.tafui@gmail.com';
 
 async function getAuthClient() {
     const credentialsJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
@@ -51,12 +52,12 @@ export async function POST(request: Request) {
         const drive = google.drive({ version: 'v3', auth });
         const docs = google.docs({ version: 'v1', auth });
 
-        // Step 1: Copy the template document into the target folder
+        // Step 1: Copy the template into the service account's own drive first (no parents)
+        // This avoids the quota error from trying to write directly to a shared folder
         const copyResponse = await drive.files.copy({
             fileId: TEMPLATE_DOC_ID,
             requestBody: {
                 name: docName,
-                parents: [TARGET_FOLDER_ID],
             },
         });
 
@@ -65,7 +66,33 @@ export async function POST(request: Request) {
             throw new Error('Failed to copy template document');
         }
 
-        // Step 2: Replace placeholders in the new document
+        // Step 2: Transfer ownership to the Drive owner so the file uses their quota
+        await drive.permissions.create({
+            fileId: newDocId,
+            transferOwnership: true,
+            requestBody: {
+                type: 'user',
+                role: 'owner',
+                emailAddress: DRIVE_OWNER_EMAIL,
+            },
+        });
+
+        // Step 3: Move the file into the target folder (now owned by the real user)
+        // Get current parents first
+        const fileInfo = await drive.files.get({
+            fileId: newDocId,
+            fields: 'parents',
+        });
+        const previousParents = (fileInfo.data.parents || []).join(',');
+
+        await drive.files.update({
+            fileId: newDocId,
+            addParents: TARGET_FOLDER_ID,
+            removeParents: previousParents,
+            requestBody: {},
+        });
+
+        // Step 4: Replace placeholders in the new document
         await docs.documents.batchUpdate({
             documentId: newDocId,
             requestBody: {
@@ -92,7 +119,7 @@ export async function POST(request: Request) {
             },
         });
 
-        // Step 3: Set the document to "Anyone with the link can view"
+        // Step 5: Set the document to "Anyone with the link can edit"
         await drive.permissions.create({
             fileId: newDocId,
             requestBody: {
