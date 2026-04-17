@@ -7,7 +7,7 @@ import {
     Plus, Trash2, Link as LinkIcon, Calculator,
     FlaskConical, Paintbrush, Globe, Cpu, Wrench, BookOpen, Calendar, Save, X, Users,
     TrendingUp, Award, ChevronDown, CheckCircle2, AlertTriangle, XCircle, Info,
-    MessageSquare, History, Sparkles, Monitor, Lock, ExternalLink
+    MessageSquare, History, Sparkles, Monitor, Lock, ExternalLink, FilePlus2
 } from 'lucide-react';
 
 // ─── Toast Notification System ────────────────────────
@@ -258,6 +258,7 @@ export default function StudentDashboardPage() {
     const [newDocUrl, setNewDocUrl] = useState('');
     const [isSavingDoc, setIsSavingDoc] = useState(false);
     const [isSavingGoogleDoc, setIsSavingGoogleDoc] = useState(false);
+    const [isGeneratingDoc, setIsGeneratingDoc] = useState(false);
 
     // AI Precheck State
     const [isPrechecking, setIsPrechecking] = useState(false);
@@ -683,6 +684,56 @@ export default function StudentDashboardPage() {
             showToast(err.message || 'Failed to verify Google Doc access.', 'error');
         } finally {
             setIsSavingGoogleDoc(false);
+        }
+    };
+
+    // ─── Generate Google Doc from Template ─────────────
+    const handleGenerateDoc = async () => {
+        if (!studentInfo || !projectData) return;
+
+        setIsGeneratingDoc(true);
+        try {
+            const res = await fetch('/api/generate-doc', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    className: studentInfo.class_name,
+                    groupNumber: studentInfo.group_number,
+                    projectTitle: projectData.title,
+                    teamMembers: teamMembers,
+                }),
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+                throw new Error(data.error || 'Failed to generate document');
+            }
+
+            // Save the generated doc URL to the project in Supabase
+            const generatedUrl = data.docUrl;
+            const { error } = await supabase
+                .from('projects')
+                .update({ google_doc_url: generatedUrl })
+                .eq('id', projectData.id);
+
+            if (error) throw error;
+
+            // Update local state
+            setDocUrl(generatedUrl);
+            setProjectData({ ...projectData, google_doc_url: generatedUrl });
+            setProjectHistory(prev => {
+                const newHistory = [...prev];
+                if (newHistory.length > 0) newHistory[0].google_doc_url = generatedUrl;
+                return newHistory;
+            });
+            setIsEditingMainDoc(false);
+            showToast(`Document "${data.docName}" generated and linked successfully!`, 'success');
+        } catch (err: any) {
+            console.error('Generate doc error:', err);
+            showToast(err.message || 'Failed to generate document. Please try again.', 'error');
+        } finally {
+            setIsGeneratingDoc(false);
         }
     };
 
@@ -1270,6 +1321,49 @@ export default function StudentDashboardPage() {
                                                 </div>
                                             ) : (
                                                 <>
+                                                    {/* Auto-Generate Button */}
+                                                    {!projectData?.google_doc_url && (
+                                                        <div className="mb-5 p-5 bg-gradient-to-br from-teal-500/10 via-emerald-500/5 to-cyan-500/10 border border-teal-500/25 rounded-xl">
+                                                            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                                                                <div className="flex items-center gap-3 flex-1">
+                                                                    <div className="bg-teal-500/15 p-2.5 rounded-xl text-teal-400 shrink-0 border border-teal-500/20">
+                                                                        <FilePlus2 className="w-6 h-6" />
+                                                                    </div>
+                                                                    <div>
+                                                                        <p className="text-sm font-bold text-teal-300 mb-0.5">Auto-Generate from Template</p>
+                                                                        <p className="text-xs text-teal-400/70">Creates a pre-filled project document with cover page, sections, and your team details.</p>
+                                                                    </div>
+                                                                </div>
+                                                                <button
+                                                                    onClick={handleGenerateDoc}
+                                                                    disabled={isGeneratingDoc}
+                                                                    className="w-full sm:w-auto bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 text-[#0d1a14] font-bold py-3 px-6 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-sm whitespace-nowrap shadow-lg shadow-teal-900/30"
+                                                                >
+                                                                    {isGeneratingDoc ? (
+                                                                        <>
+                                                                            <div className="w-4 h-4 border-2 border-[#0d1a14] border-t-transparent rounded-full animate-spin"></div>
+                                                                            Generating...
+                                                                        </>
+                                                                    ) : (
+                                                                        <>
+                                                                            <Sparkles className="w-4 h-4" />
+                                                                            Generate Document
+                                                                        </>
+                                                                    )}
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Divider between auto-generate and manual input */}
+                                                    {!projectData?.google_doc_url && (
+                                                        <div className="flex items-center gap-3 mb-5">
+                                                            <div className="flex-1 h-px bg-slate-800"></div>
+                                                            <span className="text-xs text-slate-600 font-semibold uppercase tracking-wider">or paste link manually</span>
+                                                            <div className="flex-1 h-px bg-slate-800"></div>
+                                                        </div>
+                                                    )}
+
                                                     <div className="flex flex-col sm:flex-row gap-4 mb-2">
                                                         <div className="flex-1 relative">
                                                             <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">

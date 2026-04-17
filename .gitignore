@@ -39,6 +39,12 @@ yarn-error.log*
 # netlify
 .netlify
 
+# service account credentials
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
