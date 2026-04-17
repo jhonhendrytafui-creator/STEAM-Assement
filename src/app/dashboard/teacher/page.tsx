@@ -2010,12 +2010,12 @@ export default function TeacherDashboardPage() {
                                                                             {absData.keyConcepts && absData.keyConcepts.length > 0 && (
                                                                                 <div>
                                                                                     <span className="text-xs text-slate-500 uppercase tracking-wider block mb-2">Subject Key Concepts</span>
-                                                                                    <div className="space-y-2">
+                                                                                    <div className="grid grid-cols-1 gap-3">
                                                                                         {absData.keyConcepts.map((item: any, idx: number) => {
                                                                                             return (
-                                                                                                <div key={idx} className="bg-[#1a1811] border border-slate-800/50 p-2.5 rounded-lg flex flex-col sm:flex-row sm:items-start gap-2">
-                                                                                                    <span className="inline-block bg-amber-500/10 text-amber-500 border border-amber-500/20 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider whitespace-nowrap">{item.subject}</span>
-                                                                                                    <span className="text-sm text-slate-300 flex-1 leading-snug">{item.concept || 'No concept provided'}</span>
+                                                                                                <div key={idx} className="bg-[#1a1811] border border-slate-800/50 p-3 rounded-lg flex flex-col gap-1.5">
+                                                                                                    <span className="inline-block self-start bg-amber-500/10 text-amber-500 border border-amber-500/20 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider">{item.subject}</span>
+                                                                                                    <span className="text-sm text-slate-300 leading-snug">{item.concept || 'No concept provided'}</span>
                                                                                                 </div>
                                                                                             );
                                                                                         })}

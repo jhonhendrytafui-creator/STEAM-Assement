@@ -1307,8 +1307,9 @@ export default function StudentDashboardPage() {
                                                         </div>
                                                         <div className="min-w-0">
                                                             <p className="text-sm font-bold text-emerald-400 mb-0.5">Google Doc Linked Successfully</p>
-                                                            <a href={projectData.google_doc_url} target="_blank" rel="noopener noreferrer" className="text-xs text-emerald-500/80 hover:text-emerald-400 block truncate">
-                                                                {projectData.google_doc_url}
+                                                            <a href={projectData.google_doc_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 mt-1.5 px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 rounded-lg text-xs font-semibold transition-colors">
+                                                                <ExternalLink className="w-3.5 h-3.5" />
+                                                                Open Google Doc
                                                             </a>
                                                         </div>
                                                     </div>
