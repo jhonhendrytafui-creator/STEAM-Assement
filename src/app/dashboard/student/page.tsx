@@ -707,7 +707,10 @@ export default function StudentDashboardPage() {
             const data = await res.json();
 
             if (!res.ok) {
-                throw new Error(data.error || 'Failed to generate document');
+                // Show detailed error from the improved API response
+                const stepInfo = data.failedStep ? ` [Step: ${data.failedStep}]` : '';
+                const reasonInfo = data.errorReason ? ` (Reason: ${data.errorReason})` : '';
+                throw new Error(`${data.error || 'Failed to generate document'}${stepInfo}${reasonInfo}`);
             }
 
             // Save the generated doc URL to the project in Supabase
