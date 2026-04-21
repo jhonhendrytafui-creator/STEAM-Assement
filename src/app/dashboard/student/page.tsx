@@ -2140,7 +2140,7 @@ export default function StudentDashboardPage() {
                         {activeTab === 'peer' && (
                             <PeerAssessmentTab
                                 userEmail={userEmail!}
-                                studentInfo={studentInfo}
+                                studentInfo={studentInfo!}
                                 teamMembers={teamMembers}
                                 academicYear={ACADEMIC_YEAR}
                                 showToast={showToast}
