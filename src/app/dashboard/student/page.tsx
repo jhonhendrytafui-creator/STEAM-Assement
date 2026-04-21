@@ -2013,6 +2013,19 @@ export default function StudentDashboardPage() {
                             </div>
                         )}
 
+                        {/* ═══════════════════════════════════════════ */}
+                        {/* TAB: PEER & SELF ASSESSMENT                */}
+                        {/* ═══════════════════════════════════════════ */}
+                        {activeTab === 'peer' && (
+                            <PeerAssessmentTab
+                                userEmail={userEmail!}
+                                studentInfo={studentInfo!}
+                                teamMembers={teamMembers}
+                                academicYear={ACADEMIC_YEAR}
+                                showToast={showToast}
+                            />
+                        )}
+
                     </div>
                 </main>
             )}
@@ -2133,19 +2146,6 @@ export default function StudentDashboardPage() {
                                 </a>
                             )}
                         </div>
-
-                        {/* ═══════════════════════════════════════════ */}
-                        {/* TAB: PEER & SELF ASSESSMENT                   */}
-                        {/* ═══════════════════════════════════════════ */}
-                        {activeTab === 'peer' && (
-                            <PeerAssessmentTab
-                                userEmail={userEmail!}
-                                studentInfo={studentInfo!}
-                                teamMembers={teamMembers}
-                                academicYear={ACADEMIC_YEAR}
-                                showToast={showToast}
-                            />
-                        )}
                     </div>
                 </div>
             )}
