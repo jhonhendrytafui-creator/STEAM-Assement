@@ -934,13 +934,13 @@ export default function TeacherDashboardPage() {
                     <style dangerouslySetInnerHTML={{ __html: `aside::-webkit-scrollbar { display: none; }` }} />
 
                     {[
-                        { id: 'overview', label: 'Projects Overview', icon: LayoutDashboard },
-                        { id: 'submissions', label: 'Project Submissions', icon: FolderOpen },
-                        { id: 'logbook', label: 'Student Logbook', icon: BookOpen },
-                        { id: 'score', label: 'Student Score', icon: BarChart2 },
+                        { id: 'overview', label: 'Project Overview', icon: LayoutDashboard },
+                        { id: 'submissions', label: 'Project Submission', icon: FolderOpen },
+                        { id: 'logbook', label: 'Project Logbook', icon: BookOpen },
                         { id: 'assess', label: 'Project Assessment', icon: ClipboardCheck },
-                        { id: 'voting', label: 'Voting & Leaderboard', icon: Star },
-                        { id: 'peer', label: 'Peer Assessment Results', icon: Users },
+                        { id: 'peer', label: 'Peer Assessment Result', icon: Users },
+                        { id: 'score', label: 'Student Score', icon: BarChart2 },
+                        { id: 'voting', label: 'Voting and Leaderboard', icon: Star },
                         { id: 'analytics', label: 'Analytics', icon: TrendingUp },
                     ].map((tab) => (
                         <button

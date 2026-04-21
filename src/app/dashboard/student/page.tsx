@@ -7,7 +7,7 @@ import {
     Plus, Trash2, Link as LinkIcon, Calculator,
     FlaskConical, Paintbrush, Globe, Cpu, Wrench, BookOpen, Calendar, Save, X, Users,
     TrendingUp, Award, ChevronDown, CheckCircle2, AlertTriangle, XCircle, Info,
-    MessageSquare, History, Sparkles, Monitor, Lock, ExternalLink, FilePlus2
+    MessageSquare, History, Sparkles, Monitor, Lock, ExternalLink, FilePlus2, Trophy
 } from 'lucide-react';
 import PeerAssessmentTab from './PeerAssessmentTab';
 
@@ -857,13 +857,13 @@ export default function StudentDashboardPage() {
                         </div>
 
                         {[
-                            { id: 'data', label: 'My Project Data', icon: Database },
-                            { id: 'submit', label: 'Submit a Project', icon: PenSquare },
-                            { id: 'logbook', label: 'My Logbook', icon: BookOpen },
-                            { id: 'presentation', label: 'Project Documents', icon: Monitor },
+                            { id: 'data', label: 'Project Data', icon: Database },
+                            { id: 'submit', label: 'Submit Project', icon: PenSquare },
+                            { id: 'presentation', label: 'Project Document', icon: Monitor },
+                            { id: 'logbook', label: 'Project Logbook', icon: BookOpen },
                             { id: 'peer', label: 'Peer & Self Assessment', icon: Users },
                             { id: 'result', label: 'Assessment Result', icon: FileCheck },
-                            { id: 'leaderboard', label: 'Leaderboard', icon: TrendingUp },
+                            { id: 'leaderboard', label: 'Project Leaderboard', icon: Trophy },
                         ].map((tab) => (
                             <button
                                 key={tab.id}
