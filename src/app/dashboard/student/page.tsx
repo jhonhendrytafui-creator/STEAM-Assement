@@ -554,6 +554,17 @@ export default function StudentDashboardPage() {
         }
     };
 
+    // ─── Title Case Helper ────────────────────────────
+    const toTitleCase = (str: string): string => {
+        const minorWords = new Set(['a', 'an', 'the', 'and', 'but', 'or', 'nor', 'for', 'yet', 'so', 'at', 'by', 'in', 'of', 'on', 'to', 'up', 'as', 'is', 'if', 'it', 'vs', 'via']);
+        return str.trim().replace(/\s+/g, ' ').split(' ').map((word, index) => {
+            if (index === 0 || !minorWords.has(word.toLowerCase())) {
+                return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+            }
+            return word.toLowerCase();
+        }).join(' ');
+    };
+
     // ─── Project Submit ────────────────────────────────
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -602,7 +613,7 @@ export default function StudentDashboardPage() {
                 group_number: studentInfo.group_number,
                 academic_year: ACADEMIC_YEAR,
                 theme_id: theme || null,
-                title: title,
+                title: toTitleCase(title),
                 abstract: combinedAbstract,
                 status: 'pending',
                 google_doc_url: projectHistory.length > 0 ? projectHistory[0].google_doc_url : null,
