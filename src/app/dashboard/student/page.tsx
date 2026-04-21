@@ -9,6 +9,7 @@ import {
     TrendingUp, Award, ChevronDown, CheckCircle2, AlertTriangle, XCircle, Info,
     MessageSquare, History, Sparkles, Monitor, Lock, ExternalLink, FilePlus2
 } from 'lucide-react';
+import PeerAssessmentTab from './PeerAssessmentTab';
 
 // ─── Toast Notification System ────────────────────────
 type ToastType = 'success' | 'error' | 'warning' | 'info';
@@ -849,6 +850,7 @@ export default function StudentDashboardPage() {
                             { id: 'submit', label: 'Submit a Project', icon: PenSquare },
                             { id: 'logbook', label: 'My Logbook', icon: BookOpen },
                             { id: 'presentation', label: 'Project Documents', icon: Monitor },
+                            { id: 'peer', label: 'Peer & Self Assessment', icon: Users },
                             { id: 'result', label: 'Assessment Result', icon: FileCheck },
                             { id: 'leaderboard', label: 'Leaderboard', icon: TrendingUp },
                         ].map((tab) => (
@@ -2131,6 +2133,19 @@ export default function StudentDashboardPage() {
                                 </a>
                             )}
                         </div>
+
+                        {/* ═══════════════════════════════════════════ */}
+                        {/* TAB: PEER & SELF ASSESSMENT                   */}
+                        {/* ═══════════════════════════════════════════ */}
+                        {activeTab === 'peer' && (
+                            <PeerAssessmentTab
+                                userEmail={userEmail!}
+                                studentInfo={studentInfo}
+                                teamMembers={teamMembers}
+                                academicYear={ACADEMIC_YEAR}
+                                showToast={showToast}
+                            />
+                        )}
                     </div>
                 </div>
             )}

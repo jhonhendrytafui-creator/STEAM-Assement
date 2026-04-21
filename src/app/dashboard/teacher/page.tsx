@@ -9,6 +9,7 @@ import {
     Lock, Unlock, Filter, LayoutGrid, List, PieChart, Clock, Calendar,
     Globe, FlaskConical, Monitor, Database, Cpu, Wrench, Plus, Paintbrush, Calculator
 } from 'lucide-react';
+import PeerAssessmentResultsTab from './PeerAssessmentResultsTab';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
@@ -939,6 +940,7 @@ export default function TeacherDashboardPage() {
                         { id: 'score', label: 'Student Score', icon: BarChart2 },
                         { id: 'assess', label: 'Project Assessment', icon: ClipboardCheck },
                         { id: 'voting', label: 'Voting & Leaderboard', icon: Star },
+                        { id: 'peer', label: 'Peer Assessment Results', icon: Users },
                         { id: 'analytics', label: 'Analytics', icon: TrendingUp },
                     ].map((tab) => (
                         <button
@@ -957,6 +959,17 @@ export default function TeacherDashboardPage() {
 
                 {/* Content Area */}
                 <div className="flex-1 w-full min-w-0 overflow-y-auto">
+
+                    {/* TAB: PEER ASSESSMENT RESULTS */}
+                    {activeTab === 'peer' && (
+                        <div className="p-4 sm:p-0">
+                            <PeerAssessmentResultsTab
+                                allStudents={allStudents}
+                                academicYear={ACADEMIC_YEAR}
+                                showToast={showToast}
+                            />
+                        </div>
+                    )}
 
                     {/* TAB 1: OVERVIEW */}
                     {activeTab === 'overview' && (() => {
