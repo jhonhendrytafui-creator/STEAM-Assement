@@ -54,7 +54,8 @@ END $$;
 
 
 -- ================================================================
--- Step 3: BACKFILL C2 criteria (from previously-hardcoded tooltips)
+-- Step 3: BACKFILL C2 criteria (aligned with c2_rubric_update.md)
+-- 4 dimensions, 8 indicators
 -- ================================================================
 DO $$
 DECLARE
@@ -67,21 +68,29 @@ BEGIN
     -- Delete and reseed to add criteria
     DELETE FROM rubric_dimensions WHERE category_id = v_cat;
 
-    INSERT INTO rubric_dimensions (category_id, name, sort_order) VALUES (v_cat, 'Ask', 1) RETURNING id INTO v_dim;
+    -- I. Problem Definition (2 indicators)
+    INSERT INTO rubric_dimensions (category_id, name, sort_order) VALUES (v_cat, 'Problem Definition', 1) RETURNING id INTO v_dim;
     INSERT INTO rubric_indicators (dimension_id, description, sort_order, criteria) VALUES
-    (v_dim, 'Problem Elaboration & Impact', 1, '{"1":"Unclear, irrelevant, lacks explanation of causes/impacts. Zero facts or data provided.","2":"The problem is vague. Briefly mentions causes/impacts but lacks depth. Heavily reliant on personal opinions rather than factual data.","3":"Clearly states the problem and touches on causes/impacts. Uses some data but might occasionally rely on assumptions or general statements.","4":"Masterfully defines a clear problem relevant to the student''s life. Explicitly breaks down causes and real-world impacts. Relies entirely on hard facts and data, not personal opinions."}');
+    (v_dim, 'Goals & Constraints — The ability to define the project''s "Must-Haves" (Goals) and its "Boundaries" (Limits like cost, size, or time).', 1, '{"1":"Only a general problem is mentioned. No specific goals or limits are listed to guide the building process.","2":"Lists some basic limits (e.g., ''it must be small''), but they are too vague to measure or test.","3":"Clearly lists the project''s goals and provides specific limits (e.g., ''Must be made of wood and cost under $10'').","4":"Provides a professional list of technical requirements with measurable data (e.g., ''Must weigh <500g and operate for 2 hours'')."}'),
+    (v_dim, 'User Analysis — The ability to identify the target audience and understand their specific "Pain Points" (struggles).', 2, '{"1":"No mention of who will use the solution. The project feels like it is for ''no one in particular.''","2":"Identifies a general group (e.g., ''students'') but does not explain what specific trouble they are having.","3":"Clearly identifies the user group and explains the specific problem they face in their daily life.","4":"Demonstrates deep empathy; explains exactly how the user''s life will change/improve once the solution is made."}');
 
-    INSERT INTO rubric_dimensions (category_id, name, sort_order) VALUES (v_cat, 'Research', 2) RETURNING id INTO v_dim;
+    -- II. Information Literacy (2 indicators)
+    INSERT INTO rubric_dimensions (category_id, name, sort_order) VALUES (v_cat, 'Information Literacy', 2) RETURNING id INTO v_dim;
     INSERT INTO rubric_indicators (dimension_id, description, sort_order, criteria) VALUES
-    (v_dim, 'Research Quality & Source Diversity', 1, '{"1":"No meaningful research, data, or credible sources provided.","2":"Research relies on basic, potentially non-credible sources. No mention of existing solutions, expert input, or deep academic literature.","3":"Uses good, credible academic or online resources. May mention existing products but lacks deep analysis or expert input.","4":"Gathers highly credible data from academic resources. Elevates research by incorporating real-world data from expert interviews and/or deep analysis of existing solutions/products."}');
+    (v_dim, 'Source Quality — The ability to find and use trustworthy evidence from a variety of reliable places.', 1, '{"1":"No sources are cited. Information seems based only on the student''s personal opinion or ''common sense.''","2":"Uses only one type of source (e.g., one YouTube video) or uses untrustworthy sites like personal blogs.","3":"Uses 2–3 reliable sources such as educational websites (.edu), government reports, or expert interviews.","4":"Uses a wide range of professional sources and cites them correctly to prove the project is based on facts."}'),
+    (v_dim, 'Knowledge Synthesis — The ability to apply research facts to create a better project design.', 2, '{"1":"Research is simply copied and pasted. The student does not explain why this information is in the report.","2":"Information is rewritten in the student''s own words, but it is not linked to any design choices.","3":"Student explains the research and describes how a specific fact will help them build their prototype.","4":"Student perfectly explains the ''Research → Action'' link (e.g., ''Research says X, so I will build my project using Y'')."}');
 
-    INSERT INTO rubric_dimensions (category_id, name, sort_order) VALUES (v_cat, 'Interdisciplinary', 3) RETURNING id INTO v_dim;
+    -- III. Precedent Study (1 indicator)
+    INSERT INTO rubric_dimensions (category_id, name, sort_order) VALUES (v_cat, 'Precedent Study', 3) RETURNING id INTO v_dim;
     INSERT INTO rubric_indicators (dimension_id, description, sort_order, criteria) VALUES
-    (v_dim, 'STEAM Interdisciplinary Connection', 1, '{"1":"Focuses entirely on the theory of a single subject, missing the interdisciplinary nature of STEAM.","2":"Mentions different STEAM fields but fails to clearly elaborate on how their theoretical concepts specifically connect to the problem.","3":"Clearly explains the theoretical involvement of 2 or more STEAM fields. Connections make sense but might lack deep, critical analysis.","4":"Masterfully explains how specific, advanced concepts from 2 or more STEAM fields intertwine to explain the problem and theory. Connections are deeply analyzed."}');
+    (v_dim, 'Existing Solutions — The ability to analyze products that already exist to find a "gap" for a new solution.', 1, '{"1":"Student does not look for other ideas or wrongly claims that ''nothing like this exists in the world.''","2":"Finds one similar idea but does not explain how it works or what its strengths and weaknesses are.","3":"Analyzes 1–2 similar products and identifies what can be improved or what they will do differently.","4":"Performs a ''Competitive Analysis''; compares multiple solutions to prove why their new design is necessary."}');
 
-    INSERT INTO rubric_dimensions (category_id, name, sort_order) VALUES (v_cat, 'Analysis', 4) RETURNING id INTO v_dim;
+    -- IV. STEAM Foundation (3 indicators)
+    INSERT INTO rubric_dimensions (category_id, name, sort_order) VALUES (v_cat, 'STEAM Foundation', 4) RETURNING id INTO v_dim;
     INSERT INTO rubric_indicators (dimension_id, description, sort_order, criteria) VALUES
-    (v_dim, 'Critical Analysis & Opportunity', 1, '{"1":"Shows no critical analysis. Fails entirely to identify any opportunity to create a solution or improve upon existing ideas.","2":"Takes data at face value without critical thought. Struggles to identify a clear, specific opportunity to improve upon existing solutions.","3":"Analyzes the research well enough to spot an opportunity for a project, though the proposed innovation might be slightly standard or generic.","4":"Brilliantly critiques the problem space and research. Uses data to identify a specific, clear opportunity to create something genuinely new or significantly better than existing solutions."}');
+    (v_dim, 'Theoretical Accuracy — The ability to use correct scientific laws, math formulas, and technical vocabulary.', 1, '{"1":"Scientific or mathematical explanations are missing or contain major factual errors.","2":"Uses very simple language to explain the theory but avoids using technical terms or formulas.","3":"Correctly explains the scientific/math principles (e.g., Friction, Gravity, or Ratios) that make the project work.","4":"Uses advanced technical terms and relevant formulas (e.g., V=IR or Area = πr²) to prove a deep understanding."}'),
+    (v_dim, 'The "Mechanism" — The ability to explain the "Input → Process → Output" logic of the prototype.', 2, '{"1":"No explanation of how the parts work together. It is treated like ''magic.''","2":"Explains what the solution does, but cannot explain the step-by-step logic of how it happens.","3":"Provides a clear logic flow (e.g., ''The sensor sends a signal to the motor, which then pulls the lever'').","4":"Provides a highly detailed ''Technical Walkthrough'' of every physical or digital interaction in the system."}'),
+    (v_dim, 'Subject Integration — The ability to show how different subjects (S.T.E.A.M.) are "fused" together.', 3, '{"1":"Subjects are listed as a separate, unrelated list. They do not seem to help each other.","2":"Shows a simple link where one subject is used for a small task (e.g., ''I use math to measure the wood'').","3":"Shows a functional link where one subject is required for another to work (e.g., ''The Math helps the Engineering be stable'').","4":"Demonstrates ''Interdependence''; proves that the project cannot function if any of the STEAM pillars are removed."}');
 END $$;
 
 
