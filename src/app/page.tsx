@@ -49,7 +49,12 @@ export default function LoginPage() {
           <div className="hidden lg:block lg:w-[55%] h-full bg-transparent"></div>
 
           {/* Right Side: Full Height Container */}
-          <div className="w-full lg:w-[45%] h-full flex flex-col items-center justify-center p-6 lg:p-12 pointer-events-auto bg-[#181715] border-l border-white/5 shadow-2xl">
+          <div className="w-full lg:w-[45%] h-full flex flex-col items-center justify-center p-6 lg:p-12 pointer-events-auto relative">
+              
+              {/* Premium separation: Rounded left edge with a subtle neon glow and heavy shadow */}
+              <div className="absolute inset-0 lg:rounded-l-[3rem] bg-[#181715] shadow-[-30px_0_60px_rgba(0,0,0,0.8)] overflow-hidden z-0">
+                  <div className="absolute left-0 top-[10%] bottom-[10%] w-[1px] bg-gradient-to-b from-transparent via-[#f97316] to-transparent opacity-30 shadow-[0_0_20px_#f97316]"></div>
+              </div>
               
               <div 
                 className="max-w-[420px] w-full flex flex-col relative z-20" 

@@ -45,7 +45,7 @@ export default function LoginCanvas() {
         submitColor: c_orange, loadingSpin: 0, formAlpha: 1,         
         rubricMorph: 0,       
         rubricScores: [0, 0, 0, 0], 
-        scorePop: 0,          
+        networkAnim: 0,          
     };
 
     function getLeftWidth() {
@@ -121,7 +121,7 @@ export default function LoginCanvas() {
         const cx = -cw / 2;
         const cy = -ch / 2;
 
-        if (p.cardScale > 0 && p.scorePop === 0) {
+        if (p.cardScale > 0 && p.networkAnim === 0) {
             ctx.save();
             
             let s = p.cardScale + Math.sin(p.cardScale * Math.PI) * 0.1;
@@ -312,52 +312,91 @@ export default function LoginCanvas() {
             ctx.restore(); 
         }
 
-        // ================= SCORE REVEAL =================
-        if (p.scorePop > 0) {
+        // ================= PEER NETWORK REVEAL =================
+        if (p.networkAnim > 0) {
             ctx.save();
             
-            let pop = p.scorePop;
-            let s = pop + Math.sin(pop * Math.PI) * 0.2;
+            let pop = p.networkAnim;
+            let s = pop + Math.sin(pop * Math.PI) * 0.15;
             ctx.scale(s, s);
             ctx.globalAlpha = Math.min(1, pop * 2);
 
-            const g = ctx.createRadialGradient(0,0,40, 0,0,120);
-            g.addColorStop(0, "rgba(249, 115, 22, 0.2)");
+            const g = ctx.createRadialGradient(0,0,40, 0,0,150);
+            g.addColorStop(0, "rgba(249, 115, 22, 0.15)");
             g.addColorStop(1, "transparent");
             ctx.fillStyle = g;
-            ctx.beginPath(); ctx.arc(0,0, 120, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(0,0, 150, 0, Math.PI*2); ctx.fill();
 
-            ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
-            ctx.lineWidth = 16;
-            ctx.beginPath(); ctx.arc(0, 0, 90, 0, Math.PI * 2); ctx.stroke();
+            let orbitRadius = 90;
+            let timeRot = globalTick * 0.005;
+            const peers = 4;
+            const nodes = [{x: 0, y: 0, isYou: true}];
+            for(let i=0; i<peers; i++) {
+                let angle = (i / peers) * Math.PI * 2 + timeRot;
+                let r = orbitRadius * Math.min(1, pop * 1.2);
+                nodes.push({
+                    x: Math.cos(angle) * r,
+                    y: Math.sin(angle) * r,
+                    isYou: false
+                });
+            }
 
-            ctx.strokeStyle = "rgba(255, 255, 255, 0.02)";
-            ctx.lineWidth = 1;
-            ctx.beginPath(); ctx.arc(0, 0, 110, 0, Math.PI * 2); ctx.stroke();
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.15)";
+            ctx.lineWidth = 2;
+            for(let i=1; i<=peers; i++) {
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(nodes[i].x, nodes[i].y);
+                ctx.stroke();
+
+                let pulseT = (globalTick * 0.02 + (i * 0.25)) % 1;
+                let px = lerp(0, nodes[i].x, pulseT);
+                let py = lerp(0, nodes[i].y, pulseT);
+
+                ctx.fillStyle = c_orange;
+                ctx.shadowColor = c_orange;
+                ctx.shadowBlur = 15;
+                ctx.beginPath();
+                ctx.arc(px, py, 4, 0, Math.PI*2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+
+            for(let i=1; i<=peers; i++) {
+                ctx.fillStyle = c_card;
+                ctx.strokeStyle = "rgba(249, 115, 22, 0.5)";
+                ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.arc(nodes[i].x, nodes[i].y, 18, 0, Math.PI*2); 
+                ctx.fill(); ctx.stroke();
+                
+                ctx.fillStyle = "rgba(255,255,255,0.8)";
+                ctx.font = "500 10px Inter";
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.fillText("P" + i, nodes[i].x, nodes[i].y);
+            }
 
             ctx.shadowColor = c_orange;
-            ctx.shadowBlur = 25;
-            ctx.strokeStyle = c_orange;
-            ctx.lineWidth = 16;
-            ctx.lineCap = "round";
-            ctx.beginPath(); 
-            ctx.arc(0, 0, 90, -Math.PI/2, -Math.PI/2 + (Math.PI * 2 * 0.94 * pop)); 
-            ctx.stroke();
+            ctx.shadowBlur = 20;
+            ctx.fillStyle = c_orange;
+            ctx.beginPath(); ctx.arc(0, 0, 28, 0, Math.PI*2); ctx.fill();
             ctx.shadowBlur = 0;
 
-            ctx.fillStyle = c_card;
-            ctx.beginPath(); ctx.arc(0, 0, 80, 0, Math.PI * 2); ctx.fill();
-
-            ctx.fillStyle = c_orange;
-            ctx.font = "bold 64px Inter";
+            ctx.fillStyle = "#111";
+            ctx.font = "bold 12px Inter";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
-            ctx.fillText(Math.floor(94 * pop).toString(), 0, 5);
+            ctx.fillText("YOU", 0, 0);
 
-            ctx.fillStyle = "rgba(255,255,255,0.5)";
-            ctx.font = "600 12px Inter";
+            ctx.fillStyle = "rgba(255,255,255,0.9)";
+            ctx.font = "bold 20px Inter";
+            ctx.letterSpacing = "1px";
+            ctx.fillText("PEER ASSESSMENT", 0, 160);
+
+            ctx.fillStyle = c_orange;
+            ctx.font = "500 12px Inter";
             ctx.letterSpacing = "2px";
-            ctx.fillText("SCORE", 0, -40);
+            ctx.fillText("EVALUATION SUBMITTED", 0, 185);
 
             ctx.restore();
         }
@@ -366,7 +405,7 @@ export default function LoginCanvas() {
     function drawCursorObject() {
         if (!canvas || !ctx) return;
         if (!cursor.active) return;
-        if (p.cardScale <= 0 && p.scorePop > 0) return; 
+        if (p.cardScale <= 0 && p.networkAnim > 0) return; 
 
         if (ripple.active) {
             ctx.beginPath();
@@ -602,29 +641,29 @@ export default function LoginCanvas() {
                 p.cardScale = lerp(p.cardScale, 0, 0.1);
                 if (p.cardScale < 0.01) {
                     p.cardScale = 0;
-                    state = 'SHOW_SCORE';
+                    state = 'SHOW_NETWORK';
                     stateTime = 0;
                     spawnParticles(0, 0, c_orange);
                     spawnParticles(0, 0, "#ffffff");
                 }
                 break;
 
-            case 'SHOW_SCORE':
-                p.scorePop = lerp(p.scorePop, 1, 0.08);
-                if (p.scorePop > 0.99) {
-                    p.scorePop = 1;
+            case 'SHOW_NETWORK':
+                p.networkAnim = lerp(p.networkAnim, 1, 0.08);
+                if (p.networkAnim > 0.99) {
+                    p.networkAnim = 1;
                     if (stateTime > 150) { state = 'RESET'; stateTime = 0; }
                 }
                 break;
 
             case 'RESET':
-                p.scorePop = lerp(p.scorePop, 0, 0.1);
-                if (p.scorePop < 0.01) {
+                p.networkAnim = lerp(p.networkAnim, 0, 0.1);
+                if (p.networkAnim < 0.01) {
                     p = { 
                         cardScale: 0, scrollY: 0, dropOpen: 0, dropSelected: false, 
                         short: 0, essay: 0, submitW: 280, submitH: 50, 
                         submitColor: c_orange, loadingSpin: 0, formAlpha: 1, 
-                        rubricMorph: 0, rubricScores: [0, 0, 0, 0], scorePop: 0
+                        rubricMorph: 0, rubricScores: [0, 0, 0, 0], networkAnim: 0
                     };
                     currentRubricRow = 0;
                     cursor = { x: 200, y: 300, active: true };
