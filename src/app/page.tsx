@@ -1,11 +1,12 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Cpu, Lock, LogIn, Star } from 'lucide-react';
 import { createBrowserClient } from '@supabase/ssr';
+import LoginCanvas from '@/components/LoginCanvas';
 
 export default function LoginPage() {
   const [authError, setAuthError] = useState<string | null>(null);
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
 
   useEffect(() => {
     // Read error from URL if redirected back from callback with an error
@@ -21,6 +22,7 @@ export default function LoginPage() {
   );
 
   const handleGoogleLogin = async () => {
+    setIsAuthenticating(true);
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
@@ -33,57 +35,122 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#1c1b14] text-[#d4d4d4] flex flex-col font-sans relative">
+    <div className="h-screen w-screen relative overflow-hidden text-[#e6edf3] font-sans" style={{ background: 'radial-gradient(circle at 30% 50%, #1e293b 0%, #0f172a 100%)' }}>
+      
+      {/* Full Screen Background Animation */}
+      <div className="absolute inset-0 z-0 pointer-events-none">
+          <LoginCanvas />
+      </div>
 
-      {/* Main Content Area */}
-      <main className="flex-1 flex flex-col items-center justify-center p-4">
+      {/* Foreground UI Layout */}
+      <div className="relative z-10 flex flex-col lg:flex-row h-full w-full pointer-events-none">
+          
+          {/* Left Side: Empty space to let the animation breathe */}
+          <div className="hidden lg:block lg:w-[55%] h-full"></div>
 
-        {/* Login Card */}
-        <div className="w-full max-w-[420px] bg-[#1a1811] border border-amber-900/40 rounded-2xl p-8 sm:p-10 shadow-2xl flex flex-col items-center text-center">
+          {/* Right Side: Floating Popup Card */}
+          <div className="w-full lg:w-[45%] h-full flex flex-col items-center justify-center p-6 lg:p-12 pointer-events-auto">
+              
+              <div 
+                className="max-w-[420px] w-full rounded-[2rem] p-10 flex flex-col relative z-20" 
+                style={{ 
+                  background: 'rgba(24, 23, 21, 0.95)',
+                  backdropFilter: 'blur(20px)',
+                  border: '1px solid rgba(249, 115, 22, 0.2)',
+                  boxShadow: '0 35px 60px -15px rgba(0, 0, 0, 0.9), 0 0 40px rgba(249, 115, 22, 0.08)',
+                  animation: 'fadeIn 0.8s ease-out forwards',
+                  animationDelay: '0.1s',
+                  opacity: 0,
+                  transform: 'translateY(20px)'
+                }}
+              >
+                  <style>{`
+                    @keyframes fadeIn {
+                        from { opacity: 0; transform: translateY(20px); }
+                        to { opacity: 1; transform: translateY(0); }
+                    }
+                  `}</style>
 
-          {/* Circular Icon Top */}
-          <div className="w-16 h-16 rounded-full border border-amber-500 bg-[#29220c] flex items-center justify-center mb-6 shadow-[0_0_15px_rgba(245,158,11,0.3)]">
-            <Star className="w-8 h-8 text-amber-500 fill-amber-500" strokeWidth={2} />
+                  <div className="flex flex-col items-center text-center mb-8">
+                      <div className="w-14 h-14 rounded-full flex items-center justify-center mb-6" style={{ background: 'transparent', border: '1px solid #f97316', color: '#f97316', boxShadow: 'inset 0 0 10px rgba(249, 115, 22, 0.1), 0 0 15px rgba(249, 115, 22, 0.2)' }}>
+                          <svg className="w-7 h-7" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                          </svg>
+                      </div>
+                      
+                      <h1 className="text-[22px] leading-tight font-bold text-white tracking-wide mb-4">
+                          Welcome to Pahoa<br/>STEAM Assessment<br/>Portal
+                      </h1>
+                      
+                      <p className="text-[#a09f9d] text-[13px] leading-relaxed mb-6 px-4">
+                          Log in to access your STEAM project dashboard.
+                      </p>
+
+                      <p className="text-[#f97316] text-[12px] font-semibold px-2 leading-relaxed">
+                          Note: Only @sekolah.pahoa.sch.id email accounts are permitted.
+                      </p>
+                  </div>
+
+                  {authError && (
+                    <div className="w-full bg-red-900/30 border border-red-500/50 text-red-400 text-sm p-3 rounded-xl mb-6 text-left">
+                      {authError}
+                    </div>
+                  )}
+
+                  <div className="space-y-6">
+                      <button 
+                        onClick={handleGoogleLogin} 
+                        className="w-full flex items-center justify-center gap-3 py-3 px-6 rounded-lg font-medium text-[13px] transition-all duration-200"
+                        style={{ background: 'transparent', color: '#f97316', border: '1px solid #f97316' }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = 'rgba(249, 115, 22, 0.08)';
+                          e.currentTarget.style.boxShadow = '0 0 15px rgba(249, 115, 22, 0.15)';
+                          e.currentTarget.style.transform = 'translateY(-1px)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'transparent';
+                          e.currentTarget.style.boxShadow = 'none';
+                          e.currentTarget.style.transform = 'none';
+                        }}
+                      >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"></path>
+                          </svg>
+                          Login with Google
+                      </button>
+
+                      <div className="flex items-center justify-center gap-2 pt-2 text-[#737270] text-[11px] font-medium">
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                          </svg>
+                          Secure quantum encryption active
+                      </div>
+                  </div>
+              </div>
+
+              {/* Footer anchored below the card */}
+              <div className="mt-8 text-center pointer-events-auto">
+                  <p className="text-[#8e98a8] text-[10px]">
+                      © Pahoa STEAM Assessment Portal. All rights reserved.
+                  </p>
+              </div>
+
           </div>
+      </div>
 
-          {/* Titles & Description */}
-          <h1 className="text-2xl sm:text-3xl font-bold text-white mb-3">Welcome to Pahoa STEAM Assessment Portal</h1>
-
-          <p className="text-[#8c8c88] text-[15px] leading-relaxed mb-6 max-w-[320px]">
-            Log in to access your STEAM project dashboard.
-            <br /><br />
-            <span className="text-amber-500/90 font-medium">Note: Only @sekolah.pahoa.sch.id email accounts are permitted.</span>
-          </p>
-
-          {authError && (
-            <div className="w-full bg-red-900/30 border border-red-500/50 text-red-400 text-sm p-3 rounded-xl mb-6 text-left">
-              {authError}
+      {/* Feedback Modal */}
+      {isAuthenticating && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 pointer-events-auto">
+            <div className="bg-[#181715] p-10 rounded-2xl border border-white/10 max-w-sm w-full mx-4 text-center shadow-2xl">
+                <div className="w-16 h-16 bg-orange-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <div className="w-3 h-3 bg-orange-500 rounded-full animate-ping"></div>
+                </div>
+                <h3 className="text-xl font-medium text-white mb-3">Authenticating</h3>
+                <p className="text-[#a09f9d] text-sm mb-8 leading-relaxed">Verifying institution credentials through Google Workspace.</p>
+                <button onClick={() => setIsAuthenticating(false)} className="w-full py-3 bg-white/5 hover:bg-white/10 text-white rounded-lg text-sm transition-all font-medium border border-white/10">Cancel</button>
             </div>
-          )}
-
-          {/* Login Button Button */}
-          <button
-            onClick={handleGoogleLogin}
-            className="w-full group relative flex items-center justify-center gap-3 border-2 border-amber-500 hover:bg-amber-500/10 text-amber-500 hover:text-amber-400 font-semibold py-3.5 px-6 rounded-xl transition-all duration-300 shadow-[0_0_15px_rgba(245,158,11,0.15)] hover:shadow-[0_0_20px_rgba(245,158,11,0.25)]"
-          >
-            <LogIn className="w-5 h-5 transition-transform group-hover:scale-110" />
-            <span>Login with Google</span>
-          </button>
-
-          {/* Secure Lock text */}
-          <div className="mt-6 flex items-center justify-center gap-2 text-[13px] text-[#6b6b66]">
-            <Lock className="w-3.5 h-3.5" />
-            <span>Secure quantum encryption active</span>
-          </div>
-
         </div>
-
-      </main>
-
-      {/* Footer */}
-      <footer className="w-full p-6 text-center text-[13px] font-medium text-[#6b6b66]">
-        &copy; Pahoa STEAM Assessment Portal. All rights reserved.
-      </footer>
+      )}
 
     </div>
   );
