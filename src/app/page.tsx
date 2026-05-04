@@ -35,7 +35,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="h-screen w-screen relative overflow-hidden text-[#e6edf3] font-sans" style={{ background: 'radial-gradient(circle at 30% 50%, #1e293b 0%, #0f172a 100%)' }}>
+    <div className="h-screen w-screen relative overflow-hidden bg-black text-[#e6edf3] font-sans">
       
       {/* Full Screen Background Animation */}
       <div className="absolute inset-0 z-0 pointer-events-none">
@@ -46,18 +46,14 @@ export default function LoginPage() {
       <div className="relative z-10 flex flex-col lg:flex-row h-full w-full pointer-events-none">
           
           {/* Left Side: Empty space to let the animation breathe */}
-          <div className="hidden lg:block lg:w-[55%] h-full"></div>
+          <div className="hidden lg:block lg:w-[55%] h-full bg-transparent"></div>
 
-          {/* Right Side: Floating Popup Card */}
-          <div className="w-full lg:w-[45%] h-full flex flex-col items-center justify-center p-6 lg:p-12 pointer-events-auto">
+          {/* Right Side: Full Height Container */}
+          <div className="w-full lg:w-[45%] h-full flex flex-col items-center justify-center p-6 lg:p-12 pointer-events-auto bg-[#181715] border-l border-white/5 shadow-2xl">
               
               <div 
-                className="max-w-[420px] w-full rounded-[2rem] p-10 flex flex-col relative z-20" 
+                className="max-w-[420px] w-full flex flex-col relative z-20" 
                 style={{ 
-                  background: 'rgba(24, 23, 21, 0.95)',
-                  backdropFilter: 'blur(20px)',
-                  border: '1px solid rgba(249, 115, 22, 0.2)',
-                  boxShadow: '0 35px 60px -15px rgba(0, 0, 0, 0.9), 0 0 40px rgba(249, 115, 22, 0.08)',
                   animation: 'fadeIn 0.8s ease-out forwards',
                   animationDelay: '0.1s',
                   opacity: 0,
