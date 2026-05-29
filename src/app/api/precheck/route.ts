@@ -60,7 +60,7 @@ export async function POST(req: Request) {
         }
 
         const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
         // Map key concepts to readable string
         const conceptsString = (keyConcepts || [])
@@ -92,13 +92,13 @@ ${solution}
 ${conceptsString}
 
 Format your response in simple Markdown. Use 3 sections:
-### 🌟 What's Looking Good
+### What's Looking Good
 Provide 1-2 short bullet points praising specific elements of their idea.
 
-### 💡 Points to Consider
+### Points to Consider
 Provide 1-2 short bullet points with guiding questions or hints to improve their depth, problem definition, or STEAM integration before submission.
 
-### 🔬 Key Concept Review
+### Key Concept Review
 Review the key concepts the student listed above. For each concept, write one short sentence about how well it connects to their problem and solution. Then:
 - If any listed concept feels **unrelated or forced**, say so gently and explain why it may not fit.
 - If there is an important STEAM field **missing** that would strengthen the project, suggest it with a brief reason.
@@ -106,8 +106,9 @@ Review the key concepts the student listed above. For each concept, write one sh
 Keep this section short and helpful. Use bullet points.
         `;
 
-
-        const result = await model.generateContent(prompt);
+        const result = await model.generateContent(prompt, {
+            timeout: 30000 // 30-second timeout for pre-check
+        });
         const responseText = result.response.text();
 
         return NextResponse.json({ result: responseText });

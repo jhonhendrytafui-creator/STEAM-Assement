@@ -19,7 +19,7 @@ export async function GET() {
             results.checks.gemini = { status: 'FAIL', reason: 'GEMINI_API_KEY env var is missing' };
         } else {
             const genAI = new GoogleGenerativeAI(apiKey);
-            const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+            const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
             // Smallest possible request to test quota
             const result = await model.generateContent('Reply with only the word "ok".');
@@ -27,7 +27,7 @@ export async function GET() {
             results.checks.gemini = {
                 status: 'OK',
                 response: text.slice(0, 100),
-                model: 'gemini-2.5-flash',
+                model: 'gemini-2.0-flash',
             };
         }
     } catch (e: any) {

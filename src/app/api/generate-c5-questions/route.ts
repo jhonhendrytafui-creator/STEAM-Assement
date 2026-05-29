@@ -92,14 +92,16 @@ Your 10 questions must directly target the core dimensions of a STEAM presentati
 
         // 4. Call Gemini
         const model = genAI.getGenerativeModel({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-2.0-flash',
             systemInstruction
         });
 
         // We use string generation, no JSON schema required for C5.
         const prompt = `Analyze the following STEAM project data and generate 10 rigorous Q&A questions for the final presentation based on the provided framework.\n\nPROJECT DATA:\n${contextString}`;
 
-        const result = await model.generateContent(prompt);
+        const result = await model.generateContent(prompt, {
+            timeout: 60000 // 60-second timeout
+        });
         const responseText = result.response.text();
 
         return NextResponse.json({

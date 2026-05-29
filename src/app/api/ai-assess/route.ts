@@ -121,7 +121,7 @@ export async function POST(req: Request) {
         }
 
         const model = genAI.getGenerativeModel({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-2.0-flash',
             generationConfig: {
                 temperature: 0.2, // Low temperature for consistent grading
                 responseMimeType: "application/json",
@@ -458,26 +458,46 @@ Provide your output exactly matching the JSON schema.
 
         let responseText = '';
         let jsonPayload;
-        let retries = 3;
+        const maxRetries = 3;
+        let lastError: any = null;
         
-        while (retries > 0) {
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
-                const result = await model.generateContent(prompt);
+                const result = await model.generateContent(prompt, {
+                    timeout: 60000 // 60-second timeout per attempt
+                });
                 responseText = result.response.text();
                 jsonPayload = JSON.parse(responseText);
                 break; // Success, exit retry loop
             } catch (e: any) {
-                retries--;
-                console.error(`Gemini fetch error, retries left: ${retries}`, e);
+                lastError = e;
+                const errorMsg = e?.message || '';
+                const isTimeout = e?.name === 'AbortError' || errorMsg.includes('abort') || errorMsg.includes('timeout');
+                const is503 = errorMsg.includes('503');
+                const isSafetyBlock = errorMsg.includes('SAFETY') || errorMsg.includes('blocked');
                 
-                if (retries === 0) {
-                    throw new Error(e?.message && e.message.includes('503') 
-                        ? 'Google AI is currently overloaded (503). We automatically tried 3 times, but it is still busy. Please try again in a few minutes.' 
-                        : (e.message || 'Failed to process AI response formatting.'));
+                console.error(`AI attempt ${attempt}/${maxRetries} failed:`, {
+                    type: isTimeout ? 'TIMEOUT' : is503 ? 'OVERLOADED' : isSafetyBlock ? 'SAFETY_BLOCK' : 'OTHER',
+                    message: errorMsg.slice(0, 200)
+                });
+
+                // Don't retry on safety blocks — they will always fail
+                if (isSafetyBlock) {
+                    throw new Error('The AI could not assess this project because the content was flagged by safety filters. Please review the project text for any inappropriate content and try again.');
                 }
                 
-                // Wait for 2 seconds before retrying
-                await new Promise(res => setTimeout(res, 2000));
+                if (attempt === maxRetries) {
+                    if (isTimeout) {
+                        throw new Error('The AI assessment timed out after multiple attempts. This usually happens when Google servers are busy. Please try again in a moment.');
+                    } else if (is503) {
+                        throw new Error('Google AI is currently overloaded (503). We automatically tried 3 times, but it is still busy. Please try again in a few minutes.');
+                    } else {
+                        throw new Error(errorMsg || 'Failed to process AI response. Please try again.');
+                    }
+                }
+                
+                // Exponential backoff: 2s, 4s, 6s
+                await new Promise(res => setTimeout(res, attempt * 2000));
             }
         }
 
