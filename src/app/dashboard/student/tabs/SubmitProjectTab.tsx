@@ -82,6 +82,23 @@ export default function SubmitProjectTab({
         onStartPrecheck();
 
         try {
+            // Check quota first
+            const { data: quotaData, error: quotaError } = await supabase
+                .from('ai_precheck_usage')
+                .select('usage_count')
+                .eq('class_name', studentInfo.class_name)
+                .eq('group_number', studentInfo.group_number)
+                .eq('academic_year', ACADEMIC_YEAR)
+                .single();
+
+            const currentUsage = quotaData ? quotaData.usage_count : 0;
+
+            if (currentUsage >= 5) {
+                showToast('Your group has reached the maximum of 5 AI Pre-checks.', 'warning');
+                onEndPrecheck('');
+                return;
+            }
+
             const res = await fetch('/api/precheck', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -96,6 +113,23 @@ export default function SubmitProjectTab({
 
             if (!res.ok) {
                 throw new Error(data.error || 'Failed to analyze project');
+            }
+
+            // Update quota on success
+            if (quotaData) {
+                await supabase.from('ai_precheck_usage')
+                    .update({ usage_count: currentUsage + 1 })
+                    .eq('class_name', studentInfo.class_name)
+                    .eq('group_number', studentInfo.group_number)
+                    .eq('academic_year', ACADEMIC_YEAR);
+            } else {
+                await supabase.from('ai_precheck_usage')
+                    .insert({
+                        class_name: studentInfo.class_name,
+                        group_number: studentInfo.group_number,
+                        academic_year: ACADEMIC_YEAR,
+                        usage_count: 1
+                    });
             }
 
             onEndPrecheck(data.result);

@@ -52,6 +52,7 @@ export default function PeerAssessmentTab({
     const [commentGood, setCommentGood] = useState('');
     const [commentImprove, setCommentImprove] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [showConfirm, setShowConfirm] = useState(false);
 
     useEffect(() => {
         fetchAssessments();
@@ -113,6 +114,11 @@ export default function PeerAssessmentTab({
             return;
         }
 
+        setShowConfirm(true);
+    };
+
+    const handleConfirmSubmit = async () => {
+        setShowConfirm(false);
         setIsSubmitting(true);
         
         // Upsert logic (need an id if updating, but since we have a unique constraint, we can use upset/insert correctly)
@@ -171,6 +177,14 @@ export default function PeerAssessmentTab({
 
     return (
         <div className="bg-[#1a1811] border border-amber-900/20 rounded-2xl p-6 sm:p-8 shadow-2xl">
+            <ConfirmDialog
+                open={showConfirm}
+                title="Submit Assessment?"
+                message="Are you sure you want to submit this assessment? This action cannot be undone and you will not be able to change the grading after submission."
+                confirmLabel="Yes, Submit"
+                onConfirm={handleConfirmSubmit}
+                onCancel={() => setShowConfirm(false)}
+            />
             <div className="flex items-center gap-3 mb-6">
                 <Users className="w-6 h-6 text-amber-500" />
                 <h2 className="text-xl font-bold text-white">Peer & Self Assessment</h2>
@@ -294,15 +308,15 @@ export default function PeerAssessmentTab({
                             <div className="flex justify-end pt-2">
                                 <button
                                     type="submit"
-                                    disabled={isSubmitting}
-                                    className="bg-amber-500 hover:bg-amber-400 text-[#1a160d] font-bold py-2.5 px-6 rounded-xl transition-all flex items-center gap-2 text-sm disabled:opacity-50"
+                                    disabled={isSubmitting || !!existingAssess}
+                                    className={`font-bold py-2.5 px-6 rounded-xl transition-all flex items-center gap-2 text-sm disabled:opacity-50 ${existingAssess ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-amber-500 hover:bg-amber-400 text-[#1a160d]'}`}
                                 >
                                     {isSubmitting ? (
                                         <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
                                     ) : (
                                         <Save className="w-4 h-4" />
                                     )}
-                                    {existingAssess ? 'Update Assessment' : 'Save Assessment'}
+                                    {existingAssess ? 'Assessment Submitted' : 'Save Assessment'}
                                 </button>
                             </div>
                         </form>

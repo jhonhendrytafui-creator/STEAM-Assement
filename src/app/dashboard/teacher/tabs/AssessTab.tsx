@@ -80,14 +80,44 @@ export default function AssessTab({
                 .eq('class_name', assessClass)
                 .eq('category_id', assessCategory)
                 .eq('academic_year', ACADEMIC_YEAR);
+
             const map: Record<number, boolean> = {};
-            if (scores) {
-                scores.forEach(s => { map[s.group_number] = true; });
+            const currentCat = assessmentCategories.find(c => c.id === assessCategory);
+            const isC1Category = currentCat?.code === 'C1';
+
+            if (isC1Category) {
+                const { data: projs } = await supabase
+                    .from('projects')
+                    .select('group_number, status')
+                    .eq('class_name', assessClass)
+                    .eq('academic_year', ACADEMIC_YEAR)
+                    .order('iteration', { ascending: false });
+
+                const latestProjs = new Map();
+                if (projs) {
+                    projs.forEach(p => {
+                        if (!latestProjs.has(p.group_number)) {
+                            latestProjs.set(p.group_number, p.status);
+                        }
+                    });
+                }
+
+                if (scores) {
+                    scores.forEach(s => {
+                        if (latestProjs.get(s.group_number) !== 'pending') {
+                            map[s.group_number] = true;
+                        }
+                    });
+                }
+            } else {
+                if (scores) {
+                    scores.forEach(s => { map[s.group_number] = true; });
+                }
             }
             setAssessedGroupsMap(map);
         };
         fetchAssessedGroups();
-    }, [assessClass, assessCategory, supabase]);
+    }, [assessClass, assessCategory, supabase, assessmentCategories]);
 
     useEffect(() => {
         const loadAssessData = async () => {
@@ -125,6 +155,9 @@ export default function AssessTab({
                 .eq('category_id', assessCategory)
                 .eq('academic_year', ACADEMIC_YEAR);
 
+            const currentCat = assessmentCategories.find(c => c.id === assessCategory);
+            const isC1Category = currentCat?.code === 'C1';
+
             if (scores && scores.length > 0) {
                 const scoreMap: Record<string, number> = {};
                 scores.forEach(s => scoreMap[s.indicator_id] = s.score);
@@ -132,15 +165,18 @@ export default function AssessTab({
 
                 const savedComment = scores.find(s => s.teacher_comment)?.teacher_comment || '';
                 setAssessComment(savedComment);
-                setIsAssessmentLocked(true);
+                
+                if (isC1Category && proj && proj.status === 'pending') {
+                    setIsAssessmentLocked(false);
+                } else {
+                    setIsAssessmentLocked(true);
+                }
             } else {
                 setCurrentScores({});
                 setAssessComment('');
                 setIsAssessmentLocked(false);
             }
 
-            const currentCat = assessmentCategories.find(c => c.id === assessCategory);
-            const isC1Category = currentCat?.code === 'C1';
             if (isC1Category) {
                 setAssessStatus(proj?.status !== 'pending' ? proj?.status : '');
             } else {
