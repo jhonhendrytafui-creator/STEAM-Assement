@@ -1,0 +1,296 @@
+'use client';
+
+import React, { useState } from 'react';
+import {
+    BarChart2
+} from 'lucide-react';
+import { supabase } from '@/lib/supabase/client';
+import { ACADEMIC_YEAR } from '@/lib/constants';
+import type { AssessmentCategory, RubricDimension, RubricIndicator } from '@/lib/types';
+
+interface ScoreTabProps {
+    allStudents: any[];
+    assessmentCategories: AssessmentCategory[];
+    rubricDimensions: RubricDimension[];
+    rubricIndicators: RubricIndicator[];
+    showToast: (message: string, type: 'success' | 'error' | 'info' | 'warning') => void;
+}
+
+export default function ScoreTab({ allStudents, assessmentCategories, rubricDimensions, rubricIndicators, showToast }: ScoreTabProps) {
+    // Score Tab State
+    const [scoreGrade, setScoreGrade] = useState<string>('');
+    const [scoreClass, setScoreClass] = useState<string>('');
+    const [scoreCategories, setScoreCategories] = useState<string[]>([]);
+    const [classScores, setClassScores] = useState<any[]>([]);
+    const [isFetchingScores, setIsFetchingScores] = useState(false);
+    const [scoreGrouping, setScoreGrouping] = useState<'group' | 'alphabetical'>('group');
+
+    const availableGrades = Array.from(new Set(allStudents.map(s => String(s.class_name).split('.')[0]))).sort((a, b) => Number(a) - Number(b));
+    const availableClasses = Array.from(new Set(allStudents.filter(s => String(s.class_name).split('.')[0] === scoreGrade).map(s => s.class_name))).sort();
+
+    const fetchClassScores = async () => {
+        if (!scoreClass || scoreCategories.length === 0) return;
+        setIsFetchingScores(true);
+
+        const studentsInClass = allStudents.filter(s => s.class_name === scoreClass).sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''));
+
+        const { data: classProjects } = await supabase
+            .from('projects')
+            .select('group_number, title')
+            .eq('class_name', scoreClass)
+            .eq('academic_year', ACADEMIC_YEAR);
+
+        const { data: scoresData } = await supabase
+            .from('assessment_scores')
+            .select('*')
+            .eq('class_name', scoreClass)
+            .in('category_id', scoreCategories)
+            .eq('academic_year', ACADEMIC_YEAR);
+
+        const results = studentsInClass.map(student => {
+            const proj = classProjects?.find(p => p.group_number === student.group_number);
+
+            const studentAssessments: Record<string, any> = {};
+
+            scoreCategories.forEach(catId => {
+                const cat = assessmentCategories.find(c => c.id === catId);
+                const dims = rubricDimensions.filter(d => d.category_id === catId);
+                const inds = rubricIndicators.filter(i => dims.some(d => d.id === i.dimension_id));
+
+                const maxScale = parseInt(cat?.rubric_type.replace('scale_', '') || '1');
+                const isChecklist = cat?.rubric_type === 'checklist';
+                const totalMax = isChecklist ? inds.length : inds.length * maxScale;
+
+                const groupCatScores = scoresData?.filter(s => s.group_number === student.group_number && s.category_id === catId) || [];
+                const totalScore = groupCatScores.reduce((sum, s) => sum + s.score, 0);
+
+                studentAssessments[catId] = {
+                    totalScore,
+                    totalMax,
+                    percentage: totalMax > 0 ? Math.round((totalScore / totalMax) * 100) : 0,
+                    isAssessed: groupCatScores.length > 0
+                };
+            });
+
+            return {
+                student_name: student.full_name,
+                group_number: student.group_number,
+                project_title: proj?.title || 'No Project Submitted',
+                assessments: studentAssessments
+            };
+        });
+
+        // Sorting
+        if (scoreGrouping === 'group') {
+            results.sort((a, b) => a.group_number - b.group_number || (a.student_name || '').localeCompare(b.student_name || ''));
+        }
+
+        setClassScores(results);
+        setIsFetchingScores(false);
+    };
+
+    const downloadScoresCSV = () => {
+        if (classScores.length === 0) return;
+
+        const headers = ['Student Name', 'Group', 'Project Title'];
+        scoreCategories.forEach(catId => {
+            const cat = assessmentCategories.find(c => c.id === catId);
+            if (cat) headers.push(cat.name);
+        });
+
+        const csvRows = [headers.join(',')];
+
+        classScores.forEach(row => {
+            const rowData = [
+                `"${row.student_name}"`,
+                row.group_number,
+                `"${row.project_title.replace(/"/g, '""')}"`
+            ];
+
+            scoreCategories.forEach(catId => {
+                const assessment = row.assessments[catId];
+                if (assessment.isAssessed) {
+                    rowData.push(`${assessment.totalScore}/${assessment.totalMax} (${assessment.percentage}%)`);
+                } else {
+                    rowData.push('-');
+                }
+            });
+
+            csvRows.push(rowData.join(','));
+        });
+
+        const csvString = csvRows.join('\n');
+        const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `Steam_Scores_${scoreClass}_${new Date().toISOString().split('T')[0]}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    return (
+        <div className="bg-[#1a1811] border border-amber-900/20 rounded-2xl p-6 sm:p-8 shadow-2xl">
+            <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+                <BarChart2 className="text-amber-500" />
+                Student Score
+            </h2>
+
+            {/* Score Filters */}
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 mb-8 bg-[#1c1b14] border border-slate-800 rounded-xl p-5">
+                <div className="space-y-4 lg:col-span-2">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Grade</label>
+                            <select
+                                value={scoreGrade}
+                                onChange={(e) => { setScoreGrade(e.target.value); setScoreClass(''); setClassScores([]); }}
+                                className="w-full bg-[#1a1811] border border-slate-800 rounded-lg py-2.5 px-3 text-sm text-slate-200 focus:outline-none focus:border-amber-500"
+                            >
+                                <option value="">Select Grade</option>
+                                {availableGrades.map(g => <option key={g} value={g}>Grade {g}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Class</label>
+                            <select
+                                value={scoreClass}
+                                onChange={(e) => { setScoreClass(e.target.value); setClassScores([]); }}
+                                disabled={!scoreGrade}
+                                className="w-full bg-[#1a1811] border border-slate-800 rounded-lg py-2.5 px-3 text-sm text-slate-200 focus:outline-none focus:border-amber-500 disabled:opacity-50"
+                            >
+                                <option value="">Select Class</option>
+                                {availableClasses.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Grouping Options</label>
+                        <div className="flex bg-[#1a1811] border border-slate-800 rounded-lg overflow-hidden">
+                            <button
+                                onClick={() => { setScoreGrouping('group'); setClassScores([]); }}
+                                className={`flex-1 py-2 text-xs font-bold transition-colors ${scoreGrouping === 'group' ? 'bg-amber-500/20 text-amber-500 border-b-2 border-amber-500' : 'text-slate-500 hover:text-slate-300'}`}
+                            >
+                                By Group
+                            </button>
+                            <button
+                                onClick={() => { setScoreGrouping('alphabetical'); setClassScores([]); }}
+                                className={`flex-1 py-2 text-xs font-bold transition-colors ${scoreGrouping === 'alphabetical' ? 'bg-amber-500/20 text-amber-500 border-b-2 border-amber-500' : 'text-slate-500 hover:text-slate-300'}`}
+                            >
+                                A-Z Alphabetical
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="lg:col-span-2">
+                    <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Assessments (Multi-Select)</label>
+                    <div className="bg-[#1a1811] border border-slate-800 rounded-lg p-3 custom-scrollbar overflow-y-auto max-h-48">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                            {assessmentCategories.map(c => {
+                                const isSelected = scoreCategories.includes(c.id);
+                                return (
+                                    <button
+                                        key={c.id}
+                                        onClick={() => {
+                                            if (isSelected) {
+                                                setScoreCategories(prev => prev.filter(id => id !== c.id));
+                                            } else {
+                                                setScoreCategories(prev => [...prev, c.id]);
+                                            }
+                                            setClassScores([]);
+                                        }}
+                                        className={`p-2 rounded-lg text-left transition-all border flex flex-col justify-center h-full ${isSelected
+                                            ? 'bg-amber-500 text-[#1a1811] border-amber-500 shadow-md'
+                                            : 'bg-[#1c1b14] border-slate-700 hover:border-amber-500/50'
+                                            }`}
+                                    >
+                                        <span className={`text-xs font-extrabold ${isSelected ? 'text-[#1a1811]' : 'text-slate-300'}`}>{c.code}</span>
+                                        <span className={`text-[10px] leading-tight mt-0.5 line-clamp-2 ${isSelected ? 'text-amber-950' : 'text-slate-500'}`}>{c.name}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        {assessmentCategories.length === 0 && <span className="text-sm text-slate-500 italic">No assessments available.</span>}
+                    </div>
+                </div>
+
+                <div className="flex flex-col justify-end gap-3 lg:col-span-1">
+                    <button
+                        onClick={fetchClassScores}
+                        disabled={!scoreClass || scoreCategories.length === 0 || isFetchingScores}
+                        className="w-full bg-amber-500 hover:bg-amber-400 text-[#1a1811] font-bold py-2.5 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm h-[42px] flex items-center justify-center gap-2"
+                    >
+                        {isFetchingScores ? 'Loading...' : 'Search Scores'}
+                    </button>
+
+                    <button
+                        onClick={downloadScoresCSV}
+                        disabled={classScores.length === 0}
+                        className="w-full bg-[#1a1811] border border-amber-500/30 text-amber-500 hover:bg-amber-500/10 font-bold py-2.5 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm h-[42px] flex items-center justify-center gap-2"
+                    >
+                        Download CSV
+                    </button>
+                </div>
+            </div>
+
+            {/* Scores Table */}
+            {classScores.length > 0 && (
+                <div className="bg-[#1c1b14] border border-slate-800 rounded-xl overflow-hidden shadow-2xl">
+                    <div className="overflow-x-auto custom-scrollbar">
+                        <table className="w-full text-left border-collapse min-w-max">
+                            <thead>
+                                <tr className="bg-[#1a1811] border-b border-slate-800/50 text-xs uppercase tracking-wider text-slate-500">
+                                    <th className="p-4 font-semibold w-64 bg-[#1a1811] sticky left-0 z-10 border-r border-slate-800/50">Student Name</th>
+                                    <th className="p-4 font-semibold text-center w-20">Group</th>
+                                    <th className="p-4 font-semibold w-64">Project Title</th>
+                                    {scoreCategories.map(catId => {
+                                        const cat = assessmentCategories.find(c => c.id === catId);
+                                        return <th key={catId} className="p-4 font-semibold text-center">{cat?.code || 'Score'}</th>;
+                                    })}
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-800/30 text-sm">
+                                {classScores.map((score, idx) => (
+                                    <tr key={idx} className="hover:bg-[#1a1811]/50 transition-colors group">
+                                        <td className="p-4 font-bold text-slate-200 bg-[#1c1b14] group-hover:bg-[#1a1811] sticky left-0 z-10 border-r border-slate-800/50">
+                                            {score.student_name}
+                                        </td>
+                                        <td className="p-4 text-center">
+                                            <div className="w-7 h-7 rounded-sm bg-slate-800/80 flex items-center justify-center text-amber-400 font-bold text-xs mx-auto border border-slate-700">
+                                                {score.group_number}
+                                            </div>
+                                        </td>
+                                        <td className="p-4 font-medium text-slate-400">
+                                            <span className="line-clamp-2">{score.project_title}</span>
+                                        </td>
+
+                                        {scoreCategories.map(catId => {
+                                            const assessment = score.assessments[catId];
+                                            return (
+                                                <td key={catId} className="p-4 text-center">
+                                                    {assessment.isAssessed ? (
+                                                        <div className="flex flex-col items-center">
+                                                            <span className={`text-sm font-bold ${assessment.percentage >= 80 ? 'text-emerald-400' : assessment.percentage >= 60 ? 'text-amber-400' : 'text-red-400'}`}>
+                                                                {assessment.percentage}%
+                                                            </span>
+                                                            <span className="text-[10px] text-slate-500 font-medium block">{assessment.totalScore}/{assessment.totalMax}</span>
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-slate-600">—</span>
+                                                    )}
+                                                </td>
+                                            );
+                                        })}
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
+        </div>
+    );
+}

@@ -1,0 +1,390 @@
+'use client';
+
+import React, { useState } from 'react';
+import {
+    PenSquare, Plus, Trash2,
+    ChevronDown, AlertTriangle, Award, Sparkles, Calculator
+} from 'lucide-react';
+import { supabase } from '@/lib/supabase/client';
+import { SUBJECTS, ACADEMIC_YEAR } from '@/lib/constants';
+import type { ProjectData, StudentInfo, Theme, AssessmentCategory, ToastType } from '@/lib/types';
+
+interface SubmitProjectTabProps {
+    projectData: ProjectData | null;
+    studentInfo: StudentInfo;
+    userEmail: string | null;
+    themesList: Theme[];
+    projectHistory: ProjectData[];
+    assessmentCategories: AssessmentCategory[];
+    showToast: (message: string, type: ToastType) => void;
+    onSubmitSuccess: (newProject: ProjectData) => void;
+    onStartPrecheck: () => void;
+    onEndPrecheck: (result: string) => void;
+    isPrechecking: boolean;
+    onNavigateToData: () => void;
+}
+
+export default function SubmitProjectTab({
+    projectData,
+    studentInfo,
+    userEmail,
+    themesList,
+    projectHistory,
+    assessmentCategories,
+    showToast,
+    onSubmitSuccess,
+    onStartPrecheck,
+    onEndPrecheck,
+    isPrechecking,
+    onNavigateToData,
+}: SubmitProjectTabProps) {
+    // Local form state
+    const [title, setTitle] = useState('');
+    const [theme, setTheme] = useState(themesList.length > 0 ? themesList[0].id : '');
+    const [problem, setProblem] = useState('');
+    const [solution, setSolution] = useState('');
+    const [keyConcepts, setKeyConcepts] = useState([{ subject: 'biology_marine', concept: '' }]);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // ─── Key Concepts Handlers ─────────────────────────
+    const addConcept = () => {
+        setKeyConcepts([...keyConcepts, { subject: 'biology_marine', concept: '' }]);
+    };
+
+    const removeConcept = (index: number) => {
+        setKeyConcepts(keyConcepts.filter((_, i) => i !== index));
+    };
+
+    const updateConcept = (index: number, field: 'subject' | 'concept', value: string) => {
+        const newConcepts = [...keyConcepts];
+        newConcepts[index][field] = value;
+        setKeyConcepts(newConcepts);
+    };
+
+    // ─── Title Case Helper ────────────────────────────
+    const toTitleCase = (str: string): string => {
+        const minorWords = new Set(['a', 'an', 'the', 'and', 'but', 'or', 'nor', 'for', 'yet', 'so', 'at', 'by', 'in', 'of', 'on', 'to', 'up', 'as', 'is', 'if', 'it', 'vs', 'via']);
+        return str.trim().replace(/\s+/g, ' ').split(' ').map((word, index) => {
+            if (index === 0 || !minorWords.has(word.toLowerCase())) {
+                return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+            }
+            return word.toLowerCase();
+        }).join(' ');
+    };
+
+    // ─── AI Pre-Check ──────────────────────────────────
+    const handlePreCheck = async () => {
+        if (!problem.trim() || !solution.trim()) {
+            showToast('Please fill in both the Problem and Solution fields before running the AI Pre-Check.', 'warning');
+            return;
+        }
+
+        onStartPrecheck();
+
+        try {
+            const res = await fetch('/api/precheck', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    problem,
+                    solution,
+                    keyConcepts: keyConcepts.filter(c => c.concept.trim() !== '')
+                })
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+                throw new Error(data.error || 'Failed to analyze project');
+            }
+
+            onEndPrecheck(data.result);
+        } catch (error: any) {
+            showToast(error.message || 'An error occurred during AI Pre-Check.', 'error');
+            onEndPrecheck('');
+        }
+    };
+
+    // ─── Project Submit ────────────────────────────────
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!userEmail || !studentInfo || isSubmitting) return;
+
+        setIsSubmitting(true);
+
+        // Strict validation: all fields must be filled
+        if (!title.trim()) {
+            showToast('Please enter a project title.', 'warning');
+            setIsSubmitting(false);
+            return;
+        }
+        if (!theme) {
+            showToast('Please select a theme.', 'warning');
+            setIsSubmitting(false);
+            return;
+        }
+        if (!problem.trim()) {
+            showToast('Please describe the problem.', 'warning');
+            setIsSubmitting(false);
+            return;
+        }
+        if (!solution.trim()) {
+            showToast('Please describe the solution.', 'warning');
+            setIsSubmitting(false);
+            return;
+        }
+        if (keyConcepts.some(c => !c.concept.trim())) {
+            showToast('Please fill in all key concepts.', 'warning');
+            setIsSubmitting(false);
+            return;
+        }
+
+        const combinedAbstract = JSON.stringify({
+            problem,
+            solution,
+            keyConcepts
+        });
+
+        const nextIteration = projectHistory.length > 0 ? (projectHistory[0].iteration || 1) + 1 : 1;
+
+        const { data, error } = await supabase.from('projects').insert([
+            {
+                class_name: studentInfo.class_name,
+                group_number: studentInfo.group_number,
+                academic_year: ACADEMIC_YEAR,
+                theme_id: theme || null,
+                title: toTitleCase(title),
+                abstract: combinedAbstract,
+                status: 'pending',
+                google_doc_url: projectHistory.length > 0 ? projectHistory[0].google_doc_url : null,
+                iteration: nextIteration
+            }
+        ]).select();
+
+        setIsSubmitting(false);
+
+        if (error) {
+            console.error(error);
+            showToast('Error submitting project: ' + error.message, 'error');
+        } else if (data) {
+            showToast(nextIteration > 1 ? 'Project resubmitted successfully!' : 'Project submitted successfully!', 'success');
+            
+            // Reset C1 assessment scores for this group so the new iteration gets a fresh start
+            if (nextIteration > 1) {
+                const c1Category = assessmentCategories.find(c => c.code === 'C1');
+                if (c1Category) {
+                    await supabase
+                        .from('assessment_scores')
+                        .delete()
+                        .eq('class_name', studentInfo.class_name)
+                        .eq('group_number', studentInfo.group_number)
+                        .eq('category_id', c1Category.id)
+                        .eq('academic_year', ACADEMIC_YEAR);
+                }
+            }
+
+            // Reset local form
+            setTitle('');
+            setProblem('');
+            setSolution('');
+            setKeyConcepts([{ subject: 'biology_marine', concept: '' }]);
+
+            // Notify parent
+            onSubmitSuccess(data[0]);
+        }
+    };
+
+    return (
+        <div className="bg-[#1a1811] border border-amber-900/20 rounded-2xl p-6 sm:p-8 shadow-2xl">
+            <h2 className="text-2xl font-bold text-white mb-2 flex items-center gap-3">
+                <PenSquare className="text-amber-500" />
+                Project Submission
+            </h2>
+            <p className="text-slate-400 text-sm mb-8">Fill out the details of your STEAM project below.</p>
+
+            {projectData && ['pending', 'approved'].includes(projectData.status) ? (
+                <div className="bg-[#1c1b14] border border-amber-500/30 rounded-xl p-6 text-center">
+                    <Award className="w-12 h-12 text-amber-500 mx-auto mb-3" />
+                    <h3 className="text-lg font-bold text-white mb-2">
+                        {projectData.status === 'approved' ? 'Project Approved!' : 'Project Under Review'}
+                    </h3>
+                    <p className="text-slate-400 text-sm mb-4">
+                        {projectData.status === 'approved'
+                            ? 'Great job! Your project was approved by the teacher. Check the "My Project Data" tab.'
+                            : 'Your group has submitted a project and it is currently being reviewed.'}
+                        <br /><strong className="text-amber-400 mt-2 block">{projectData.title}</strong>
+                    </p>
+                    <button
+                        onClick={onNavigateToData}
+                        className="text-amber-400 hover:text-amber-300 text-sm font-medium transition-colors"
+                    >
+                        View Project Details →
+                    </button>
+                </div>
+            ) : (
+                <form onSubmit={handleSubmit} className="space-y-6">
+                    {projectData && ['revision', 'disapproved'].includes(projectData.status) && (
+                        <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 mb-6 flex items-start gap-3">
+                            <AlertTriangle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+                            <div className="text-sm text-red-200">
+                                <p className="font-semibold mb-1">Resubmission Required ({projectData.status})</p>
+                                <p className="opacity-80">Please update your project details below and submit a new iteration for assessment.</p>
+                            </div>
+                        </div>
+                    )}
+                    {/* Title */}
+                    <div>
+                        <label className="block text-sm font-semibold text-slate-300 mb-2">Project Title</label>
+                        <input
+                            type="text"
+                            required
+                            value={title}
+                            onChange={(e) => setTitle(e.target.value)}
+                            className="w-full bg-[#1c1b14] border border-slate-800 rounded-xl py-3 px-4 text-slate-200 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all"
+                            placeholder="Enter your project title..."
+                        />
+                    </div>
+
+                    {/* Theme Dropdown */}
+                    <div>
+                        <label className="block text-sm font-semibold text-slate-300 mb-2">Theme</label>
+                        {themesList.length > 0 ? (
+                            <div className="relative">
+                                <select
+                                    value={theme}
+                                    onChange={(e) => setTheme(e.target.value)}
+                                    className="w-full bg-[#1c1b14] border border-slate-800 rounded-xl py-3 px-4 pr-10 text-slate-200 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all appearance-none"
+                                >
+                                    {themesList.map((t) => (
+                                        <option key={t.id} value={t.id}>{t.theme_name}</option>
+                                    ))}
+                                </select>
+                                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 pointer-events-none" />
+                            </div>
+                        ) : (
+                            <div className="bg-[#1c1b14] border border-slate-800 rounded-xl py-3 px-4 text-slate-500 text-sm">
+                                No themes available for your grade. Please contact your teacher.
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Problem & Solution */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label className="block text-sm font-semibold text-slate-300 mb-2">Problem</label>
+                            <textarea
+                                required
+                                rows={4}
+                                value={problem}
+                                onChange={(e) => setProblem(e.target.value)}
+                                className="w-full bg-[#1c1b14] border border-slate-800 rounded-xl py-3 px-4 text-slate-200 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all resize-none"
+                                placeholder="Describe the problem you are solving..."
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-semibold text-slate-300 mb-2">Solution</label>
+                            <textarea
+                                required
+                                rows={4}
+                                value={solution}
+                                onChange={(e) => setSolution(e.target.value)}
+                                className="w-full bg-[#1c1b14] border border-slate-800 rounded-xl py-3 px-4 text-slate-200 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all resize-none"
+                                placeholder="Describe your proposed solution..."
+                            />
+                        </div>
+                    </div>
+
+                    {/* Key Concepts */}
+                    <div className="pt-4 border-t border-slate-800/50">
+                        <div className="flex justify-between items-center mb-4">
+                            <label className="block text-sm font-semibold text-slate-300">Key Concepts</label>
+                            <button
+                                type="button"
+                                onClick={addConcept}
+                                className="text-xs bg-amber-500/10 text-amber-400 border border-amber-500/20 px-3 py-1.5 rounded-lg flex items-center gap-1 hover:bg-amber-500/20 transition-colors"
+                            >
+                                <Plus className="w-3 h-3" /> Add Concept
+                            </button>
+                        </div>
+
+                        <div className="space-y-3">
+                            {keyConcepts.map((item, index) => (
+                                <div key={index} className="flex gap-3 items-start">
+                                    <div className="relative w-1/3 shrink-0">
+                                        <select
+                                            value={item.subject}
+                                            onChange={(e) => updateConcept(index, 'subject', e.target.value)}
+                                            className="w-full bg-[#1c1b14] border border-slate-800 rounded-lg py-2.5 pl-10 pr-4 text-sm text-slate-200 focus:outline-none focus:border-amber-500 appearance-none"
+                                        >
+                                            {Array.from(new Set(SUBJECTS.map(s => s.group))).map(group => (
+                                                <optgroup key={group} label={group as string}>
+                                                    {SUBJECTS.filter(s => s.group === group).map((sub) => (
+                                                        <option key={sub.id} value={sub.id}>{sub.label}</option>
+                                                    ))}
+                                                </optgroup>
+                                            ))}
+                                        </select>
+                                        <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                                            {(() => {
+                                                const SelIcon = SUBJECTS.find(s => s.id === item.subject)?.icon || Calculator;
+                                                return <SelIcon className="w-4 h-4" />;
+                                            })()}
+                                        </div>
+                                    </div>
+                                    <input
+                                        type="text"
+                                        required
+                                        value={item.concept}
+                                        onChange={(e) => updateConcept(index, 'concept', e.target.value)}
+                                        className="flex-1 bg-[#1c1b14] border border-slate-800 rounded-lg py-2.5 px-4 text-sm text-slate-200 focus:outline-none focus:border-amber-500"
+                                        placeholder="Describe the concept..."
+                                    />
+                                    {keyConcepts.length > 1 && (
+                                        <button
+                                            type="button"
+                                            onClick={() => removeConcept(index)}
+                                            className="p-2.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+
+                    {/* Submit & PreCheck Buttons */}
+                    <div className="flex flex-col sm:flex-row gap-4 mt-8">
+                        <button
+                            type="button"
+                            onClick={handlePreCheck}
+                            disabled={isPrechecking || isSubmitting}
+                            className="w-full sm:w-1/2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-indigo-900/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {isPrechecking ? (
+                                <div className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin"></div>
+                            ) : (
+                                <Sparkles className="w-5 h-5" />
+                            )}
+                            {isPrechecking ? 'Analyzing...' : 'AI Pre-Check'}
+                        </button>
+
+                        <button
+                            type="submit"
+                            disabled={isSubmitting || isPrechecking}
+                            className="w-full sm:w-1/2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-[#1a160d] font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-amber-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {isSubmitting ? (
+                                <div className="w-5 h-5 border-2 border-[#1a160d] border-t-transparent rounded-full animate-spin"></div>
+                            ) : (
+                                <PenSquare className="w-5 h-5" />
+                            )}
+                            {isSubmitting ? 'Submitting...' : 'Submit Project Review'}
+                        </button>
+                    </div>
+                </form>
+            )}
+        </div>
+    );
+}
