@@ -4,14 +4,21 @@ WORKDIR /app
 
 # Copy only package files for dependency caching
 COPY package.json package-lock.json ./
-RUN npm ci --ignore-scripts
+RUN npm ci --ignore-scripts --omit=dev || npm ci --ignore-scripts
 
 # ─── Stage 2: Build the application ─────────────────
 FROM node:20-alpine AS builder
 WORKDIR /app
 
+# Increase Node.js memory for building large pages
+ENV NODE_OPTIONS="--max-old-space-size=2048"
+ENV NEXT_TELEMETRY_DISABLED=1
+
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+
+# Install dev dependencies needed for build (TypeScript, etc.)
+RUN npm install --ignore-scripts
 
 # Build Next.js in standalone mode
 RUN npm run build
