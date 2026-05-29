@@ -2340,7 +2340,7 @@ export default function TeacherDashboardPage() {
                                                                         <textarea
                                                                             value={assessComment}
                                                                             onChange={e => setAssessComment(e.target.value)}
-                                                                            rows={3}
+                                                                            rows={12}
                                                                             placeholder="Leave constructive feedback for the group..."
                                                                             className="w-full bg-[#1a1811] border border-slate-800 rounded-lg py-3 px-4 text-sm text-slate-200 focus:outline-none focus:border-amber-500 resize-none whitespace-pre-wrap"
                                                                             disabled={isAssessmentLocked}

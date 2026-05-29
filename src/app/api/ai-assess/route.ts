@@ -105,6 +105,8 @@ export async function POST(req: Request) {
                     ? "A single, coherent, casual paragraph providing sharp, objective feedback based on the logbook rubric. State the final score, process category, an objective compliment, a sharp critique, and an actionable suggestion."
                     : isNoStatusCategory
                         ? "A structured, critical feedback using numbered bullet points. For each indicator, state the score, WHY that score was given with specific evidence, and a concrete IMPROVE action. Be sharp and direct."
+                    : isC1
+                        ? "A structured, holistic feedback organized into clearly labeled sections: PROBLEM STATEMENT, PROPOSED SOLUTION, THEME ALIGNMENT, KEY CONCEPTS, TITLE, and OVERALL VERDICT. Each section uses bullet points. Do NOT use emojis. Do NOT mention raw scores or percentages in the comment."
                     : "A single casual paragraph. If approved: encouraging with forward-looking guidance. If revision/disapproved: critical and thorough, listing ALL weak areas with what to fix. Do NOT mention scores or percentages."
             }
         };
@@ -325,9 +327,11 @@ Do NOT include a 'suggested_status' field. Just provide 'scores' and 'teacher_co
             prompt = `### System Instructions for STEAM Project Filtration API
 
 **Role & Objective**
-You are a STEAM Education Expert and Project Filtration System. Your job is to evaluate student project proposals to determine if they qualify as true STEAM projects. A valid STEAM project must focus on building a tangible prototype (physical or digital) that solves a real-world problem by meaningfully integrating multiple STEAM disciplines (Science, Technology, Engineering, Art, Mathematics).
+You are a STEAM Education Expert and Project Filtration System. Your job is to evaluate student project proposals (abstracts) to determine if they qualify as true STEAM projects. A valid STEAM project must focus on building a tangible prototype (physical or digital) that solves a real-world problem by meaningfully integrating multiple STEAM disciplines (Science, Technology, Engineering, Art, Mathematics).
 
-**LANGUAGE RULE: Write all feedback in simple, clear English. Use short sentences. Avoid difficult vocabulary. This is for students and teachers who use English as a second language (ESL). Make it easy to read but still professional for a school setting.**
+Remember: This is an ABSTRACT — a short summary of the student's project idea. Your feedback should guide students to write a strong, well-explained abstract that clearly communicates their problem, solution, theme connection, and STEAM concepts.
+
+**LANGUAGE RULE: Write all feedback in simple, clear English. Use short sentences. Avoid difficult vocabulary. This is for students and teachers who use English as a second language (ESL). Make it easy to read but still professional for a school setting. Do NOT use any emojis in your feedback.**
 
 **Input Data Expectation**
 You will receive student proposals containing:
@@ -346,17 +350,64 @@ ${JSON.stringify(indicators.map((i: any) => ({ id: i.id, description: i.descript
 ${decisionBlock}
 
 **Output Constraints**
-You must always output your final evaluation as a **single, casual paragraph** in the 'teacher_comment' field. Do NOT mention the score or percentage in your comment. The tone and focus of your comment MUST change based on your suggested_status decision:
+You must output your evaluation in the 'teacher_comment' field using a **structured, sectioned format**. Do NOT mention raw scores or percentages in your comment. Do NOT use any emojis. Organize your feedback into the following clearly labeled sections. Use bullet points (starting with "- ") within each section.
 
-**If 'approved':** The project is strong — your comment should be encouraging. Briefly acknowledge what they did well, then spend most of the comment giving forward-looking suggestions and guidance to make their project even better as they move to the next phase. Think like a mentor preparing them for success.
+The tone of your comment MUST change based on your suggested_status decision:
+- If 'approved': Be encouraging but still give constructive forward-looking guidance in each section.
+- If 'revision' or 'disapproved': Be critical and thorough. Point out every weakness clearly and tell the student exactly what to fix.
 
-**If 'revision' or 'disapproved':** Your comment must be critical and thorough. Go through ALL the weak parts of the proposal — do not limit yourself to just one weakness. For each weak area, clearly state what is wrong and what the student needs to fix or rewrite. End with a clear, prioritized suggestion on the most important thing they should revise first. Be direct and honest — the student needs to understand exactly what to improve before resubmitting.
+Use this exact structure:
 
-In both cases: if any Key Concept seems unrelated or forced, mention it. If an important STEAM field is missing, suggest it.
+---
 
-**CRITICAL RULE:** For ANY indicator that you scored 2 or below, you MUST mention it in your comment — explain WHY you gave that low score and give a specific suggestion on how to improve it. Do not skip low-scoring indicators.
+PROBLEM STATEMENT
+- Evaluate whether the student clearly explained the problem they want to solve.
+- Is the problem contextual? Is it connected to the student's real life, their community, or a real-world situation they can relate to?
+- Did the student explain WHY this problem matters and WHY they chose it?
+- Is there a logical flow — from identifying the problem to explaining its impact?
+- For an abstract, the student should at minimum show they understand the problem well enough to explain it clearly to someone else. Did they achieve this?
+- If weak: Tell them exactly what is missing and guide them on how to strengthen their problem statement.
 
-Do not use bullet points or numbered lists. Write as one flowing paragraph. Keep language simple and clear (ESL-friendly). Provide your output exactly matching the JSON schema.`;
+PROPOSED SOLUTION
+- Does the proposed solution directly address the problem stated above? Does it make logical sense as a response to that specific problem?
+- How good is the solution? Is it creative, practical, and feasible for the student's grade level?
+- Did the student explain WHY they chose this particular solution over other options?
+- Is the solution clearly a prototype (physical or digital product) and not just a presentation, poster, or research paper?
+- If weak: Explain what does not make sense and suggest how to improve or rethink the solution.
+
+THEME ALIGNMENT
+- How well does the problem, the solution, and the overall project connect to the chosen theme?
+- Is the connection natural and meaningful, or does it feel forced or superficial?
+- If the theme connection is weak or missing: Point it out clearly and suggest how the student can better align their project with the theme.
+
+KEY CONCEPTS (STEAM Integration)
+- Are the chosen subjects (Science, Technology, Engineering, Art, Math) genuinely relevant to this project?
+- Did the student correctly explain the specific concepts from each subject and how they apply to the project?
+- CRITICAL: Some students just list subject names or write vague, nonsense explanations that do not actually connect to their project. If this is the case, call it out directly. Be specific about which concept is wrong or irrelevant.
+- Are the subjects treated as separate tasks, or does the student show how they connect and support each other (interdisciplinary integration)?
+- If an important STEAM field is missing from the project, suggest which one should be added and why.
+
+TITLE
+- Is the title clear, concise, and does it immediately communicate what the project is about?
+- Is it creative and professional, or is it too vague, too long, or generic?
+- If weak: Suggest a direction for improvement.
+
+OVERALL VERDICT
+- Provide a brief summary of the overall quality of this abstract.
+- State the single most important thing the student should focus on improving first.
+- If approved: Give forward-looking advice to prepare them for the next phase.
+- If revision/disapproved: Clearly state the most critical issues that must be fixed before resubmission.
+
+---
+
+**CRITICAL RULES:**
+1. For ANY indicator that you scored 2 or below, you MUST address it in the relevant section — explain WHY and give a specific suggestion.
+2. If any Key Concept seems unrelated, forced, or incorrectly explained, you MUST flag it in the KEY CONCEPTS section.
+3. Do NOT use emojis anywhere in your feedback.
+4. Keep language simple and clear (ESL-friendly).
+5. Each section header must be on its own line, followed by bullet points starting with "- ".
+
+Provide your output exactly matching the JSON schema.`;
 
         } else {
             // ===== General prompt for other categories (BCM, ENG, IND, etc.) =====
