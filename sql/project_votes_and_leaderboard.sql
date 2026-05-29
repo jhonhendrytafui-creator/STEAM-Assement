@@ -33,12 +33,12 @@ USING (teacher_id = auth.uid());
 CREATE OR REPLACE FUNCTION check_max_votes()
 RETURNS TRIGGER AS $$
 BEGIN
-    IF (SELECT COUNT(*) FROM project_votes WHERE teacher_id = NEW.teacher_id) >= 3 THEN
+    IF (SELECT COUNT(*) FROM public.project_votes WHERE teacher_id = NEW.teacher_id) >= 3 THEN
         RAISE EXCEPTION 'A teacher can only vote for up to 3 projects';
     END IF;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = public;
 
 DROP TRIGGER IF EXISTS enforce_max_votes ON project_votes;
 CREATE TRIGGER enforce_max_votes
@@ -50,7 +50,9 @@ FOR EACH ROW EXECUTE FUNCTION check_max_votes();
 -- View: project_leaderboard
 -- Aggregates the votes per project.
 -- ================================================================
-CREATE OR REPLACE VIEW project_leaderboard AS
+CREATE OR REPLACE VIEW project_leaderboard 
+WITH (security_invoker = true)
+AS
 SELECT 
     p.id as project_id,
     p.class_name,

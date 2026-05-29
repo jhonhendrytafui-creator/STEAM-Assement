@@ -1,0 +1,57 @@
+# Dependency directories
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Next.js build output
+.next
+out
+
+# Build artifacts
+build
+dist
+*.tsbuildinfo
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Service account credentials
+steam-assesment-*.json
+
+# Documentation & SQL (not needed for build)
+*.md
+sql/
+loginscreen.md
+c1_prompt.md
+c1_rubic_update.md
+c2_prompt.md
+c2_rubric_update.md
+c3_prompt.md
+c4_pompt
+c5_prompt
+prd.md
+
+# Netlify config (not needed for Docker)
+netlify.toml
+.netlify
+
+# Misc
+logo.ico
+public/*.ico

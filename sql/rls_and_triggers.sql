@@ -48,7 +48,7 @@ BEGIN
         WHERE id = auth.uid() AND role = 'teacher'
     );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 
 -- ══════════════════════════════════════════════════════════════════════════════
@@ -279,6 +279,7 @@ ALTER TABLE assessment_scores ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DE
 CREATE OR REPLACE FUNCTION public.set_current_timestamp_updated_at()
 RETURNS TRIGGER 
 LANGUAGE plpgsql
+SET search_path = public
 AS $$
 BEGIN
     NEW.updated_at = NOW();
@@ -316,6 +317,7 @@ CREATE TRIGGER set_assessment_scores_updated_at
 CREATE OR REPLACE FUNCTION public.protect_logbook_feedback()
 RETURNS TRIGGER 
 LANGUAGE plpgsql
+SET search_path = public
 AS $$
 BEGIN
     IF NOT public.is_teacher() THEN
@@ -340,6 +342,7 @@ CREATE TRIGGER logbook_feedback_protection
 CREATE OR REPLACE FUNCTION public.protect_project_teacher_fields()
 RETURNS TRIGGER 
 LANGUAGE plpgsql
+SET search_path = public
 AS $$
 BEGIN
     IF NOT public.is_teacher() THEN
