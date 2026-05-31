@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { Users, Save, CheckCircle2, AlertTriangle, FileText } from 'lucide-react';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 
 interface PeerAssessmentTabProps {
     userEmail: string;
