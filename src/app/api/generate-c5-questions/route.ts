@@ -91,18 +91,42 @@ Your 10 questions must directly target the core dimensions of a STEAM presentati
         `;
 
         // 4. Call Gemini
-        const model = genAI.getGenerativeModel({
-            model: 'gemini-3.5-flash',
-            systemInstruction
-        });
-
         // We use string generation, no JSON schema required for C5.
         const prompt = `Analyze the following STEAM project data and generate 10 rigorous Q&A questions for the final presentation based on the provided framework.\n\nPROJECT DATA:\n${contextString}`;
 
-        const result = await model.generateContent(prompt, {
-            timeout: 60000 // 60-second timeout
-        });
-        const responseText = result.response.text();
+        let responseText = '';
+        const fallbackModels = ['gemini-3.5-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+        const maxRetries = fallbackModels.length;
+        
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            const currentModelName = fallbackModels[attempt - 1];
+            const model = genAI.getGenerativeModel({
+                model: currentModelName,
+                systemInstruction
+            });
+
+            try {
+                console.log(`[C5-Generate] Attempt ${attempt}/${maxRetries} using model: ${currentModelName}`);
+                const result = await model.generateContent(prompt, {
+                    timeout: 60000 // 60-second timeout
+                });
+                responseText = result.response.text();
+                break; // Success
+            } catch (e: any) {
+                const isTimeout = e?.name === 'AbortError' || e?.message?.includes('timeout') || e?.message?.includes('abort');
+                const is503 = e?.message?.includes('503');
+                
+                console.error(`C5 attempt ${attempt}/${maxRetries} failed:`, e?.message?.slice(0, 200));
+
+                if (attempt === maxRetries) {
+                    if (isTimeout) throw new Error('Generation timed out. Please try again.');
+                    if (is503) throw new Error('Google AI is overloaded (503). Please try again later.');
+                    throw new Error(e?.message || 'Failed to generate questions.');
+                }
+                
+                await new Promise(res => setTimeout(res, attempt * 2000));
+            }
+        }
 
         return NextResponse.json({
             success: true,

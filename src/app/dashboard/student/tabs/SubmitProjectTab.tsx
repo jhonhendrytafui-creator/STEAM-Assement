@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     PenSquare, Plus, Trash2,
     ChevronDown, AlertTriangle, Award, Sparkles, Calculator
@@ -45,6 +45,25 @@ export default function SubmitProjectTab({
     const [solution, setSolution] = useState('');
     const [keyConcepts, setKeyConcepts] = useState([{ subject: 'biology_marine', concept: '' }]);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [precheckUsage, setPrecheckUsage] = useState(0);
+
+    // Fetch initial precheck quota
+    useEffect(() => {
+        const fetchQuota = async () => {
+            if (!studentInfo) return;
+            const { data } = await supabase
+                .from('ai_precheck_usage')
+                .select('usage_count')
+                .eq('class_name', studentInfo.class_name)
+                .eq('group_number', studentInfo.group_number)
+                .eq('academic_year', ACADEMIC_YEAR)
+                .single();
+            if (data) {
+                setPrecheckUsage(data.usage_count);
+            }
+        };
+        fetchQuota();
+    }, [studentInfo]);
 
     // ─── Key Concepts Handlers ─────────────────────────
     const addConcept = () => {
@@ -122,6 +141,7 @@ export default function SubmitProjectTab({
                     .eq('class_name', studentInfo.class_name)
                     .eq('group_number', studentInfo.group_number)
                     .eq('academic_year', ACADEMIC_YEAR);
+                setPrecheckUsage(currentUsage + 1);
             } else {
                 await supabase.from('ai_precheck_usage')
                     .insert({
@@ -130,6 +150,7 @@ export default function SubmitProjectTab({
                         academic_year: ACADEMIC_YEAR,
                         usage_count: 1
                     });
+                setPrecheckUsage(1);
             }
 
             onEndPrecheck(data.result);
@@ -393,15 +414,18 @@ export default function SubmitProjectTab({
                         <button
                             type="button"
                             onClick={handlePreCheck}
-                            disabled={isPrechecking || isSubmitting}
-                            className="w-full sm:w-1/2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-indigo-900/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                            disabled={isPrechecking || isSubmitting || precheckUsage >= 5}
+                            className="w-full sm:w-1/2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 font-bold py-4 rounded-xl flex flex-col items-center justify-center gap-1 transition-all active:scale-95 shadow-lg shadow-indigo-900/10 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            {isPrechecking ? (
-                                <div className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin"></div>
-                            ) : (
-                                <Sparkles className="w-5 h-5" />
-                            )}
-                            {isPrechecking ? 'Analyzing...' : 'AI Pre-Check'}
+                            <div className="flex items-center gap-2">
+                                {isPrechecking ? (
+                                    <div className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin"></div>
+                                ) : (
+                                    <Sparkles className="w-5 h-5" />
+                                )}
+                                <span>{isPrechecking ? 'Analyzing...' : 'AI Pre-Check'}</span>
+                            </div>
+                            <span className="text-xs font-normal opacity-80">({precheckUsage}/5 uses remaining)</span>
                         </button>
 
                         <button

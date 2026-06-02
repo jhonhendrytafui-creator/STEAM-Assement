@@ -120,18 +120,7 @@ export async function POST(req: Request) {
             requiredFields.push("suggested_status");
         }
 
-        const model = genAI.getGenerativeModel({
-            model: 'gemini-3.5-flash',
-            generationConfig: {
-                temperature: 0.2, // Low temperature for consistent grading
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: SchemaType.OBJECT,
-                    properties: responseSchemaProperties,
-                    required: requiredFields
-                }
-            }
-        });
+        // Model is initialized dynamically within the retry loop for fallback support
 
         // ===== DYNAMIC RUBRIC CONTEXT (from DB criteria) =====
         const rubricContext = buildDynamicRubricContext(indicators);
@@ -453,11 +442,27 @@ Provide your output exactly matching the JSON schema.
 
         let responseText = '';
         let jsonPayload;
-        const maxRetries = 3;
+        const fallbackModels = ['gemini-3.5-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+        const maxRetries = fallbackModels.length;
         let lastError: any = null;
         
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            const currentModelName = fallbackModels[attempt - 1];
+            const model = genAI.getGenerativeModel({
+                model: currentModelName,
+                generationConfig: {
+                    temperature: 0.2, // Low temperature for consistent grading
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: SchemaType.OBJECT,
+                        properties: responseSchemaProperties,
+                        required: requiredFields
+                    }
+                }
+            });
+
             try {
+                console.log(`[AI-Assess] Attempt ${attempt}/${maxRetries} using model: ${currentModelName}`);
                 const result = await model.generateContent(prompt, {
                     timeout: 60000 // 60-second timeout per attempt
                 });

@@ -3,7 +3,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import {
     Database, PenSquare, Monitor, BookOpen, Users,
-    FileCheck, Trophy,
+    FileCheck, Trophy, HelpCircle,
 } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase/client';
@@ -28,6 +28,7 @@ import LogbookTab from './tabs/LogbookTab';
 import AssessmentResultTab from './tabs/AssessmentResultTab';
 import LeaderboardTab from './tabs/LeaderboardTab';
 import PeerAssessmentTab from './PeerAssessmentTab';
+import HelpCenterTab from '../components/HelpCenterTab';
 
 // Modal components
 import PastIterationModal from './modals/PastIterationModal';
@@ -42,6 +43,7 @@ const STUDENT_TABS = [
     { id: 'peer', label: 'Peer & Self Assessment', icon: Users },
     { id: 'result', label: 'Assessment Result', icon: FileCheck },
     { id: 'leaderboard', label: 'Project Leaderboard', icon: Trophy },
+    { id: 'help', label: 'Help Center', icon: HelpCircle },
 ];
 
 // Helper: render text with **bold** markdown converted to <strong> tags
@@ -370,6 +372,10 @@ export default function StudentDashboardPage() {
 
                         {activeTab === 'leaderboard' && (
                             <LeaderboardTab leaderboardData={leaderboardData} />
+                        )}
+
+                        {activeTab === 'help' && (
+                            <HelpCenterTab />
                         )}
                     </div>
                 </main>

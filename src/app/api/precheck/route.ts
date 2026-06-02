@@ -60,7 +60,6 @@ export async function POST(req: Request) {
         }
 
         const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
 
         // Map key concepts to readable string
         const conceptsString = (keyConcepts || [])
@@ -109,10 +108,36 @@ Review the key concepts the student listed above. For each concept, write about 
 Provide 1-2 clear, actionable next steps for them to take before submitting their final abstract.
         `;
 
-        const result = await model.generateContent(prompt, {
-            timeout: 30000 // 30-second timeout for pre-check
-        });
-        const responseText = result.response.text();
+        let responseText = '';
+        const fallbackModels = ['gemini-3.5-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+        const maxRetries = fallbackModels.length;
+
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            const currentModelName = fallbackModels[attempt - 1];
+            const model = genAI.getGenerativeModel({ model: currentModelName });
+
+            try {
+                console.log(`[Precheck] Attempt ${attempt}/${maxRetries} using model: ${currentModelName}`);
+                const result = await model.generateContent(prompt, {
+                    timeout: 30000 // 30-second timeout for pre-check
+                });
+                responseText = result.response.text();
+                break; // Success
+            } catch (e: any) {
+                const isTimeout = e?.name === 'AbortError' || e?.message?.includes('timeout') || e?.message?.includes('abort');
+                const is503 = e?.message?.includes('503');
+                
+                console.error(`Precheck attempt ${attempt}/${maxRetries} failed:`, e?.message?.slice(0, 200));
+
+                if (attempt === maxRetries) {
+                    if (isTimeout) throw new Error('Generation timed out. Please try again.');
+                    if (is503) throw new Error('Google AI is overloaded (503). Please try again later.');
+                    throw new Error(e?.message || 'Failed to generate pre-check review.');
+                }
+                
+                await new Promise(res => setTimeout(res, attempt * 2000));
+            }
+        }
 
         return NextResponse.json({ result: responseText });
 

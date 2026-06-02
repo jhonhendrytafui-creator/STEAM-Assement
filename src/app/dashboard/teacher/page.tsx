@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     LayoutDashboard, FolderOpen, BookOpen, ClipboardCheck,
-    Users, BarChart2, Star, TrendingUp,
+    Users, BarChart2, Star, TrendingUp, HelpCircle
 } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase/client';
@@ -27,6 +27,7 @@ import ScoreTab from './tabs/ScoreTab';
 import VotingTab from './tabs/VotingTab';
 import AnalyticsTab from './tabs/AnalyticsTab';
 import PeerAssessmentResultsTab from './PeerAssessmentResultsTab';
+import HelpCenterTab from '../components/HelpCenterTab';
 
 // Tab definitions for sidebar
 const TEACHER_TABS = [
@@ -38,6 +39,7 @@ const TEACHER_TABS = [
     { id: 'score', label: 'Student Score', icon: BarChart2 },
     { id: 'voting', label: 'Voting and Leaderboard', icon: Star },
     { id: 'analytics', label: 'Analytics', icon: TrendingUp },
+    { id: 'help', label: 'Help Center', icon: HelpCircle },
 ];
 
 export default function TeacherDashboardPage() {
@@ -259,6 +261,10 @@ export default function TeacherDashboardPage() {
                             rubricDimensions={rubricDimensions}
                             rubricIndicators={rubricIndicators}
                         />
+                    )}
+
+                    {activeTab === 'help' && (
+                        <HelpCenterTab />
                     )}
                 </div>
             </main>

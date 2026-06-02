@@ -19,16 +19,36 @@ export async function GET() {
             results.checks.gemini = { status: 'FAIL', reason: 'GEMINI_API_KEY env var is missing' };
         } else {
             const genAI = new GoogleGenerativeAI(apiKey);
-            const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
+            const fallbackModels = ['gemini-3.5-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+            const maxRetries = fallbackModels.length;
 
-            // Smallest possible request to test quota
-            const result = await model.generateContent('Reply with only the word "ok".');
-            const text = result.response.text();
-            results.checks.gemini = {
-                status: 'OK',
-                response: text.slice(0, 100),
-                model: 'gemini-3.5-flash',
-            };
+            for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                const currentModelName = fallbackModels[attempt - 1];
+                const model = genAI.getGenerativeModel({ model: currentModelName });
+
+                try {
+                    // Smallest possible request to test quota
+                    const result = await model.generateContent('Reply with only the word "ok".');
+                    const text = result.response.text();
+                    results.checks.gemini = {
+                        status: 'OK',
+                        response: text.slice(0, 100),
+                        model: currentModelName,
+                    };
+                    break;
+                } catch (e: any) {
+                    if (attempt === maxRetries) {
+                        throw e; // Let the outer catch handle it
+                    }
+                    const is503 = e?.message?.includes('503');
+                    const isQuota = e?.message?.includes('429') || e?.message?.includes('RESOURCE_EXHAUSTED') || e?.message?.toLowerCase()?.includes('quota');
+                    
+                    if (!is503 && !isQuota && !e?.name?.includes('AbortError') && !e?.message?.includes('timeout') && !e?.message?.includes('abort')) {
+                         throw e; // Fast fail if it's not a temporary error
+                    }
+                    await new Promise(res => setTimeout(res, 1000));
+                }
+            }
         }
     } catch (e: any) {
         const errorDetails = parseGeminiError(e);
