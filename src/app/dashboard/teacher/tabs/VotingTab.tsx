@@ -74,8 +74,8 @@ export default function VotingTab({ recentProjects, myVotes, leaderboardData, te
         }
     };
 
-    // Projects filter
-    let filteredVotingProjects = recentProjects;
+    // Projects filter - ONLY show APPROVED projects for voting
+    let filteredVotingProjects = recentProjects.filter(p => p.status === 'approved');
     if (votingGradeFilter) {
         filteredVotingProjects = filteredVotingProjects.filter(p => String(p.class_name).split('.')[0] === votingGradeFilter);
     }

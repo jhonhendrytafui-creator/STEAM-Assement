@@ -38,7 +38,8 @@ export default function ScoreTab({ allStudents, assessmentCategories, rubricDime
             .from('projects')
             .select('group_number, title')
             .eq('class_name', scoreClass)
-            .eq('academic_year', ACADEMIC_YEAR);
+            .eq('academic_year', ACADEMIC_YEAR)
+            .order('iteration', { ascending: false });
 
         const { data: scoresData } = await supabase
             .from('assessment_scores')

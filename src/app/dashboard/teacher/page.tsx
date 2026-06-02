@@ -158,11 +158,23 @@ export default function TeacherDashboardPage() {
                 .from('projects')
                 .select('id, class_name, group_number, title, status, created_at, themes(theme_name)')
                 .eq('academic_year', ACADEMIC_YEAR)
-                .order('created_at', { ascending: false });
+                .order('iteration', { ascending: false });
 
             if (projects) {
-                setTotalProjects(projects.length);
-                setRecentProjects(projects as unknown as ProjectData[]);
+                // Filter to only the latest project iteration per group
+                const latestProjects: any[] = [];
+                const seenGroups = new Set();
+                
+                for (const p of projects) {
+                    const key = `${p.class_name}-${p.group_number}`;
+                    if (!seenGroups.has(key)) {
+                        seenGroups.add(key);
+                        latestProjects.push(p);
+                    }
+                }
+                
+                setTotalProjects(latestProjects.length);
+                setRecentProjects(latestProjects as unknown as ProjectData[]);
             }
 
             setLoading(false);
