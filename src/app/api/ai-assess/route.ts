@@ -105,7 +105,7 @@ export async function POST(req: Request) {
                 description: isC4 
                     ? "A single, coherent, casual paragraph providing sharp, objective feedback based on the logbook rubric. State the final score, process category, an objective compliment, a sharp critique, and an actionable suggestion."
                     : isNoStatusCategory
-                        ? "A structured, critical feedback using numbered bullet points. For each indicator, state the score, WHY that score was given with specific evidence, and a concrete IMPROVE action. Be sharp and direct."
+                        ? "A highly detailed, critical, and objective review written in well-aligned proper paragraphs (no bullet points). State the overall verdict, then provide detailed paragraphs evaluating each rubric indicator, citing specific evidence from the document and pointing out logical errors or weaknesses."
                     : isC1
                         ? "A structured, holistic feedback organized into clearly labeled sections: PROBLEM STATEMENT, PROPOSED SOLUTION, THEME ALIGNMENT, KEY CONCEPTS, TITLE, and OVERALL VERDICT. Each section must use well-aligned proper paragraphs separated by double line breaks (\\n\\n). Do NOT use emojis. Do NOT mention raw scores or percentages in the comment."
                     : "A single casual paragraph. If approved: encouraging with forward-looking guidance. If revision/disapproved: critical and thorough, listing ALL weak areas with what to fix. Do NOT mention scores or percentages."
@@ -165,14 +165,16 @@ export async function POST(req: Request) {
   * 'disapproved' (<55%, below ${revisionThreshold} points): Not Accepted. Misses the mark on multiple fronts.`;
 
 
-        if (isC2) {
-            // ===== C2: Ask & Research — reads Google Doc content =====
-            let docText = '';
+        let docText = '';
+        if (!isC1 && !isC4) {
             const docUrl = googleDocUrl || project.google_doc_url;
             if (docUrl) {
                 docText = await fetchGoogleDocText(docUrl);
             }
+        }
 
+        if (isC2) {
+            // ===== C2: Ask & Research — reads Google Doc content =====
             prompt = `### System Instructions for STEAM Project Assessment API (Phase: Ask & Research)
 
 **Role & Objective**
@@ -202,29 +204,18 @@ ${JSON.stringify(indicators.map((i: any) => ({ id: i.id, description: i.descript
 ${scoringBlock}
 
 **Output Constraints**
-You must output your evaluation in the 'teacher_comment' field using a **structured, critical format**. Be SHARP and DIRECT — do not sugarcoat. Use the following format:
+You must output your evaluation in the 'teacher_comment' field using **well-aligned proper paragraphs separated by double line breaks (\\n\\n)**. Do NOT use bullet points or numbered lists. Be highly objective and focus ONLY on the content provided in the student's document below.
 
-**Overall: X/${maxScore} (Y%) — [Category: Exemplary/Proficient/Developing/Beginning]**
-
-Then provide a numbered breakdown for EACH indicator:
-
-For each indicator:
-- **[Indicator Name] — Score: X/4**
-   - WHY this score: [Cite specific evidence from their document]
-   - IMPROVE: [Concrete, actionable step to raise their score]
-
-Be brutally honest. If the work is weak, say so directly. Do NOT be generous — grade strictly according to the rubric criteria.
+**CRITICAL RULES:**
+1. Be brutally honest and strict. Do NOT be generous. Look for all rubric requirements, identify weaknesses, logical errors, unstructured statements, and unscientific facts.
+2. Write a cohesive, detailed review. Start with an opening paragraph stating the Overall Score (X/${maxScore}, Y%) and Category (Exemplary/Proficient/Developing/Beginning).
+3. Then, write detailed paragraphs for each indicator. For each, explicitly state the score (e.g., Score: X/4), explain WHY they received that score by citing specific evidence from their document, and provide a concrete IMPROVE action to fix their logical or scientific errors.
+4. Keep the language simple and clear (ESL-friendly).
 
 Do NOT include a 'suggested_status' field. Just provide 'scores' and 'teacher_comment'. Provide your output exactly matching the JSON schema.`;
 
         } else if (isC3) {
             // ===== C3: Solution & Execution — reads Google Doc content =====
-            let docText = '';
-            const docUrl = googleDocUrl || project.google_doc_url;
-            if (docUrl) {
-                docText = await fetchGoogleDocText(docUrl);
-            }
-
             prompt = `### System Instructions for STEAM Project Assessment API (Phase: Solution & Execution - C3)
 
 **Role & Objective**
@@ -254,18 +245,13 @@ ${JSON.stringify(indicators.map((i: any) => ({ id: i.id, description: i.descript
 ${scoringBlock}
 
 **Output Constraints**
-You must output your evaluation in the 'teacher_comment' field using a **structured, critical format**. Be SHARP and DIRECT — do not sugarcoat. Use the following format:
+You must output your evaluation in the 'teacher_comment' field using **well-aligned proper paragraphs separated by double line breaks (\\n\\n)**. Do NOT use bullet points or numbered lists. Be highly objective and focus ONLY on the content provided in the student's document below.
 
-**Overall: X/${maxScore} (Y%) — [Category: Exemplary/Proficient/Developing/Beginning]**
-
-Then provide a numbered breakdown for EACH indicator:
-
-For each indicator:
-- **[Indicator Name] — Score: X/4**
-   - WHY this score: [Cite specific evidence from their document]
-   - IMPROVE: [Concrete, actionable step to raise their score]
-
-Be brutally honest. If the work is weak, say so directly. Do NOT be generous — grade strictly according to the rubric criteria.
+**CRITICAL RULES:**
+1. Be brutally honest and strict. Do NOT be generous. Look for all rubric requirements, identify weaknesses, logical errors, unstructured statements, and unscientific facts.
+2. Write a cohesive, detailed review. Start with an opening paragraph stating the Overall Score (X/${maxScore}, Y%) and Category (Exemplary/Proficient/Developing/Beginning).
+3. Then, write detailed paragraphs for each indicator. For each, explicitly state the score (e.g., Score: X/4), explain WHY they received that score by citing specific evidence from their document, and provide a concrete IMPROVE action to fix their logical or scientific errors.
+4. Keep the language simple and clear (ESL-friendly).
 
 Do NOT include a 'suggested_status' field. Just provide 'scores' and 'teacher_comment'. Provide your output exactly matching the JSON schema.`;
 
@@ -381,7 +367,7 @@ Provide your output exactly matching the JSON schema.`;
 
         } else {
             // ===== General prompt for other categories (BCM, ENG, IND, etc.) =====
-            prompt = `You are an encouraging STEAM educator assistant. Your task is to review a student's STEAM project based on a specific rubric and provide scores and a single, casual feedback paragraph.
+            prompt = `You are a sharp, highly objective STEAM educator assistant. Your task is to rigorously review a student's STEAM project paper based on a specific rubric and provide scores and detailed feedback.
 
 **LANGUAGE RULE: Write all feedback in simple, clear English. Use short sentences. Avoid difficult vocabulary. This is for students and teachers who use English as a second language (ESL). Make it easy to read but still professional for a school setting.**
 
@@ -404,22 +390,24 @@ ${solutionDesc || 'Not provided.'}
 ${JSON.stringify(keyConcepts || {})}
 </KEY_CONCEPTS>
 
+**Student Document Content (from Google Doc):**
+<DOCUMENT>
+${docText || 'No document content available. Assess based on the project data provided above.'}
+</DOCUMENT>
+
 Assessment Indicators (you MUST score each one):
 ${JSON.stringify(indicators.map((i: any) => ({ id: i.id, description: i.description })), null, 2)}
 
 ${decisionBlock}
 
 FEEDBACK GUIDELINES:
-1. Analyze the project data against EACH indicator using the rubric criteria above.
-2. Provide an integer score (1-4) for EVERY indicator ID in your 'scores' map.
-3. CRITICAL STEAM ENFORCEMENT: This is a STEAM project. It MUST combine Science, Tech, Engineering, Art, and Math. If the project reads like a simple, single-subject project with no clear interdisciplinary connection:
-   - You MUST score it very low on any related indicators.
-   - Your 'teacher_comment' MUST provide specific, firm criticism about this lack of integration.
-   - You MUST NOT give an 'approved' status.
-4. Your 'teacher_comment' MUST be a single casual, friendly paragraph. Always prioritize suggestions for improvement over just pointing out flaws. Mention ONE specific strength and ONE specific area to improve with a concrete suggestion.
+1. Analyze the project data and especially the <DOCUMENT> text against EACH indicator using the rubric criteria above. Be strictly objective and focus ONLY on the content provided in the student's document link.
+2. Provide an integer score (1-4) for EVERY indicator ID in your 'scores' map. Look for all rubric requirements, find weaknesses, logical errors, unstructured statements, and unscientific facts.
+3. CRITICAL STEAM ENFORCEMENT: This is a STEAM project. It MUST combine Science, Tech, Engineering, Art, and Math. If the project reads like a simple, single-subject project with no clear interdisciplinary connection, you MUST score it very low on related indicators and heavily criticize this lack of integration.
+4. Your 'teacher_comment' MUST be written in **well-aligned proper paragraphs separated by double line breaks (\\n\\n)**. Do NOT use dense bullet points. Write a detailed, cohesive review highlighting specific flaws and providing actionable suggestions.
 5. Your 'suggested_status' should be:
-   - 'approved' if the percentage is ≥80% AND the project shows true interdisciplinary STEAM integration.
-   - 'revision' if the percentage is 55–79% OR if the project lacks STEAM integration.
+   - 'approved' if the percentage is ≥80% AND the project shows true interdisciplinary STEAM integration without major logical errors.
+   - 'revision' if the percentage is 55–79% OR if the project lacks STEAM integration or has significant scientific/logical flaws.
    - 'disapproved' only if the percentage is below 55% and effort is completely absent.
 
 Provide your output exactly matching the JSON schema.
