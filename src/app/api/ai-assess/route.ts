@@ -442,7 +442,15 @@ Provide your output exactly matching the JSON schema.
 
         let responseText = '';
         let jsonPayload;
-        const fallbackModels = ['gemini-3.5-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+        const fallbackModels = [
+            'gemini-3.5-flash', 
+            'gemini-3.1-pro', 
+            'gemini-3.1-flash-lite', 
+            'gemini-3.0-flash', 
+            'gemini-2.5-pro', 
+            'gemini-2.5-flash', 
+            'gemini-2.5-flash-lite'
+        ];
         const maxRetries = fallbackModels.length;
         let lastError: any = null;
         

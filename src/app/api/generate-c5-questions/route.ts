@@ -95,7 +95,15 @@ Your 10 questions must directly target the core dimensions of a STEAM presentati
         const prompt = `Analyze the following STEAM project data and generate 10 rigorous Q&A questions for the final presentation based on the provided framework.\n\nPROJECT DATA:\n${contextString}`;
 
         let responseText = '';
-        const fallbackModels = ['gemini-3.5-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+        const fallbackModels = [
+            'gemini-3.5-flash', 
+            'gemini-3.1-pro', 
+            'gemini-3.1-flash-lite', 
+            'gemini-3.0-flash', 
+            'gemini-2.5-pro', 
+            'gemini-2.5-flash', 
+            'gemini-2.5-flash-lite'
+        ];
         const maxRetries = fallbackModels.length;
         
         for (let attempt = 1; attempt <= maxRetries; attempt++) {

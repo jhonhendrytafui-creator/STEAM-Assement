@@ -109,7 +109,15 @@ Provide 1-2 clear, actionable next steps for them to take before submitting thei
         `;
 
         let responseText = '';
-        const fallbackModels = ['gemini-3.5-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+        const fallbackModels = [
+            'gemini-3.5-flash', 
+            'gemini-3.1-pro', 
+            'gemini-3.1-flash-lite', 
+            'gemini-3.0-flash', 
+            'gemini-2.5-pro', 
+            'gemini-2.5-flash', 
+            'gemini-2.5-flash-lite'
+        ];
         const maxRetries = fallbackModels.length;
 
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
