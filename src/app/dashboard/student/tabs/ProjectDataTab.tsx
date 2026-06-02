@@ -165,9 +165,9 @@ export default function ProjectDataTab({
                                 <span className="text-xs text-amber-500 uppercase tracking-wider block mb-2 font-bold flex items-center gap-2">
                                     <MessageSquare className="w-4 h-4" /> Teacher Feedback
                                 </span>
-                                <p className="text-sm text-amber-100/90 whitespace-pre-line bg-amber-500/5 p-4 rounded-lg border border-amber-500/10">
-                                    {projectData.teacher_comment}
-                                </p>
+                                <div className="text-sm text-amber-100/90 whitespace-pre-wrap leading-relaxed bg-amber-500/5 p-5 rounded-lg border border-amber-500/10">
+                                    {renderFormattedText(projectData.teacher_comment)}
+                                </div>
                             </div>
                         )}
 

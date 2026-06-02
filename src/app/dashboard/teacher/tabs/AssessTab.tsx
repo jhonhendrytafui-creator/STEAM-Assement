@@ -38,6 +38,7 @@ export default function AssessTab({
     const [assessGroup, setAssessGroup] = useState<string>('');
     const [assessCategory, setAssessCategory] = useState<string>('');
     const [assessedGroupsMap, setAssessedGroupsMap] = useState<Record<number, boolean>>({});
+    const [groupCompletedCategories, setGroupCompletedCategories] = useState<Set<string>>(new Set());
 
     const [assessProject, setAssessProject] = useState<any>(null);
     const [currentScores, setCurrentScores] = useState<Record<string, number>>({});
@@ -154,6 +155,19 @@ export default function AssessTab({
                 .eq('group_number', parseInt(assessGroup))
                 .eq('category_id', assessCategory)
                 .eq('academic_year', ACADEMIC_YEAR);
+
+            const { data: allGroupScores } = await supabase
+                .from('assessment_scores')
+                .select('category_id')
+                .eq('class_name', assessClass)
+                .eq('group_number', parseInt(assessGroup))
+                .eq('academic_year', ACADEMIC_YEAR);
+
+            if (allGroupScores) {
+                setGroupCompletedCategories(new Set(allGroupScores.map(s => s.category_id)));
+            } else {
+                setGroupCompletedCategories(new Set());
+            }
 
             const currentCat = assessmentCategories.find(c => c.id === assessCategory);
             const isC1Category = currentCat?.code === 'C1';
@@ -541,6 +555,40 @@ export default function AssessTab({
                             {(() => {
                                 const cat = assessmentCategories.find(c => c.id === assessCategory);
                                 const dims = rubricDimensions.filter(d => d.category_id === assessCategory);
+
+                                const checkCategoryUnlocked = () => {
+                                    if (!cat || !assessProject) return true;
+                                    if (cat.code === 'C1') return true;
+
+                                    const c1Cat = assessmentCategories.find(c => c.code === 'C1');
+                                    if (!c1Cat || !groupCompletedCategories.has(c1Cat.id) || assessProject?.status !== 'approved') return false;
+
+                                    const codes = ['C1', 'C2', 'C3', 'C4', 'C5'];
+                                    const targetIndex = codes.indexOf(cat.code);
+                                    if (targetIndex > 1) {
+                                        for (let i = 1; i < targetIndex; i++) {
+                                            const prevCat = assessmentCategories.find(c => c.code === codes[i]);
+                                            if (prevCat && !groupCompletedCategories.has(prevCat.id)) return false;
+                                        }
+                                    }
+                                    return true;
+                                };
+
+                                const isPrerequisitesMet = checkCategoryUnlocked();
+
+                                if (!isPrerequisitesMet) {
+                                    return (
+                                        <div className="bg-[#1c1b14] border border-red-500/20 rounded-xl p-10 text-center text-red-400 shadow-xl">
+                                            <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                                                <Lock className="w-8 h-8 text-red-500 opacity-90" />
+                                            </div>
+                                            <h3 className="text-xl font-bold text-slate-200 mb-2">Assessment Blocked</h3>
+                                            <p className="text-slate-400 text-sm max-w-sm mx-auto leading-relaxed">
+                                                You must complete the previous assessments in order. For C1, ensure the project is fully scored and its status is set to <strong>Approved</strong> before proceeding to {cat?.code}.
+                                            </p>
+                                        </div>
+                                    );
+                                }
 
                                 if (dims.length === 0) {
                                     return (

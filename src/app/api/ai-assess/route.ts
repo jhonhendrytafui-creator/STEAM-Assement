@@ -97,6 +97,7 @@ export async function POST(req: Request) {
             scores: {
                 type: SchemaType.OBJECT,
                 properties: scoreProperties,
+                required: indicators.map((i: any) => i.id),
                 description: "A map of indicator IDs as string keys mapping to their assessed integer score values."
             },
             teacher_comment: {
@@ -106,7 +107,7 @@ export async function POST(req: Request) {
                     : isNoStatusCategory
                         ? "A structured, critical feedback using numbered bullet points. For each indicator, state the score, WHY that score was given with specific evidence, and a concrete IMPROVE action. Be sharp and direct."
                     : isC1
-                        ? "A structured, holistic feedback organized into clearly labeled sections: PROBLEM STATEMENT, PROPOSED SOLUTION, THEME ALIGNMENT, KEY CONCEPTS, TITLE, and OVERALL VERDICT. Each section uses bullet points. Do NOT use emojis. Do NOT mention raw scores or percentages in the comment."
+                        ? "A structured, holistic feedback organized into clearly labeled sections: PROBLEM STATEMENT, PROPOSED SOLUTION, THEME ALIGNMENT, KEY CONCEPTS, TITLE, and OVERALL VERDICT. Each section must use well-aligned proper paragraphs separated by double line breaks (\\n\\n). Do NOT use emojis. Do NOT mention raw scores or percentages in the comment."
                     : "A single casual paragraph. If approved: encouraging with forward-looking guidance. If revision/disapproved: critical and thorough, listing ALL weak areas with what to fix. Do NOT mention scores or percentages."
             }
         };
@@ -341,7 +342,9 @@ ${JSON.stringify(indicators.map((i: any) => ({ id: i.id, description: i.descript
 ${decisionBlock}
 
 **Output Constraints**
-You must output your evaluation in the 'teacher_comment' field using a **structured, sectioned format**. Do NOT mention raw scores or percentages in your comment. Do NOT use any emojis. Organize your feedback into the following clearly labeled sections. Use bullet points (starting with "- ") within each section.
+You must output your evaluation in the 'teacher_comment' field using **well-aligned proper paragraphs**. Do NOT use markdown bold/asterisks heavily. Separate each section with double line breaks (\\n\\n) so it is easy for students to read. Provide detailed feedback and actionable suggestions for improvement. Do NOT use any emojis. Do NOT mention raw scores or percentages in your comment.
+
+Organize your feedback into the following clearly labeled sections. Ensure each section contains full, flowing paragraphs rather than dense bullet points.
 
 The tone of your comment MUST change based on your suggested_status decision:
 - If 'approved': Be encouraging but still give constructive forward-looking guidance in each section.
@@ -349,47 +352,30 @@ The tone of your comment MUST change based on your suggested_status decision:
 
 Use this exact structure:
 
----
-
 PROBLEM STATEMENT
-- Evaluate whether the student clearly explained the problem they want to solve.
-- Is the problem contextual? Is it connected to the student's real life, their community, or a real-world situation they can relate to?
-- Did the student explain WHY this problem matters and WHY they chose it?
-- If weak: Quote the vague part of their problem. Tell them exactly what information is missing. Give them a specific guiding question to answer.
+[Write a detailed paragraph evaluating whether the student clearly explained the problem they want to solve. Discuss if it's contextual and if they explained why it matters. If weak, quote the vague part and provide a specific guiding question.]
 
 PROPOSED SOLUTION
-- Does the proposed solution directly address the problem stated above? Does it make logical sense as a response to that specific problem?
-- Is the solution clearly a prototype (physical or digital product) and not just a presentation, poster, or research paper?
-- If weak: Point out exactly what doesn't make sense about their prototype. Ask them specifically how it will be built or how it solves the specific problem they mentioned.
+[Write a detailed paragraph evaluating if the solution directly addresses the problem. Discuss if it's clearly a prototype. If weak, point out what doesn't make sense and ask how it will be built.]
 
 THEME ALIGNMENT
-- How well does the problem, the solution, and the overall project connect to the chosen theme?
-- If the theme connection is weak or missing: Point it out clearly and suggest specifically how they can bridge the gap.
+[Write a detailed paragraph discussing how well the project connects to the chosen theme. Suggest how to bridge gaps if weak.]
 
 KEY CONCEPTS (STEAM Integration)
-- Are the chosen subjects (Science, Technology, Engineering, Art, Math) genuinely relevant to this project?
-- CRITICAL: Look closely at their explanations. If they just listed subject names or wrote vague, nonsense explanations, call it out directly. Quote their bad explanation and tell them why it's not a real STEAM application.
-- Are the subjects treated as separate tasks, or does the student show how they connect and support each other (interdisciplinary integration)?
-- If an important STEAM field is missing, tell them exactly which one to add and how it applies to their specific prototype.
+[Write a detailed paragraph evaluating the chosen subjects. Call out vague explanations directly. Discuss interdisciplinary connections and suggest additions if needed.]
 
 TITLE
-- Is the title clear, concise, and does it immediately communicate what the project is about?
-- If weak: Suggest a specific direction for improvement based on their topic.
+[Write a short paragraph evaluating the title's clarity and conciseness.]
 
 OVERALL VERDICT
-- Provide a brief summary of the overall quality of this abstract.
-- State the single most important thing the student should focus on improving first.
-- If approved: Give forward-looking advice to prepare them for the next phase.
-- If revision/disapproved: Clearly state the most critical issues that must be fixed before resubmission.
-
----
+[Write a detailed concluding paragraph summarizing the overall quality. State the most critical issues to fix or forward-looking advice if approved.]
 
 **CRITICAL RULES:**
 1. For ANY indicator that you scored 2 or below, you MUST address it in the relevant section — explain WHY it scored low using exact quotes or references to their text.
 2. If any Key Concept seems unrelated, forced, or incorrectly explained, you MUST flag it in the KEY CONCEPTS section.
 3. Do NOT use emojis anywhere in your feedback.
 4. Keep language simple and clear (ESL-friendly).
-5. Each section header must be on its own line, followed by bullet points starting with "- ".
+5. Each section header must be on its own line, followed by double line breaks and then well-spaced paragraphs. Do NOT use bullet points starting with "- ".
 
 Provide your output exactly matching the JSON schema.`;
 
