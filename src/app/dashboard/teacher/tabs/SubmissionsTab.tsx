@@ -26,6 +26,7 @@ export default function SubmissionsTab({ allStudents, showToast }: SubmissionsTa
     const [submissionStatusFilter, setSubmissionStatusFilter] = useState<string[]>([]);
     const [submissionViewMode, setSubmissionViewMode] = useState<'card' | 'list'>('card');
     const [submissionGroupByClass, setSubmissionGroupByClass] = useState(false);
+    const [isCheckingAI, setIsCheckingAI] = useState(false);
 
     const availableGrades = Array.from(new Set(allStudents.map(s => String(s.class_name).split('.')[0]))).sort((a, b) => Number(a) - Number(b));
 
@@ -84,6 +85,39 @@ export default function SubmissionsTab({ allStudents, showToast }: SubmissionsTa
         setSelectedGroupForSubmission({ class_name: group.class_name, group_number: group.group_number });
         setGroupSubmissions(group.allProjects);
         setCurrentSubmissionIndex(0);
+    };
+
+    const handleRunAICheck = async (project: any) => {
+        setIsCheckingAI(true);
+        try {
+            const res = await fetch('/api/ai-detect', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    googleDocUrl: project.google_doc_url,
+                    abstractText: project.abstract 
+                })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error);
+
+            // Update database
+            const { error } = await supabase
+                .from('projects')
+                .update({ ai_plagiarism_score: data.ai_percentage })
+                .eq('id', project.id);
+            
+            if (error) throw error;
+
+            showToast(`AI Check complete: Estimated ${data.ai_percentage}% AI generated.`, 'success');
+            
+            // Refresh local state
+            setGroupSubmissions(prev => prev.map(p => p.id === project.id ? { ...p, ai_plagiarism_score: data.ai_percentage } : p));
+        } catch (e: any) {
+            showToast(e.message || 'Failed to run AI check.', 'error');
+        } finally {
+            setIsCheckingAI(false);
+        }
     };
 
     return (
@@ -428,6 +462,26 @@ export default function SubmissionsTab({ allStudents, showToast }: SubmissionsTa
                                                             <p className="text-sm text-amber-100">{sub.teacher_comment}</p>
                                                         </div>
                                                     )}
+
+                                                    <div className="mt-6 bg-[#1c1b14] border border-slate-800 p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                                                        <div>
+                                                            <span className="text-xs uppercase text-slate-500 font-bold block mb-1">AI Plagiarism Check</span>
+                                                            {sub.ai_plagiarism_score !== null && sub.ai_plagiarism_score !== undefined ? (
+                                                                <p className="text-sm font-semibold">
+                                                                    Estimated <span className={sub.ai_plagiarism_score > 50 ? 'text-red-400' : 'text-emerald-400'}>{sub.ai_plagiarism_score}%</span> AI Generated
+                                                                </p>
+                                                            ) : (
+                                                                <p className="text-sm text-slate-400">Not checked yet.</p>
+                                                            )}
+                                                        </div>
+                                                        <button 
+                                                            onClick={() => handleRunAICheck(sub)}
+                                                            disabled={isCheckingAI || (!sub.google_doc_url && !sub.abstract)}
+                                                            className="px-4 py-2 bg-slate-800 text-slate-200 text-xs font-bold rounded hover:bg-slate-700 transition disabled:opacity-50"
+                                                        >
+                                                            {isCheckingAI ? 'Checking...' : (sub.ai_plagiarism_score !== null && sub.ai_plagiarism_score !== undefined ? 'Re-run AI Check' : 'Run AI Check')}
+                                                        </button>
+                                                    </div>
                                                 </div>
 
                                                 {/* Pagination Controls */}
