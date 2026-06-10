@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import {
-    BookOpen, Users, LayoutGrid, List, Calendar
+    BookOpen, Users, LayoutGrid, List, Calendar, Image as ImageIcon
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { ACADEMIC_YEAR } from '@/lib/constants';
@@ -285,9 +285,10 @@ export default function LogbookTab({ allStudents, showToast }: LogbookTabProps) 
                                                 <tr className="bg-[#1a1811] border-b border-slate-800/50 text-xs uppercase tracking-wider text-slate-500">
                                                     <th className="p-4 font-semibold w-24">Date</th>
                                                     <th className="p-4 font-semibold w-24">Submitted By</th>
-                                                    <th className="p-4 font-semibold w-[28%]">Task / Meeting Focus</th>
-                                                    <th className="p-4 font-semibold w-[28%]">Result / Progress</th>
+                                                    <th className="p-4 font-semibold w-[25%]">Task / Meeting Focus</th>
+                                                    <th className="p-4 font-semibold w-[25%]">Result / Progress</th>
                                                     <th className="p-4 font-semibold">Student Feedback</th>
+                                                    <th className="p-4 font-semibold w-24">Photo</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-800/30 text-sm">
@@ -303,10 +304,23 @@ export default function LogbookTab({ allStudents, showToast }: LogbookTabProps) 
                                                             <div className="whitespace-pre-wrap">{log.task}</div>
                                                         </td>
                                                         <td className="p-4 text-slate-300 align-top">
-                                                            <div className="whitespace-pre-wrap">{log.result}</div>
+                                                            <div className="prose prose-sm prose-invert max-w-none text-slate-300" dangerouslySetInnerHTML={{ __html: log.result }} />
                                                         </td>
                                                         <td className="p-4 text-slate-300 align-top">
-                                                            <div className="whitespace-pre-wrap">{log.feedback || <span className="text-slate-600 italic">No feedback</span>}</div>
+                                                            <div className="prose prose-sm prose-invert max-w-none text-amber-100/90" dangerouslySetInnerHTML={{ __html: log.feedback || '<span class="text-slate-600 italic">No feedback</span>' }} />
+                                                        </td>
+                                                        <td className="p-4 align-top">
+                                                            {log.photo_url ? (
+                                                                <a href={log.photo_url} target="_blank" rel="noopener noreferrer" className="block relative group">
+                                                                    <div className="w-16 h-16 rounded-lg overflow-hidden border border-slate-700 bg-slate-800 relative z-0">
+                                                                        <img src={log.photo_url} alt="Log photo" className="w-full h-full object-cover transition-transform group-hover:scale-110" />
+                                                                    </div>
+                                                                </a>
+                                                            ) : (
+                                                                <span className="text-slate-600 italic text-xs flex items-center gap-1">
+                                                                    <ImageIcon className="w-3 h-3" /> None
+                                                                </span>
+                                                            )}
                                                         </td>
                                                     </tr>
                                                 ))}

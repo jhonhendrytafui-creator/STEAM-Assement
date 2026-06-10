@@ -38,8 +38,11 @@ export default function LogbookTab({
     const today = new Date();
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
+    const twoDaysAgo = new Date(today);
+    twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
     const maxDateStr = today.toISOString().split('T')[0];
     const minDateStr = yesterday.toISOString().split('T')[0];
+    const twoDaysAgoStr = twoDaysAgo.toISOString().split('T')[0];
 
     const [newLogDate, setNewLogDate] = useState(maxDateStr);
     const [newLogTask, setNewLogTask] = useState('');
@@ -105,7 +108,9 @@ export default function LogbookTab({
 
             if (newLogPhoto) {
                 const fileExt = newLogPhoto.name.split('.').pop() || 'jpg';
-                const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`;
+                const imageCounter = logbooks.filter(l => l.photo_url).length + 1;
+                const safeClassName = studentInfo.class_name.replace(/\s+/g, '_');
+                const fileName = `${ACADEMIC_YEAR}_${safeClassName}_Group${studentInfo.group_number}_Image${imageCounter}.${fileExt}`;
                 const filePath = `${ACADEMIC_YEAR}/${studentInfo.class_name}/${studentInfo.group_number}/${fileName}`;
 
                 const { error: uploadError } = await supabase.storage
@@ -232,17 +237,18 @@ export default function LogbookTab({
                             <label className="block text-sm font-medium text-slate-400 mb-1">Date</label>
                             <div className="relative">
                                 <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                                <input
-                                    type="date"
+                                <select
                                     required
-                                    min={minDateStr}
-                                    max={maxDateStr}
                                     value={newLogDate}
                                     onChange={(e) => setNewLogDate(e.target.value)}
-                                    className="w-full bg-[#110e08] border border-slate-800 rounded-lg py-2 pl-10 pr-4 text-slate-200 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
-                                />
+                                    className="w-full bg-[#110e08] border border-slate-800 rounded-lg py-2 pl-10 pr-4 text-slate-200 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 appearance-none"
+                                >
+                                    <option value={maxDateStr}>Today ({maxDateStr})</option>
+                                    <option value={minDateStr}>Yesterday ({minDateStr})</option>
+                                    <option value={twoDaysAgoStr}>2-Days Ago ({twoDaysAgoStr})</option>
+                                </select>
                             </div>
-                            <p className="text-xs text-slate-500 mt-1">You can only select today or yesterday.</p>
+                            <p className="text-xs text-slate-500 mt-1">Select from the past 3 days.</p>
                         </div>
                         
                         <div>
