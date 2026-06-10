@@ -8,7 +8,6 @@ import {
 import { supabase } from '@/lib/supabase/client';
 import { ACADEMIC_YEAR } from '@/lib/constants';
 import type { AssessmentCategory, RubricDimension, RubricIndicator, ProjectData, ToastType } from '@/lib/types';
-import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from 'recharts';
 
@@ -51,10 +50,6 @@ export default function AssessTab({
     const [isAutoAssessing, setIsAutoAssessing] = useState(false);
     const [isAssessmentLocked, setIsAssessmentLocked] = useState(false);
     const [showUnlockConfirm, setShowUnlockConfirm] = useState(false);
-
-    // PDF Export State
-    const [isExportingPDF, setIsExportingPDF] = useState(false);
-    const pdfRef = useRef<HTMLDivElement>(null);
 
     const availableAssessClasses = Array.from(new Set(allStudents.filter(s => String(s.class_name).split('.')[0] === assessGrade).map(s => s.class_name))).sort();
     const availableAssessGroups = Array.from(new Set(allStudents.filter(s => s.class_name === assessClass).map(s => s.group_number))).sort((a: number, b: number) => a - b);
@@ -348,26 +343,6 @@ export default function AssessTab({
         setIsSubmittingScore(false);
     };
 
-    const handleExportPDF = async () => {
-        if (!pdfRef.current || !assessProject) return;
-        setIsExportingPDF(true);
-        try {
-            const canvas = await html2canvas(pdfRef.current, { scale: 2, useCORS: true, logging: false });
-            const imgData = canvas.toDataURL('image/png');
-            const pdf = new jsPDF('p', 'mm', 'a4');
-            const pdfWidth = pdf.internal.pageSize.getWidth();
-            const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-            pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-            pdf.save(`STEAM_Report_${assessProject.title.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`);
-            showToast('PDF Exported Successfully!', 'success');
-        } catch (error) {
-            console.error(error);
-            showToast('Failed to export PDF', 'error');
-        } finally {
-            setIsExportingPDF(false);
-        }
-    };
-
     return (
         <div className="relative">
             {isAutoAssessing && (
@@ -629,14 +604,6 @@ export default function AssessTab({
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center gap-3 w-full sm:w-auto">
-                                                    <button
-                                                        onClick={handleExportPDF}
-                                                        disabled={isExportingPDF}
-                                                        className="flex flex-1 sm:flex-none items-center justify-center gap-2 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-400 border border-indigo-500/40 px-4 py-2 rounded-lg text-sm font-semibold transition-all shrink-0 disabled:opacity-50"
-                                                    >
-                                                        <FileText className="w-4 h-4" />
-                                                        {isExportingPDF ? 'Exporting...' : 'Export PDF'}
-                                                    </button>
                                                     <button
                                                         onClick={() => setShowUnlockConfirm(true)}
                                                         className="flex flex-1 sm:flex-none items-center justify-center gap-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 border border-amber-500/40 px-4 py-2 rounded-lg text-sm font-semibold transition-all shrink-0"
@@ -937,94 +904,6 @@ export default function AssessTab({
                         <p className="text-slate-500 max-w-sm mx-auto">Please choose Grade, Class, and Assessment to begin grading. Use the Quick Navigation sidebar to switch between groups.</p>
                     </div>
                 )}
-            </div>
-
-            {/* Hidden PDF Export Template */}
-            <div style={{ position: 'absolute', top: '-20000px', left: '-20000px', width: '800px' }}>
-                <div ref={pdfRef} className="bg-white text-slate-900 p-12 w-[800px] min-h-[1131px] font-sans flex flex-col">
-                    <div className="flex justify-between items-center border-b-4 border-amber-500 pb-6 mb-8">
-                        <div>
-                            <h1 className="text-4xl font-black text-slate-900 tracking-tight">PAHOA STEAM</h1>
-                            <h2 className="text-xl font-bold text-amber-600 mt-1">OFFICIAL ASSESSMENT REPORT</h2>
-                        </div>
-                        <div className="w-16 h-16 bg-amber-500 rounded-full flex items-center justify-center">
-                            <Star className="w-10 h-10 text-white fill-white" />
-                        </div>
-                    </div>
-
-                    <div className="mb-8">
-                        <h3 className="text-3xl font-bold text-slate-800 leading-tight mb-2">{assessProject?.title || 'Unknown Project'}</h3>
-                        <p className="text-slate-500 font-bold uppercase tracking-wider">Group {assessGroup} • Class {assessClass} • Grade {assessGrade}</p>
-                        {assessmentCategories.find(c => c.id === assessCategory)?.name && (
-                            <p className="text-indigo-600 font-bold mt-2">Assessment: {assessmentCategories.find(c => c.id === assessCategory)?.name}</p>
-                        )}
-                    </div>
-
-                    <div className="flex justify-center mb-10 w-full">
-                        {(() => {
-                            if (!assessCategory || !currentScores) return null;
-                            const dims = rubricDimensions.filter(d => d.category_id === assessCategory);
-                            const radarData = dims.map(dim => {
-                                const inds = rubricIndicators.filter(i => i.dimension_id === dim.id);
-                                const maxScale = parseInt(assessmentCategories.find(c => c.id === assessCategory)?.rubric_type.replace('scale_', '') || '1');
-                                const isChecklist = assessmentCategories.find(c => c.id === assessCategory)?.rubric_type === 'checklist';
-                                const maxPerGroup = isChecklist ? inds.length : inds.length * maxScale;
-                                const earned = inds.reduce((sum, i) => sum + (currentScores[i.id] || 0), 0);
-                                return {
-                                    dimName: dim.name,
-                                    score: maxPerGroup > 0 ? Math.round((earned / maxPerGroup) * 100) : 0,
-                                };
-                            });
-                            return radarData.length > 0 ? (
-                                <div style={{ width: '400px', height: '300px' }}>
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <RadarChart data={radarData}>
-                                            <PolarGrid stroke="#e2e8f0" />
-                                            <PolarAngleAxis dataKey="dimName" tick={{ fill: '#475569', fontSize: 11, fontWeight: 'bold' }} />
-                                            <PolarRadiusAxis angle={90} domain={[0, 100]} tick={false} axisLine={false} />
-                                            <Radar name="Score" dataKey="score" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.6} isAnimationActive={false} />
-                                        </RadarChart>
-                                    </ResponsiveContainer>
-                                </div>
-                            ) : null;
-                        })()}
-                    </div>
-
-                    <div className="mb-8 flex-1">
-                        <h4 className="text-xl font-bold border-b-2 border-slate-200 pb-2 mb-4 text-slate-800">Score Breakdown</h4>
-                        <div className="space-y-4">
-                            {rubricDimensions.filter(d => d.category_id === assessCategory).map(dim => {
-                                const inds = rubricIndicators.filter(i => i.dimension_id === dim.id);
-                                const maxScale = parseInt(assessmentCategories.find(c => c.id === assessCategory)?.rubric_type.replace('scale_', '') || '1');
-                                const isChecklist = assessmentCategories.find(c => c.id === assessCategory)?.rubric_type === 'checklist';
-                                const maxPerGroup = isChecklist ? inds.length : inds.length * maxScale;
-                                const earned = inds.reduce((sum, i) => sum + (currentScores[i.id] || 0), 0);
-                                const pct = maxPerGroup > 0 ? Math.round((earned / maxPerGroup) * 100) : 0;
-
-                                return (
-                                    <div key={dim.id} className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-                                        <div className="flex justify-between items-end mb-2">
-                                            <span className="font-bold text-slate-700">{dim.name}</span>
-                                            <span className="font-bold text-amber-600">{earned}/{maxPerGroup} ({pct}%)</span>
-                                        </div>
-                                        <div className="w-full bg-slate-200 rounded-full h-2">
-                                            <div className="bg-amber-500 h-2 rounded-full" style={{ width: `${pct}%` }}></div>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-
-                    <div className="mt-auto pt-8 border-t-2 border-slate-200 text-center">
-                        <div className="inline-block bg-emerald-100 text-emerald-700 px-4 py-2 rounded-full font-bold uppercase tracking-widest text-sm mb-4">
-                            Assessment Completed
-                        </div>
-                        <h3 className="text-xl font-black text-slate-800">OFFICIAL STEAM ENDORSEMENT</h3>
-                        <p className="text-slate-600 mt-2 text-sm italic">This document certifies the evaluation and successful completion of the required PAHOA STEAM Project criteria by the designated student group.</p>
-                        <p className="text-slate-400 mt-6 text-xs font-mono">Generated: {new Date().toLocaleDateString()}</p>
-                    </div>
-                </div>
             </div>
         </div>
     );
