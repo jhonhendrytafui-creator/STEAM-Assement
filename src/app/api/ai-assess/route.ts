@@ -252,6 +252,7 @@ You must output your evaluation in the 'teacher_comment' field using **well-alig
 2. Write a cohesive, detailed review. Start with an opening paragraph stating the Overall Score (X/${maxScore}, Y%) and Category (Exemplary/Proficient/Developing/Beginning).
 3. Then, write detailed paragraphs for each indicator. For each, explicitly state the score (e.g., Score: X/4), explain WHY they received that score by citing specific evidence from their document, and provide a concrete IMPROVE action to fix their logical or scientific errors.
 4. Keep the language simple and clear (ESL-friendly).
+5. Feedback MUST reference the Success-Criteria thread — e.g., if assessing C3, check if their plan defines measurable targets matching C2 constraints. This is crucial for consistency across phases.
 
 Do NOT include a 'suggested_status' field. Just provide 'scores' and 'teacher_comment'. Provide your output exactly matching the JSON schema.`;
 
@@ -293,7 +294,7 @@ You MUST output your entire evaluation as a **single, casual paragraph** in the 
 
 1. The final score (e.g., X/${maxScore}, Y%) and the process category.
 2. An objective compliment highlighting a specific strength in their documentation process.
-3. A sharp, direct critique pointing out a specific weakness, vague task description, or flaw in their documentation logic.
+3. A sharp, direct critique pointing out a specific weakness, vague task description, or flaw in their documentation logic. Your feedback MUST reference the Success-Criteria thread — e.g., "your logbook never tests against the targets you set in C2".
 4. A concrete, actionable suggestion on how to make the written logbook a stronger, more descriptive engineering document.
 
 Do NOT include a 'suggested_status' field. Just provide 'scores' and 'teacher_comment'. Provide your output exactly matching the JSON schema.`;
@@ -404,7 +405,7 @@ FEEDBACK GUIDELINES:
 1. Analyze the project data and especially the <DOCUMENT> text against EACH indicator using the rubric criteria above. Be strictly objective and focus ONLY on the content provided in the student's document link.
 2. Provide an integer score (1-4) for EVERY indicator ID in your 'scores' map. Look for all rubric requirements, find weaknesses, logical errors, unstructured statements, and unscientific facts.
 3. CRITICAL STEAM ENFORCEMENT: This is a STEAM project. It MUST combine Science, Tech, Engineering, Art, and Math. If the project reads like a simple, single-subject project with no clear interdisciplinary connection, you MUST score it very low on related indicators and heavily criticize this lack of integration.
-4. Your 'teacher_comment' MUST be written in **well-aligned proper paragraphs separated by double line breaks (\\n\\n)**. Do NOT use dense bullet points. Write a detailed, cohesive review highlighting specific flaws and providing actionable suggestions.
+4. Your 'teacher_comment' MUST be written in **well-aligned proper paragraphs separated by double line breaks (\\n\\n)**. Do NOT use dense bullet points. Write a detailed, cohesive review highlighting specific flaws and providing actionable suggestions. Feedback MUST reference the Success-Criteria thread — e.g., if this is C5, test if they can defend their results against their original C2 targets.
 5. Your 'suggested_status' should be:
    - 'approved' if the percentage is ≥80% AND the project shows true interdisciplinary STEAM integration without major logical errors.
    - 'revision' if the percentage is 55–79% OR if the project lacks STEAM integration or has significant scientific/logical flaws.
