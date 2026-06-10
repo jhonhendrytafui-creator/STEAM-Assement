@@ -51,6 +51,7 @@ export interface LogbookEntry {
     task: string;
     result: string;
     feedback: string;
+    photo_url?: string | null;
     created_at: string;
 }
 
