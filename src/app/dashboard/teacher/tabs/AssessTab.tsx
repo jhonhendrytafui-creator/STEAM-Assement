@@ -479,8 +479,23 @@ export default function AssessTab({
                                             {assessProject ? (
                                                 <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
                                                     <div>
-                                                        <span className="text-xs text-slate-500 uppercase tracking-wider block mb-1">Title</span>
-                                                        <p className="text-sm font-medium text-slate-200 leading-snug">{assessProject.title}</p>
+                                                        <span className="text-xs uppercase text-slate-500 font-bold tracking-wider mb-2 block">Project Title</span>
+                                                        <h4 className="text-xl font-bold text-white mb-4">{assessProject.title}</h4>
+
+                                                        {/* AI Plagiarism Score Info */}
+                                                        {assessProject.ai_plagiarism_score !== null && assessProject.ai_plagiarism_score !== undefined && (
+                                                            <div className="bg-[#1c1b14] border border-slate-800 p-4 rounded-xl flex flex-col gap-2 mb-6 shadow-sm">
+                                                                <div className="flex items-center justify-between">
+                                                                    <span className="text-xs uppercase text-slate-500 font-bold block">AI Plagiarism Check</span>
+                                                                    <span className="text-[10px] text-slate-500 font-mono">
+                                                                        {assessProject.ai_plagiarism_checked_at ? new Date(assessProject.ai_plagiarism_checked_at).toLocaleDateString() : 'Unknown Date'}
+                                                                    </span>
+                                                                </div>
+                                                                <p className="text-sm font-semibold">
+                                                                    Estimated <span className={assessProject.ai_plagiarism_score > 50 ? 'text-red-400' : 'text-emerald-400'}>{assessProject.ai_plagiarism_score}%</span> AI Generated
+                                                                </p>
+                                                            </div>
+                                                        )}
                                                     </div>
 
                                                     {assessProject.abstract && (() => {

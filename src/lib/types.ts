@@ -39,6 +39,7 @@ export interface ProjectData {
         theme_name: string;
     } | null;
     ai_plagiarism_score?: number | null;
+    ai_plagiarism_checked_at?: string | null;
 }
 
 export interface LogbookEntry {

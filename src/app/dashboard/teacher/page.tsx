@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     LayoutDashboard, FolderOpen, BookOpen, ClipboardCheck,
-    Users, BarChart2, Star, TrendingUp, HelpCircle
+    Users, BarChart2, Star, TrendingUp, HelpCircle, Search
 } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase/client';
@@ -22,6 +22,7 @@ import LoadingScreen from '@/components/ui/LoadingScreen';
 import OverviewTab from './tabs/OverviewTab';
 import SubmissionsTab from './tabs/SubmissionsTab';
 import LogbookTab from './tabs/LogbookTab';
+import PlagiarismTab from './tabs/PlagiarismTab';
 import AssessTab from './tabs/AssessTab';
 import ScoreTab from './tabs/ScoreTab';
 import VotingTab from './tabs/VotingTab';
@@ -34,6 +35,7 @@ const TEACHER_TABS = [
     { id: 'overview', label: 'Project Overview', icon: LayoutDashboard },
     { id: 'submissions', label: 'Project Submission', icon: FolderOpen },
     { id: 'logbook', label: 'Project Logbook', icon: BookOpen },
+    { id: 'plagiarism', label: 'AI Plagiarism Check', icon: Search },
     { id: 'assess', label: 'Project Assessment', icon: ClipboardCheck },
     { id: 'peer', label: 'Peer Assessment Result', icon: Users },
     { id: 'score', label: 'Student Score', icon: BarChart2 },
@@ -216,6 +218,13 @@ export default function TeacherDashboardPage() {
 
                     {activeTab === 'logbook' && (
                         <LogbookTab
+                            allStudents={allStudents}
+                            showToast={showToast}
+                        />
+                    )}
+
+                    {activeTab === 'plagiarism' && (
+                        <PlagiarismTab
                             allStudents={allStudents}
                             showToast={showToast}
                         />
