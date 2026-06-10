@@ -110,8 +110,9 @@ export default function LogbookTab({
                 const fileExt = newLogPhoto.name.split('.').pop() || 'jpg';
                 const imageCounter = logbooks.filter(l => l.photo_url).length + 1;
                 const safeClassName = studentInfo.class_name.replace(/\s+/g, '_');
-                const fileName = `${ACADEMIC_YEAR}_${safeClassName}_Group${studentInfo.group_number}_Image${imageCounter}.${fileExt}`;
-                const filePath = `${ACADEMIC_YEAR}/${studentInfo.class_name}/${studentInfo.group_number}/${fileName}`;
+                const safeAcademicYear = ACADEMIC_YEAR.replace(/\//g, '-'); // Replace / with - to prevent splitting into two folders
+                const fileName = `${safeAcademicYear}_${safeClassName}_Group${studentInfo.group_number}_Image${imageCounter}.${fileExt}`;
+                const filePath = `${safeAcademicYear}/${studentInfo.class_name}/Group_${studentInfo.group_number}/${fileName}`;
 
                 const { error: uploadError } = await supabase.storage
                     .from('logbook_photos')
