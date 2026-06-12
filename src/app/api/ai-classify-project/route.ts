@@ -85,7 +85,7 @@ Classify your 3 recommendations into 'High', 'Medium', and 'Low' relevance.
 Provide a short, objective reason for why each teacher was selected and estimate a percentage of relevance (0-100%).
 `;
 
-        const responseSchemaProperties = {
+        const responseSchemaProperties: Record<string, any> = {
             recommendations: {
                 type: SchemaType.ARRAY,
                 description: "Array of exactly 3 teacher recommendations",
