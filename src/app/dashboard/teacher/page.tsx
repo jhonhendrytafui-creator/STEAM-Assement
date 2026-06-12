@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     LayoutDashboard, FolderOpen, BookOpen, ClipboardCheck,
-    Users, BarChart2, Star, TrendingUp, HelpCircle, Search
+    Users, BarChart2, Star, TrendingUp, HelpCircle, Search, BrainCircuit
 } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase/client';
@@ -29,6 +29,7 @@ import VotingTab from './tabs/VotingTab';
 import AnalyticsTab from './tabs/AnalyticsTab';
 import PeerAssessmentResultsTab from './PeerAssessmentResultsTab';
 import HelpCenterTab from '../components/HelpCenterTab';
+import ProjectClassificationTab from './tabs/ProjectClassificationTab';
 
 // Tab definitions for sidebar
 const TEACHER_TABS = [
@@ -37,6 +38,7 @@ const TEACHER_TABS = [
     { id: 'logbook', label: 'Project Logbook', icon: BookOpen },
     { id: 'plagiarism', label: 'AI Plagiarism Check', icon: Search },
     { id: 'assess', label: 'Project Assessment', icon: ClipboardCheck },
+    { id: 'classification', label: 'Project Classification', icon: BrainCircuit },
     { id: 'peer', label: 'Peer Assessment Result', icon: Users },
     { id: 'score', label: 'Student Score', icon: BarChart2 },
     { id: 'voting', label: 'Voting and Leaderboard', icon: Star },
@@ -282,6 +284,10 @@ export default function TeacherDashboardPage() {
                             rubricDimensions={rubricDimensions}
                             rubricIndicators={rubricIndicators}
                         />
+                    )}
+
+                    {activeTab === 'classification' && (
+                        <ProjectClassificationTab showToast={showToast} />
                     )}
 
                     {activeTab === 'help' && (

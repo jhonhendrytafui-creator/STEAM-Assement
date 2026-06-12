@@ -335,6 +335,15 @@ export default function AssessTab({
                         })
                         .eq('id', assessProject.id);
                     setAssessProject({ ...assessProject, status: assessStatus, teacher_comment: assessComment });
+                    
+                    // Trigger AI classification in the background if approved
+                    if (assessStatus === 'approved') {
+                        fetch('/api/ai-classify-project', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ projectId: assessProject.id })
+                        }).catch(err => console.error('Failed to trigger AI classification:', err));
+                    }
                 }
             }
         } else {

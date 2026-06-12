@@ -108,3 +108,15 @@ export interface ConfirmDialogState {
     confirmLabel?: string;
     onConfirm: () => void;
 }
+
+export interface ProjectTeacherRecommendation {
+    id: string;
+    project_id: string;
+    teacher_email: string;
+    teacher_name: string;
+    teacher_expertise: string;
+    rank_level: 'High' | 'Medium' | 'Low';
+    relevance_percentage: number;
+    reason: string;
+    created_at: string;
+}
