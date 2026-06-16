@@ -90,8 +90,15 @@ export default function PlagiarismTab({ allStudents, showToast }: PlagiarismTabP
         fetchProject();
     }, [selectedClass, selectedGroup]);
 
+    const MAX_SCANS = 3;
+
     const handleRunAICheck = async () => {
         if (!project) return;
+        const currentCount = project.ai_plagiarism_check_count ?? 0;
+        if (currentCount >= MAX_SCANS) {
+            showToast('Scan limit reached. This group has already been scanned 3 times.', 'warning');
+            return;
+        }
         setIsCheckingAI(true);
         try {
             const res = await fetch('/api/ai-detect', {
@@ -106,23 +113,30 @@ export default function PlagiarismTab({ allStudents, showToast }: PlagiarismTabP
             if (!res.ok) throw new Error(data.error);
 
             const timestamp = new Date().toISOString();
+            const newCount = currentCount + 1;
 
             const { error } = await supabase
                 .from('projects')
                 .update({
                     ai_plagiarism_score: data.ai_percentage,
-                    ai_plagiarism_checked_at: timestamp
+                    ai_plagiarism_checked_at: timestamp,
+                    ai_plagiarism_check_count: newCount
                 })
                 .eq('id', project.id);
 
             if (error) throw error;
 
-            showToast(`AI Check complete: Estimated ${data.ai_percentage}% AI generated.`, 'success');
+            const remaining = MAX_SCANS - newCount;
+            showToast(
+                `AI Check complete: Estimated ${data.ai_percentage}% AI generated. ${remaining} scan${remaining !== 1 ? 's' : ''} remaining for this group.`,
+                'success'
+            );
 
             setProject(prev => prev ? {
                 ...prev,
                 ai_plagiarism_score: data.ai_percentage,
-                ai_plagiarism_checked_at: timestamp
+                ai_plagiarism_checked_at: timestamp,
+                ai_plagiarism_check_count: newCount
             } : null);
 
             // Mark this group as checked in the Quick Nav
@@ -265,26 +279,42 @@ export default function PlagiarismTab({ allStudents, showToast }: PlagiarismTabP
                                             )}
                                         </div>
 
-                                        <button
-                                            onClick={handleRunAICheck}
-                                            disabled={isCheckingAI || (!project.google_doc_url && !project.abstract)}
-                                            className="shrink-0 group relative px-6 py-3.5 bg-amber-500 hover:bg-amber-400 text-[#1a1811] font-black rounded-xl shadow-[0_0_20px_rgba(245,158,11,0.2)] hover:shadow-[0_0_25px_rgba(245,158,11,0.4)] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 overflow-hidden"
-                                        >
-                                            <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
-                                            {isCheckingAI ? (
-                                                <>
-                                                    <div className="w-5 h-5 border-2 border-[#1a1811]/30 border-t-[#1a1811] rounded-full animate-spin"></div>
-                                                    <span>Scanning...</span>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <Search className="w-5 h-5 relative z-10" />
-                                                    <span className="relative z-10 uppercase tracking-wide">
-                                                        {project.ai_plagiarism_score !== null && project.ai_plagiarism_score !== undefined ? 'Re-scan Project' : 'Scan Project'}
-                                                    </span>
-                                                </>
-                                            )}
-                                        </button>
+                                        <div className="flex flex-col items-end gap-2 shrink-0">
+                                            {(() => {
+                                                const count = project.ai_plagiarism_check_count ?? 0;
+                                                const remaining = MAX_SCANS - count;
+                                                const isLimitReached = count >= MAX_SCANS;
+                                                return (
+                                                    <>
+                                                        <button
+                                                            onClick={handleRunAICheck}
+                                                            disabled={isCheckingAI || isLimitReached || (!project.google_doc_url && !project.abstract)}
+                                                            className="group relative px-6 py-3.5 bg-amber-500 hover:bg-amber-400 text-[#1a1811] font-black rounded-xl shadow-[0_0_20px_rgba(245,158,11,0.2)] hover:shadow-[0_0_25px_rgba(245,158,11,0.4)] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 overflow-hidden"
+                                                        >
+                                                            <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
+                                                            {isCheckingAI ? (
+                                                                <>
+                                                                    <div className="w-5 h-5 border-2 border-[#1a1811]/30 border-t-[#1a1811] rounded-full animate-spin"></div>
+                                                                    <span>Scanning...</span>
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <Search className="w-5 h-5 relative z-10" />
+                                                                    <span className="relative z-10 uppercase tracking-wide">
+                                                                        {project.ai_plagiarism_score !== null && project.ai_plagiarism_score !== undefined ? 'Re-scan Project' : 'Scan Project'}
+                                                                    </span>
+                                                                </>
+                                                            )}
+                                                        </button>
+                                                        <p className={`text-xs font-semibold ${isLimitReached ? 'text-red-400' : 'text-slate-500'}`}>
+                                                            {isLimitReached
+                                                                ? 'Scan limit reached (3/3)'
+                                                                : `${remaining} scan${remaining !== 1 ? 's' : ''} remaining`}
+                                                        </p>
+                                                    </>
+                                                );
+                                            })()}
+                                        </div>
                                     </div>
                                 </div>
 

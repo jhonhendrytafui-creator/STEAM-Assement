@@ -40,6 +40,7 @@ export interface ProjectData {
     } | null;
     ai_plagiarism_score?: number | null;
     ai_plagiarism_checked_at?: string | null;
+    ai_plagiarism_check_count?: number | null;
 }
 
 export interface LogbookEntry {
