@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import { createClient } from '@supabase/supabase-js';
 
+export const maxDuration = 60;
+
 // Initialize the Gemini client
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
@@ -103,7 +105,7 @@ Provide a short, objective reason for why each teacher was selected and estimate
         };
 
         const model = genAI.getGenerativeModel({
-            model: "gemini-3.5-flash",
+            model: "gemini-2.0-flash",
             generationConfig: {
                 temperature: 0.2,
                 responseMimeType: "application/json",

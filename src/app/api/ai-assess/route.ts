@@ -105,9 +105,9 @@ export async function POST(req: Request) {
                 description: isC4 
                     ? "A single, coherent, casual paragraph providing sharp, objective feedback based on the logbook rubric. State the final score, process category, an objective compliment, a sharp critique, and an actionable suggestion."
                     : isNoStatusCategory
-                        ? "A highly detailed, critical, and objective review written in well-aligned proper paragraphs (no bullet points). State the overall verdict, then provide detailed paragraphs evaluating each rubric indicator, citing specific evidence from the document and pointing out logical errors or weaknesses."
+                        ? "A highly detailed, critical, and objective review written in well-aligned proper paragraphs (no bullet points). State the overall verdict, then provide detailed paragraphs evaluating each rubric indicator, citing a maximum of 5 specific reasons with exact evidence from the document and pointing out logical errors or weaknesses."
                     : isC1
-                        ? "A structured, holistic feedback organized into clearly labeled sections: PROBLEM STATEMENT, PROPOSED SOLUTION, THEME ALIGNMENT, KEY CONCEPTS, TITLE, and OVERALL VERDICT. Each section must use well-aligned proper paragraphs separated by double line breaks (\\n\\n). Do NOT use emojis. Do NOT mention raw scores or percentages in the comment."
+                        ? "A structured, holistic feedback organized into clearly labeled sections: PROBLEM STATEMENT, PROPOSED SOLUTION, THEME ALIGNMENT, KEY CONCEPTS, TITLE, and OVERALL VERDICT. Each section must use well-aligned proper paragraphs separated by double line breaks (\\n\\n). Give a maximum of 5 specific reasons for each indicator evaluation. Do NOT use emojis. Do NOT mention raw scores or percentages in the comment."
                     : "A single casual paragraph. If approved: encouraging with forward-looking guidance. If revision/disapproved: critical and thorough, listing ALL weak areas with what to fix. Do NOT mention scores or percentages."
             }
         };
@@ -363,6 +363,7 @@ OVERALL VERDICT
 3. Do NOT use emojis anywhere in your feedback.
 4. Keep language simple and clear (ESL-friendly).
 5. Each section header must be on its own line, followed by double line breaks and then well-spaced paragraphs. Do NOT use bullet points starting with "- ".
+6. For each indicator evaluation, provide a maximum of 5 specific reasons to justify your score.
 
 Provide your output exactly matching the JSON schema.`;
 

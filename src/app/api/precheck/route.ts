@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
+export const maxDuration = 60;
+
 // Subject constants for mapping IDs to readable names
 const SUBJECTS = [
     { id: 'biology_marine', label: 'Biology & Marine Biology' },
