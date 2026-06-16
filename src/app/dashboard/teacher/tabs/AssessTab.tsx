@@ -46,6 +46,8 @@ export default function AssessTab({
     const [assessLogbooks, setAssessLogbooks] = useState<any[]>([]);
     const [c5Questions, setC5Questions] = useState<string>('');
     const [isGeneratingC5, setIsGeneratingC5] = useState(false);
+    const [c5Language, setC5Language] = useState<'en' | 'id'>('en');
+    const c5QuestionsCache = useRef<{ en: string; id: string }>({ en: '', id: '' });
     const [isSubmittingScore, setIsSubmittingScore] = useState(false);
     const [isAutoAssessing, setIsAutoAssessing] = useState(false);
     const [indicatorComments, setIndicatorComments] = useState<Record<string, string>>({});
@@ -208,7 +210,12 @@ export default function AssessTab({
             }
 
             if (currentCat?.code === 'C5' && proj) {
-                setC5Questions(proj.c5_generated_questions || '');
+                const enQ = proj.c5_generated_questions_en || proj.c5_generated_questions || '';
+                const idQ = proj.c5_generated_questions_id || '';
+                c5QuestionsCache.current = { en: enQ, id: idQ };
+                // Always default to English when switching projects
+                setC5Language('en');
+                setC5Questions(enQ);
             }
         };
         loadAssessData();
@@ -257,13 +264,13 @@ export default function AssessTab({
     const handleGenerateC5Questions = async () => {
         if (!assessProject) return;
         setIsGeneratingC5(true);
-        showToast('Gemini AI is analyzing the project presentation outline...', 'info');
+        showToast(`Generating questions in ${c5Language === 'id' ? 'Bahasa Indonesia' : 'English'}...`, 'info');
 
         try {
             const response = await fetch('/api/generate-c5-questions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ projectData: assessProject })
+                body: JSON.stringify({ projectData: assessProject, language: c5Language })
             });
 
             const data = await response.json();
@@ -272,10 +279,12 @@ export default function AssessTab({
             }
 
             if (data.generatedQuestions) {
+                c5QuestionsCache.current[c5Language] = data.generatedQuestions;
                 setC5Questions(data.generatedQuestions);
+                const dbColumn = c5Language === 'id' ? 'c5_generated_questions_id' : 'c5_generated_questions_en';
                 const { error: dbError } = await supabase
                     .from('projects')
-                    .update({ c5_generated_questions: data.generatedQuestions })
+                    .update({ [dbColumn]: data.generatedQuestions })
                     .eq('id', assessProject.id);
 
                 if (dbError) throw dbError;
@@ -286,6 +295,11 @@ export default function AssessTab({
         } finally {
             setIsGeneratingC5(false);
         }
+    };
+
+    const handleC5LanguageSwitch = (lang: 'en' | 'id') => {
+        setC5Language(lang);
+        setC5Questions(c5QuestionsCache.current[lang]);
     };
 
     const submitAssessment = async () => {
@@ -771,11 +785,34 @@ export default function AssessTab({
                                             );
                                         })()}
 
+                                        {cat?.code === 'C5' && (
+                                            <div className="mt-6">
+                                                {/* Language toggle — always visible in C5 */}
+                                                <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+                                                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Q&amp;A Language</span>
+                                                    <div className="bg-[#1c1b14] border border-slate-800 rounded-xl p-1 flex gap-1">
+                                                        {(['en', 'id'] as const).map(lang => (
+                                                            <button
+                                                                key={lang}
+                                                                onClick={() => handleC5LanguageSwitch(lang)}
+                                                                className={`px-4 py-1.5 rounded-lg text-sm font-bold transition-all ${c5Language === lang ? 'bg-amber-500 text-[#1a1811]' : 'text-slate-400 hover:text-amber-400 hover:bg-amber-900/20'}`}
+                                                            >
+                                                                {lang === 'en' ? '🇬🇧 English' : '🇮🇩 Indonesia'}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
                                         {cat?.code === 'C5' && (c5Questions || isGeneratingC5) && (
-                                            <div className="bg-[#1c1b14] border border-amber-500/30 rounded-xl p-6 shadow-lg mt-8">
+                                            <div className="bg-[#1c1b14] border border-amber-500/30 rounded-xl p-6 shadow-lg">
                                                 <div className="flex items-center gap-3 mb-4 border-b border-slate-800 pb-3">
                                                     <FileText className="w-5 h-5 text-amber-500" />
-                                                    <h3 className="font-bold text-white">Generated Q&A Context</h3>
+                                                    <h3 className="font-bold text-white">Generated Q&amp;A Context</h3>
+                                                    <span className={`ml-auto text-xs font-bold px-2 py-0.5 rounded border ${c5Language === 'id' ? 'bg-red-500/10 text-red-400 border-red-500/20' : 'bg-blue-500/10 text-blue-400 border-blue-500/20'}`}>
+                                                        {c5Language === 'id' ? '🇮🇩 Bahasa Indonesia' : '🇬🇧 English'}
+                                                    </span>
                                                 </div>
                                                 {isGeneratingC5 ? (
                                                     <div className="flex items-center justify-center py-8 text-amber-500/70 space-x-2">
@@ -850,14 +887,26 @@ export default function AssessTab({
 
                                         <div className="flex justify-end gap-3 pt-4">
                                             {cat?.code === 'C5' ? (
-                                                <button
-                                                    onClick={handleGenerateC5Questions}
-                                                    disabled={isGeneratingC5 || isSubmittingScore || isAssessmentLocked}
-                                                    className="flex items-center gap-2 bg-[#1c1b2e] border border-indigo-500/30 text-indigo-400 px-6 py-3.5 rounded-xl font-bold hover:bg-indigo-900/40 hover:text-indigo-300 transition-all shadow-xl shadow-indigo-900/10 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                >
-                                                    {isGeneratingC5 ? 'Generating...' : c5Questions ? 'Regenerate Q&A' : 'Generate Q&A'}
-                                                    {!isGeneratingC5 && <Sparkles className="w-5 h-5" />}
-                                                </button>
+                                                <div className="flex flex-col items-end gap-1.5">
+                                                    {cat?.code === 'C5' && !c5Questions && !isGeneratingC5 && (
+                                                        <p className="text-xs text-slate-500 italic">
+                                                            No {c5Language === 'id' ? 'Indonesian' : 'English'} questions generated yet.
+                                                        </p>
+                                                    )}
+                                                    <button
+                                                        onClick={handleGenerateC5Questions}
+                                                        disabled={isGeneratingC5 || isSubmittingScore || isAssessmentLocked}
+                                                        className="flex items-center gap-2 bg-[#1c1b14] border border-amber-500/30 text-amber-400 px-6 py-3.5 rounded-xl font-bold hover:bg-amber-900/20 hover:text-amber-300 transition-all shadow-xl shadow-amber-900/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    >
+                                                        {isGeneratingC5
+                                                            ? 'Generating...'
+                                                            : c5Questions
+                                                                ? `Regenerate in ${c5Language === 'id' ? 'Indonesia' : 'English'}`
+                                                                : `Generate in ${c5Language === 'id' ? 'Indonesia' : 'English'}`
+                                                        }
+                                                        {!isGeneratingC5 && <Sparkles className="w-5 h-5" />}
+                                                    </button>
+                                                </div>
                                             ) : (
                                                 <button
                                                     onClick={handleAutoAssess}

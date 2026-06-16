@@ -41,6 +41,8 @@ export interface ProjectData {
     ai_plagiarism_score?: number | null;
     ai_plagiarism_checked_at?: string | null;
     ai_plagiarism_check_count?: number | null;
+    c5_generated_questions_en?: string | null;
+    c5_generated_questions_id?: string | null;
 }
 
 export interface LogbookEntry {
