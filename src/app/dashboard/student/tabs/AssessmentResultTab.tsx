@@ -107,7 +107,10 @@ export default function AssessmentResultTab({
                 if (overallPct >= 80) { overallColor = 'text-emerald-400'; overallBg = 'bg-emerald-500'; }
                 else if (overallPct < 60) { overallColor = 'text-red-400'; overallBg = 'bg-red-500'; }
 
-                const teacherComment = catScores[0]?.teacher_comment;
+                // Only show the top-level comment when all rows share the same text (old format).
+                // New format saves unique per-indicator reasons, so we surface those inline instead.
+                const allSameComment = catScores.length > 0 && catScores.every(s => s.teacher_comment === catScores[0].teacher_comment);
+                const teacherComment = allSameComment ? catScores[0]?.teacher_comment : null;
 
                 return (
                     <div className="space-y-6">
@@ -169,38 +172,46 @@ export default function AssessmentResultTab({
                                         {dimInds.map((ind, idx) => {
                                             const scoreEntry = dimScores.find(s => s.indicator_id === ind.id);
                                             const scoreVal = scoreEntry?.score || 0;
+                                            const indicatorReason = !allSameComment ? scoreEntry?.teacher_comment : null;
 
                                             return (
-                                                <div key={ind.id} className="px-5 py-3 flex items-center gap-4 hover:bg-[#1a1811] transition-colors">
-                                                    <span className="text-xs text-slate-600 font-mono w-6 shrink-0">{idx + 1}.</span>
-                                                    <p className="text-sm text-slate-300 flex-1">{ind.description}</p>
+                                                <div key={ind.id} className="px-5 py-3 hover:bg-[#1a1811] transition-colors">
+                                                    <div className="flex items-center gap-4">
+                                                        <span className="text-xs text-slate-600 font-mono w-6 shrink-0">{idx + 1}.</span>
+                                                        <p className="text-sm text-slate-300 flex-1">{ind.description}</p>
 
-                                                    <div className="flex items-center gap-1 shrink-0">
-                                                        {isChecklist ? (
-                                                            scoreVal >= 1 ? (
-                                                                <div className="w-6 h-6 rounded-md bg-emerald-500/20 flex items-center justify-center">
-                                                                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                                                                </div>
+                                                        <div className="flex items-center gap-1 shrink-0">
+                                                            {isChecklist ? (
+                                                                scoreVal >= 1 ? (
+                                                                    <div className="w-6 h-6 rounded-md bg-emerald-500/20 flex items-center justify-center">
+                                                                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="w-6 h-6 rounded-md bg-slate-800 flex items-center justify-center">
+                                                                        <X className="w-3 h-3 text-slate-600" />
+                                                                    </div>
+                                                                )
                                                             ) : (
-                                                                <div className="w-6 h-6 rounded-md bg-slate-800 flex items-center justify-center">
-                                                                    <X className="w-3 h-3 text-slate-600" />
-                                                                </div>
-                                                            )
-                                                        ) : (
-                                                            Array.from({ length: maxScale }, (_, i) => (
-                                                                <div
-                                                                    key={i}
-                                                                    className={`w-5 h-5 rounded-full border-2 transition-colors ${i < scoreVal
-                                                                        ? 'bg-amber-500 border-amber-500'
-                                                                        : 'bg-transparent border-slate-700'
-                                                                        }`}
-                                                                />
-                                                            ))
-                                                        )}
-                                                        <span className="text-xs font-bold text-slate-400 ml-2 w-8 text-right">
-                                                            {isChecklist ? (scoreVal >= 1 ? '✓' : '—') : `${scoreVal}/${maxScale}`}
-                                                        </span>
+                                                                Array.from({ length: maxScale }, (_, i) => (
+                                                                    <div
+                                                                        key={i}
+                                                                        className={`w-5 h-5 rounded-full border-2 transition-colors ${i < scoreVal
+                                                                            ? 'bg-amber-500 border-amber-500'
+                                                                            : 'bg-transparent border-slate-700'
+                                                                            }`}
+                                                                    />
+                                                                ))
+                                                            )}
+                                                            <span className="text-xs font-bold text-slate-400 ml-2 w-8 text-right">
+                                                                {isChecklist ? (scoreVal >= 1 ? '✓' : '—') : `${scoreVal}/${maxScale}`}
+                                                            </span>
+                                                        </div>
                                                     </div>
+                                                    {indicatorReason && (
+                                                        <p className="text-xs text-slate-500 mt-1.5 ml-10 leading-relaxed italic">
+                                                            {indicatorReason}
+                                                        </p>
+                                                    )}
                                                 </div>
                                             );
                                         })}

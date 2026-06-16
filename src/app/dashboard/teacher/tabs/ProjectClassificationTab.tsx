@@ -68,6 +68,19 @@ export default function ProjectClassificationTab({ showToast }: ProjectClassific
         fetchClassifications();
     }, []);
 
+    // Auto-poll every 5 seconds while any project is still waiting for recommendations.
+    // Stops automatically once all projects have recommendations.
+    useEffect(() => {
+        const hasPending = projects.some(p => !p.recommendations || p.recommendations.length === 0);
+        if (!hasPending || isLoading) return;
+
+        const timer = setTimeout(() => {
+            fetchClassifications();
+        }, 5000);
+
+        return () => clearTimeout(timer);
+    }, [projects, isLoading]);
+
     // Extract unique grades from projects
     const availableGrades = ['All', ...Array.from(new Set(projects.map(p => String(p.class_name).split('.')[0])))].sort((a, b) => {
         if (a === 'All') return -1;
@@ -209,6 +222,7 @@ export default function ProjectClassificationTab({ showToast }: ProjectClassific
                                         <div className="flex-1 flex flex-col items-center justify-center py-6">
                                             <div className="w-12 h-12 rounded-full border-2 border-indigo-500/20 border-t-indigo-500 animate-spin mb-3"></div>
                                             <p className="text-sm text-slate-400 text-center">AI is analyzing this project...</p>
+                                            <p className="text-xs text-slate-600 mt-1 text-center">Auto-refreshing every 5 seconds</p>
                                         </div>
                                     )}
                                 </div>

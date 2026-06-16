@@ -111,7 +111,12 @@ export async function POST(req: Request) {
                     : "A single casual paragraph. If approved: encouraging with forward-looking guidance. If revision/disapproved: critical and thorough, listing ALL weak areas with what to fix. Do NOT mention scores or percentages."
             }
         };
-        const requiredFields = ["scores", "teacher_comment"];
+        responseSchemaProperties.indicator_comments = {
+            type: SchemaType.OBJECT,
+            description: "A map of each indicator UUID to a concise explanation (max 5 reasons) of WHY that specific score was awarded. Cite only evidence from the student's document or data provided. Do NOT invent or hallucinate details."
+        };
+
+        const requiredFields = ["scores", "teacher_comment", "indicator_comments"];
 
         if (!isNoStatusCategory) {
             responseSchemaProperties.suggested_status = {
@@ -212,7 +217,14 @@ You must output your evaluation in the 'teacher_comment' field using **well-alig
 3. Then, write detailed paragraphs for each indicator. For each, explicitly state the score (e.g., Score: X/4), explain WHY they received that score by citing specific evidence from their document, and provide a concrete IMPROVE action to fix their logical or scientific errors.
 4. Keep the language simple and clear (ESL-friendly).
 
-Do NOT include a 'suggested_status' field. Just provide 'scores' and 'teacher_comment'. Provide your output exactly matching the JSON schema.`;
+**INDICATOR COMMENTS (indicator_comments field)**
+For each indicator ID listed in the "Assessment Indicators" block above, write a concise explanation of WHY you gave that specific score.
+- Base your reasons ONLY on evidence found in the student's document above. Do NOT invent or hallucinate details.
+- Give between 1 and 5 reasons (use fewer if the evidence is limited — do not pad).
+- Keep each reason to 1-2 sentences. Plain English, ESL-friendly.
+- Write as plain prose sentences separated by ". " — no bullet symbols.
+
+Do NOT include a 'suggested_status' field. Just provide 'scores', 'teacher_comment', and 'indicator_comments'. Provide your output exactly matching the JSON schema.`;
 
         } else if (isC3) {
             // ===== C3: Solution & Execution — reads Google Doc content =====
@@ -254,7 +266,14 @@ You must output your evaluation in the 'teacher_comment' field using **well-alig
 4. Keep the language simple and clear (ESL-friendly).
 5. Feedback MUST reference the Success-Criteria thread — e.g., if assessing C3, check if their plan defines measurable targets matching C2 constraints. This is crucial for consistency across phases.
 
-Do NOT include a 'suggested_status' field. Just provide 'scores' and 'teacher_comment'. Provide your output exactly matching the JSON schema.`;
+**INDICATOR COMMENTS (indicator_comments field)**
+For each indicator ID listed in the "Assessment Indicators" block above, write a concise explanation of WHY you gave that specific score.
+- Base your reasons ONLY on evidence found in the student's document above. Do NOT invent or hallucinate details.
+- Give between 1 and 5 reasons (use fewer if the evidence is limited — do not pad).
+- Keep each reason to 1-2 sentences. Plain English, ESL-friendly.
+- Write as plain prose sentences separated by ". " — no bullet symbols.
+
+Do NOT include a 'suggested_status' field. Just provide 'scores', 'teacher_comment', and 'indicator_comments'. Provide your output exactly matching the JSON schema.`;
 
         } else if (isC4) {
             // ===== C4: Logbook & Process — reads assessLogbooks array =====
@@ -297,7 +316,14 @@ You MUST output your entire evaluation as a **single, casual paragraph** in the 
 3. A sharp, direct critique pointing out a specific weakness, vague task description, or flaw in their documentation logic. Your feedback MUST reference the Success-Criteria thread — e.g., "your logbook never tests against the targets you set in C2".
 4. A concrete, actionable suggestion on how to make the written logbook a stronger, more descriptive engineering document.
 
-Do NOT include a 'suggested_status' field. Just provide 'scores' and 'teacher_comment'. Provide your output exactly matching the JSON schema.`;
+**INDICATOR COMMENTS (indicator_comments field)**
+For each indicator ID listed in the "Assessment Indicators" block above, write a concise explanation of WHY you gave that specific score.
+- Base your reasons ONLY on the logbook entries provided above. Do NOT invent or hallucinate details.
+- Give between 1 and 5 reasons (use fewer if the evidence is limited — do not pad).
+- Keep each reason to 1-2 sentences. Plain English, ESL-friendly.
+- Write as plain prose sentences separated by ". " — no bullet symbols.
+
+Do NOT include a 'suggested_status' field. Just provide 'scores', 'teacher_comment', and 'indicator_comments'. Provide your output exactly matching the JSON schema.`;
 
         } else if (isC1) {
             // ===== C1: Project Proposal / Abstract =====
@@ -365,6 +391,13 @@ OVERALL VERDICT
 5. Each section header must be on its own line, followed by double line breaks and then well-spaced paragraphs. Do NOT use bullet points starting with "- ".
 6. For each indicator evaluation, provide a maximum of 5 specific reasons to justify your score.
 
+**INDICATOR COMMENTS (indicator_comments field)**
+For each indicator ID listed in the "Assessment Indicators" block above, write a concise explanation of WHY you gave that specific score.
+- Base your reasons ONLY on the project data (title, problem, solution, key concepts) provided above. Do NOT invent or hallucinate details.
+- Give between 1 and 5 reasons (use fewer if the evidence is limited — do not pad).
+- Keep each reason to 1-2 sentences. Plain English, ESL-friendly. No emojis.
+- Write as plain prose sentences separated by ". " — no bullet symbols.
+
 Provide your output exactly matching the JSON schema.`;
 
         } else {
@@ -411,6 +444,13 @@ FEEDBACK GUIDELINES:
    - 'approved' if the percentage is ≥80% AND the project shows true interdisciplinary STEAM integration without major logical errors.
    - 'revision' if the percentage is 55–79% OR if the project lacks STEAM integration or has significant scientific/logical flaws.
    - 'disapproved' only if the percentage is below 55% and effort is completely absent.
+
+**INDICATOR COMMENTS (indicator_comments field)**
+For each indicator ID listed in the "Assessment Indicators" block above, write a concise explanation of WHY you gave that specific score.
+- Base your reasons ONLY on evidence found in the student's document/data above. Do NOT invent or hallucinate details.
+- Give between 1 and 5 reasons (use fewer if the evidence is limited — do not pad).
+- Keep each reason to 1-2 sentences. Plain English, ESL-friendly.
+- Write as plain prose sentences separated by ". " — no bullet symbols.
 
 Provide your output exactly matching the JSON schema.
 `;

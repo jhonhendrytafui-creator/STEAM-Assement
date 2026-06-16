@@ -118,7 +118,7 @@ Provide a short, objective reason for why each teacher was selected and estimate
         });
 
         console.log(`[AI-Classify] Analyzing project: ${project.title}`);
-        const result = await model.generateContent(prompt);
+        const result = await model.generateContent(prompt, { timeout: 55000 });
         const responseText = result.response.text();
         const jsonPayload = JSON.parse(responseText);
 

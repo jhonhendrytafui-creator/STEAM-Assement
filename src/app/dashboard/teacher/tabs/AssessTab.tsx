@@ -48,6 +48,7 @@ export default function AssessTab({
     const [isGeneratingC5, setIsGeneratingC5] = useState(false);
     const [isSubmittingScore, setIsSubmittingScore] = useState(false);
     const [isAutoAssessing, setIsAutoAssessing] = useState(false);
+    const [indicatorComments, setIndicatorComments] = useState<Record<string, string>>({});
     const [isAssessmentLocked, setIsAssessmentLocked] = useState(false);
     const [showUnlockConfirm, setShowUnlockConfirm] = useState(false);
 
@@ -131,6 +132,7 @@ export default function AssessTab({
             setAssessStatus('');
             setAssessLogbooks([]);
             setC5Questions('');
+            setIndicatorComments({});
 
             const { data: projs } = await supabase
                 .from('projects')
@@ -242,6 +244,7 @@ export default function AssessTab({
             if (data.scores) setCurrentScores(data.scores);
             if (data.teacher_comment) setAssessComment(data.teacher_comment);
             if (data.suggested_status) setAssessStatus(data.suggested_status);
+            if (data.indicator_comments) setIndicatorComments(data.indicator_comments);
 
             showToast('AI Assessment complete! Please review.', 'success');
         } catch (error: any) {
@@ -313,7 +316,7 @@ export default function AssessTab({
             category_id: assessCategory,
             indicator_id: indicatorId,
             score: score,
-            teacher_comment: assessComment || null
+            teacher_comment: indicatorComments[indicatorId] || assessComment || null
         }));
 
         if (scoreEntries.length > 0) {
