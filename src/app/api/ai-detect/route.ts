@@ -95,18 +95,33 @@ Analyze the text and return your best estimate as a single integer percentage fr
             required: ["ai_percentage", "explanation"]
         };
 
-        const model = genAI.getGenerativeModel({
-            model: "gemini-1.5-flash",
-            generationConfig: {
-                temperature: 0.1,
-                responseMimeType: "application/json",
-                responseSchema: responseSchema,
-            },
-        });
+        const generationConfig = {
+            temperature: 0.1,
+            responseMimeType: "application/json",
+            responseSchema: responseSchema,
+        };
 
-        const result = await model.generateContent(prompt);
-        const responseText = result.response.text();
-        const parsedResponse = JSON.parse(responseText);
+        const fallbackModels = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite', 'gemini-2.0-flash'];
+        let parsedResponse: any = null;
+        let lastError: any = null;
+
+        for (let attempt = 0; attempt < fallbackModels.length; attempt++) {
+            const modelName = fallbackModels[attempt];
+            try {
+                console.log(`[AI-Detect] Attempt ${attempt + 1}/${fallbackModels.length} with model ${modelName}`);
+                const model = genAI.getGenerativeModel({ model: modelName, generationConfig });
+                const result = await model.generateContent(prompt, { timeout: 55000 });
+                parsedResponse = JSON.parse(result.response.text());
+                if (parsedResponse?.ai_percentage !== undefined) break;
+            } catch (e: any) {
+                lastError = e;
+                console.error(`[AI-Detect] Model ${modelName} failed:`, e?.message?.slice(0, 150));
+            }
+        }
+
+        if (!parsedResponse) {
+            throw new Error(lastError?.message || 'AI detection failed after all attempts');
+        }
 
         return NextResponse.json({
             ai_percentage: parsedResponse.ai_percentage,

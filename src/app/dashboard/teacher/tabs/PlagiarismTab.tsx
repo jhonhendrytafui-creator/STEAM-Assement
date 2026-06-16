@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { 
-    Search, FolderOpen, Users, LinkIcon, 
-    AlertTriangle, LayoutGrid, List, CheckCircle, Clock, ClipboardCheck
+import {
+    Search, FolderOpen, Users, LinkIcon,
+    AlertTriangle, CheckCircle, Clock, ClipboardCheck
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { ACADEMIC_YEAR } from '@/lib/constants';
@@ -18,10 +18,11 @@ export default function PlagiarismTab({ allStudents, showToast }: PlagiarismTabP
     const [selectedGrade, setSelectedGrade] = useState<string>('');
     const [selectedClass, setSelectedClass] = useState<string>('');
     const [selectedGroup, setSelectedGroup] = useState<string>('');
-    
+
     const [project, setProject] = useState<ProjectData | null>(null);
     const [isFetchingProject, setIsFetchingProject] = useState(false);
     const [isCheckingAI, setIsCheckingAI] = useState(false);
+    const [groupCheckStatus, setGroupCheckStatus] = useState<Record<number, boolean>>({});
 
     const availableGrades = Array.from(new Set(allStudents.map(s => String(s.class_name).split('.')[0]))).sort((a, b) => Number(a) - Number(b));
     const availableClasses = Array.from(new Set(allStudents.filter(s => String(s.class_name).split('.')[0] === selectedGrade).map(s => s.class_name))).sort();
@@ -36,6 +37,32 @@ export default function PlagiarismTab({ allStudents, showToast }: PlagiarismTabP
         }
     }, [selectedClass]);
 
+    // Fetch AI check status for all groups in the selected class
+    useEffect(() => {
+        if (!selectedClass) { setGroupCheckStatus({}); return; }
+        const fetchGroupStatus = async () => {
+            const { data } = await supabase
+                .from('projects')
+                .select('group_number, ai_plagiarism_score, iteration')
+                .eq('class_name', selectedClass)
+                .eq('academic_year', ACADEMIC_YEAR)
+                .order('iteration', { ascending: false });
+
+            // For each group_number keep only the latest iteration
+            const seen = new Set<number>();
+            const statusMap: Record<number, boolean> = {};
+            (data || []).forEach((p: any) => {
+                if (!seen.has(p.group_number)) {
+                    seen.add(p.group_number);
+                    statusMap[p.group_number] = p.ai_plagiarism_score !== null && p.ai_plagiarism_score !== undefined;
+                }
+            });
+            setGroupCheckStatus(statusMap);
+        };
+        fetchGroupStatus();
+    }, [selectedClass]);
+
+    // Fetch the selected group's project
     useEffect(() => {
         const fetchProject = async () => {
             if (!selectedClass || !selectedGroup) {
@@ -45,7 +72,6 @@ export default function PlagiarismTab({ allStudents, showToast }: PlagiarismTabP
             setIsFetchingProject(true);
             setProject(null);
 
-            // Fetch the LATEST iteration for the selected group
             const { data: projs } = await supabase
                 .from('projects')
                 .select('*')
@@ -71,9 +97,9 @@ export default function PlagiarismTab({ allStudents, showToast }: PlagiarismTabP
             const res = await fetch('/api/ai-detect', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
+                body: JSON.stringify({
                     googleDocUrl: project.google_doc_url,
-                    abstractText: project.abstract 
+                    abstractText: project.abstract
                 })
             });
             const data = await res.json();
@@ -81,25 +107,26 @@ export default function PlagiarismTab({ allStudents, showToast }: PlagiarismTabP
 
             const timestamp = new Date().toISOString();
 
-            // Update database
             const { error } = await supabase
                 .from('projects')
-                .update({ 
+                .update({
                     ai_plagiarism_score: data.ai_percentage,
                     ai_plagiarism_checked_at: timestamp
                 })
                 .eq('id', project.id);
-            
+
             if (error) throw error;
 
             showToast(`AI Check complete: Estimated ${data.ai_percentage}% AI generated.`, 'success');
-            
-            // Update local state
-            setProject(prev => prev ? { 
-                ...prev, 
+
+            setProject(prev => prev ? {
+                ...prev,
                 ai_plagiarism_score: data.ai_percentage,
-                ai_plagiarism_checked_at: timestamp 
+                ai_plagiarism_checked_at: timestamp
             } : null);
+
+            // Mark this group as checked in the Quick Nav
+            setGroupCheckStatus(prev => ({ ...prev, [parseInt(selectedGroup)]: true }));
 
         } catch (e: any) {
             showToast(e.message || 'Failed to run AI check.', 'error');
@@ -113,8 +140,7 @@ export default function PlagiarismTab({ allStudents, showToast }: PlagiarismTabP
         const checkedAt = new Date(dateString);
         const now = new Date();
         const diffTime = Math.abs(now.getTime() - checkedAt.getTime());
-        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-        return diffDays;
+        return Math.floor(diffTime / (1000 * 60 * 60 * 24));
     };
 
     return (
@@ -130,10 +156,10 @@ export default function PlagiarismTab({ allStudents, showToast }: PlagiarismTabP
                     <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Grade</label>
                     <select
                         value={selectedGrade}
-                        onChange={(e) => { 
-                            setSelectedGrade(e.target.value); 
-                            setSelectedClass(''); 
-                            setSelectedGroup(''); 
+                        onChange={(e) => {
+                            setSelectedGrade(e.target.value);
+                            setSelectedClass('');
+                            setSelectedGroup('');
                         }}
                         className="w-full bg-[#1a1811] border border-slate-800 rounded-lg py-2.5 px-3 text-sm text-slate-200 focus:outline-none focus:border-amber-500"
                     >
@@ -157,44 +183,8 @@ export default function PlagiarismTab({ allStudents, showToast }: PlagiarismTabP
 
             {selectedClass && selectedGroup ? (
                 <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-                    {/* LEFT SIDEBAR: Quick Navigation */}
-                    <div className="xl:col-span-4 space-y-6">
-                        <div className="bg-[#1c1b14] border border-slate-800 rounded-xl p-5 sticky top-24">
-                            <h3 className="text-sm font-bold text-slate-300 mb-4 uppercase tracking-wider flex items-center gap-2">
-                                <Users className="w-4 h-4 text-amber-500" />
-                                Quick Navigation
-                            </h3>
-                            <div className="flex flex-col gap-2">
-                                {availableGroups.map(groupNum => {
-                                    const isActive = selectedGroup === String(groupNum);
-                                    
-                                    return (
-                                        <button
-                                            key={groupNum}
-                                            onClick={() => setSelectedGroup(String(groupNum))}
-                                            className={`flex items-center justify-between w-full text-left px-4 py-3 rounded-lg transition-all duration-200 ${
-                                                isActive
-                                                    ? 'bg-amber-500 text-[#1a1811] font-bold shadow-md'
-                                                    : 'bg-[#1a1811] border border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-600 font-semibold'
-                                            }`}
-                                        >
-                                            <div className="flex items-center gap-3">
-                                                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                                                    isActive ? 'bg-[#1a1811] text-amber-500' : 'bg-slate-800 text-slate-400'
-                                                }`}>
-                                                    {groupNum}
-                                                </div>
-                                                <span>Group {groupNum}</span>
-                                            </div>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* RIGHT PANEL: Project Info & Plagiarism Action */}
-                    <div className="xl:col-span-8">
+                    {/* LEFT / CENTER: Project Info & Plagiarism Action */}
+                    <div className="xl:col-span-10">
                         {isFetchingProject ? (
                             <div className="flex flex-col items-center justify-center min-h-[400px] bg-[#1c1b14] border border-slate-800 rounded-xl">
                                 <div className="w-10 h-10 border-4 border-amber-500/20 border-t-amber-500 rounded-full animate-spin mb-4"></div>
@@ -209,9 +199,9 @@ export default function PlagiarismTab({ allStudents, showToast }: PlagiarismTabP
                                                 {project.class_name} • Group {project.group_number}
                                             </span>
                                             <span className={`px-2.5 py-1 rounded text-xs font-bold uppercase tracking-wider border ${
-                                                project.status === 'approved' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 
-                                                project.status === 'revision' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' : 
-                                                project.status === 'disapproved' ? 'bg-red-500/10 text-red-500 border-red-500/20' : 
+                                                project.status === 'approved' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+                                                project.status === 'revision' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' :
+                                                project.status === 'disapproved' ? 'bg-red-500/10 text-red-500 border-red-500/20' :
                                                 'bg-slate-800/50 text-slate-400 border-slate-700'
                                             }`}>
                                                 {project.status || 'pending'}
@@ -224,10 +214,10 @@ export default function PlagiarismTab({ allStudents, showToast }: PlagiarismTabP
                                     </div>
 
                                     {project.google_doc_url && (
-                                        <a 
-                                            href={project.google_doc_url} 
-                                            target="_blank" 
-                                            rel="noopener noreferrer" 
+                                        <a
+                                            href={project.google_doc_url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
                                             className="shrink-0 flex items-center gap-2 bg-[#1a1811] text-blue-400 border border-slate-800 py-2.5 px-4 rounded-lg hover:border-blue-500/30 hover:bg-blue-500/10 transition-colors text-sm font-semibold"
                                         >
                                             <LinkIcon className="w-4 h-4" /> View Google Doc
@@ -238,7 +228,7 @@ export default function PlagiarismTab({ allStudents, showToast }: PlagiarismTabP
                                 {/* Plagiarism Action Block */}
                                 <div className="bg-gradient-to-br from-[#1a1811] to-[#1c1b14] border border-amber-900/30 rounded-xl p-6 md:p-8 mb-8 relative overflow-hidden">
                                     <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
-                                    
+
                                     <h4 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
                                         <Search className="w-5 h-5 text-amber-500" /> AI Plagiarism Scan
                                     </h4>
@@ -326,6 +316,45 @@ export default function PlagiarismTab({ allStudents, showToast }: PlagiarismTabP
                                 <p className="text-slate-500 max-w-md">This group has not submitted a project for the current academic year.</p>
                             </div>
                         )}
+                    </div>
+
+                    {/* RIGHT: Quick Navigation (narrow, matching AssessTab col-span-2) */}
+                    <div className="xl:col-span-2 space-y-6">
+                        <div className="bg-[#1c1b14] border border-slate-800 rounded-xl p-4 sticky top-24">
+                            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Quick Navigation</h4>
+                            <p className="text-sm font-bold text-white mb-4">Class {selectedClass}</p>
+                            <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+                                {availableGroups.map(groupNum => {
+                                    const isActive = selectedGroup === String(groupNum);
+                                    const isChecked = groupCheckStatus[groupNum] === true;
+
+                                    return (
+                                        <button
+                                            key={groupNum}
+                                            onClick={() => setSelectedGroup(String(groupNum))}
+                                            className={`w-full text-left px-4 py-2.5 rounded-lg border transition-all text-sm font-semibold flex items-center justify-between group ${
+                                                isActive
+                                                    ? 'bg-amber-500/10 border-amber-500/50 text-amber-400 shadow-lg shadow-amber-900/10'
+                                                    : 'bg-[#1a1811] border-slate-800/50 text-slate-400 hover:border-slate-600 hover:text-slate-200 hover:bg-[#25221b]'
+                                            }`}
+                                        >
+                                            <span>Group {groupNum}</span>
+                                            <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] uppercase tracking-wider font-bold border transition-colors ${
+                                                isChecked
+                                                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 group-hover:bg-emerald-500/20'
+                                                    : 'bg-slate-800 text-slate-500 border-slate-700 group-hover:bg-slate-700 group-hover:text-slate-300'
+                                            }`}>
+                                                {isChecked
+                                                    ? <CheckCircle className="w-3.5 h-3.5" />
+                                                    : <Clock className="w-3 h-3" />
+                                                }
+                                                <span>{isChecked ? 'Checked' : 'Pending'}</span>
+                                            </div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
                     </div>
                 </div>
             ) : (
