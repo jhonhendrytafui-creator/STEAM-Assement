@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase/client';
 import { ACADEMIC_YEAR } from '@/lib/constants';
 import type { ToastType, ProjectData, ProjectTeacherRecommendation } from '@/lib/types';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BrainCircuit, Info, X, Users, LayoutGrid, AlertCircle, RefreshCw } from 'lucide-react';
+import { BrainCircuit, Info, X, Users, AlertCircle, RefreshCw, Wand2, Zap } from 'lucide-react';
 
 interface ProjectClassificationTabProps {
     showToast: (message: string, type: ToastType) => void;
@@ -19,7 +19,9 @@ export default function ProjectClassificationTab({ showToast }: ProjectClassific
     const [projects, setProjects] = useState<ProjectWithRecommendations[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [selectedGrade, setSelectedGrade] = useState<string>('All');
-    
+    const [classifyingProjectIds, setClassifyingProjectIds] = useState<Set<string>>(new Set());
+    const [isClassifyingAll, setIsClassifyingAll] = useState(false);
+
     // Modal state
     const [selectedProject, setSelectedProject] = useState<ProjectWithRecommendations | null>(null);
 
@@ -92,6 +94,42 @@ export default function ProjectClassificationTab({ showToast }: ProjectClassific
         ? projects 
         : projects.filter(p => String(p.class_name).split('.')[0] === selectedGrade);
 
+    const handleClassifyProject = async (projectId: string) => {
+        setClassifyingProjectIds(prev => new Set(prev).add(projectId));
+        try {
+            const res = await fetch('/api/ai-classify-project', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ projectId })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Classification failed');
+            showToast('AI classification complete!', 'success');
+            await fetchClassifications();
+        } catch (err: any) {
+            showToast(err.message || 'AI classification failed. Check if teacher expertise is configured.', 'error');
+        } finally {
+            setClassifyingProjectIds(prev => {
+                const next = new Set(prev);
+                next.delete(projectId);
+                return next;
+            });
+        }
+    };
+
+    const handleClassifyAllPending = async () => {
+        const pending = filteredProjects.filter(p => !p.recommendations || p.recommendations.length === 0);
+        if (pending.length === 0) {
+            showToast('All visible projects already have recommendations.', 'info');
+            return;
+        }
+        setIsClassifyingAll(true);
+        for (const project of pending) {
+            await handleClassifyProject(project.id);
+        }
+        setIsClassifyingAll(false);
+    };
+
     // Helpers for rendering the ranks beautifully
     const getRankColor = (rank: string) => {
         switch (rank.toLowerCase()) {
@@ -115,7 +153,7 @@ export default function ProjectClassificationTab({ showToast }: ProjectClassific
                     </p>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-wrap">
                     <div className="bg-slate-800/50 p-1 rounded-xl border border-slate-700/50 flex">
                         {availableGrades.map((grade) => (
                             <button
@@ -131,7 +169,16 @@ export default function ProjectClassificationTab({ showToast }: ProjectClassific
                             </button>
                         ))}
                     </div>
-                    <button 
+                    <button
+                        onClick={handleClassifyAllPending}
+                        disabled={isClassifyingAll || isLoading || filteredProjects.every(p => p.recommendations && p.recommendations.length > 0)}
+                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl border border-indigo-500/50 transition-colors text-sm font-medium"
+                        title="Run AI classification for all pending projects"
+                    >
+                        <Zap className={`w-4 h-4 ${isClassifyingAll ? 'animate-pulse' : ''}`} />
+                        {isClassifyingAll ? 'Classifying...' : 'Classify Pending'}
+                    </button>
+                    <button
                         onClick={fetchClassifications}
                         className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl border border-slate-700 transition-colors"
                         title="Refresh"
@@ -195,7 +242,13 @@ export default function ProjectClassificationTab({ showToast }: ProjectClassific
                                         Guide Teacher Recommendations
                                     </h4>
                                     
-                                    {project.recommendations && project.recommendations.length > 0 ? (
+                                    {classifyingProjectIds.has(project.id) ? (
+                                        <div className="flex-1 flex flex-col items-center justify-center py-6">
+                                            <div className="w-12 h-12 rounded-full border-2 border-indigo-500/20 border-t-indigo-500 animate-spin mb-3"></div>
+                                            <p className="text-sm text-slate-400 text-center">AI is classifying this project...</p>
+                                            <p className="text-xs text-slate-600 mt-1 text-center">Matching project to teacher expertise</p>
+                                        </div>
+                                    ) : project.recommendations && project.recommendations.length > 0 ? (
                                         <div className="space-y-3 flex-1">
                                             {/* Sort recommendations: High -> Medium -> Low */}
                                             {[...project.recommendations].sort((a, b) => {
@@ -228,14 +281,23 @@ export default function ProjectClassificationTab({ showToast }: ProjectClassific
                                 </div>
 
                                 {/* Card Footer */}
-                                <div className="p-4 bg-slate-800/30 border-t border-slate-700/50">
+                                <div className="p-4 bg-slate-800/30 border-t border-slate-700/50 flex gap-2">
                                     <button
                                         onClick={() => setSelectedProject(project)}
-                                        disabled={!project.recommendations || project.recommendations.length === 0}
-                                        className="w-full py-2.5 rounded-xl bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 border border-indigo-500/20 transition-colors font-medium text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        disabled={!project.recommendations || project.recommendations.length === 0 || classifyingProjectIds.has(project.id)}
+                                        className="flex-1 py-2.5 rounded-xl bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 border border-indigo-500/20 transition-colors font-medium text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                         <Info className="w-4 h-4" />
-                                        View AI Reasoning
+                                        View Reasoning
+                                    </button>
+                                    <button
+                                        onClick={() => handleClassifyProject(project.id)}
+                                        disabled={classifyingProjectIds.has(project.id) || isClassifyingAll}
+                                        className="py-2.5 px-3 rounded-xl bg-slate-700/50 text-slate-300 hover:bg-slate-700 hover:text-white border border-slate-600/50 transition-colors text-sm flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                                        title="Re-run AI classification for this project"
+                                    >
+                                        <Wand2 className="w-4 h-4" />
+                                        Re-classify
                                     </button>
                                 </div>
                             </motion.div>

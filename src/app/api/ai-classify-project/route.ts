@@ -56,35 +56,59 @@ export async function POST(req: Request) {
         // 3. Prepare data for Gemini
         let problemDesc = project.problem_description || '';
         let solutionDesc = project.solution_description || '';
+        let keyConcepts: Record<string, string> = {};
         if (project.abstract) {
             try {
                 const parsedAbstract = typeof project.abstract === 'string' ? JSON.parse(project.abstract) : project.abstract;
                 if (parsedAbstract.problem) problemDesc = parsedAbstract.problem;
                 if (parsedAbstract.solution) solutionDesc = parsedAbstract.solution;
+                if (parsedAbstract.keyConcepts) keyConcepts = parsedAbstract.keyConcepts;
             } catch (e) {
-                // Ignore parsing errors, it might just be a string
                 problemDesc = project.abstract;
             }
         }
 
-        const prompt = `You are a STEAM Education Coordinator. Your task is to assign the best possible Guide Teachers for a new student STEAM project based on the project's abstract and the teachers' subject expertise.
-        
+        const keyConceptsText = Object.entries(keyConcepts).length > 0
+            ? Object.entries(keyConcepts).map(([subject, concept]) => `  ${subject}: ${concept}`).join('\n')
+            : '  (not specified)';
+
+        const prompt = `You are an expert STEAM Education Coordinator. Your task is to recommend the 3 most suitable Guide Teachers for a student STEAM project based on the project's content and each teacher's subject expertise.
+
+STEAM DISCIPLINES CONTEXT:
+A STEAM project integrates any combination of these disciplines:
+- Science: Biology, Chemistry, Physics, Earth Science, Environmental Science, Neuroscience
+- Technology: Computer Science, Programming, Information Systems, Electronics, Robotics
+- Engineering: Mechanical Engineering, Civil Engineering, Electrical Engineering, Biomedical Engineering, Materials Science, Product Design
+- Art: Visual Art, Graphic Design, Music, Performing Arts, Architecture, Industrial Design, Animation
+- Mathematics: Algebra, Statistics, Calculus, Geometry, Data Analysis, Financial Mathematics
+
 PROJECT INFORMATION:
 Title: ${project.title}
-Problem: ${problemDesc}
-Solution: ${solutionDesc}
+Problem Being Solved: ${problemDesc || '(not provided)'}
+Proposed Solution / Prototype: ${solutionDesc || '(not provided)'}
+STEAM Key Concepts Applied:
+${keyConceptsText}
 
-AVAILABLE TEACHERS:
+AVAILABLE GUIDE TEACHERS:
 ${teachersWithExpertise.map(t => `- Name: ${t.full_name}, Email: ${t.email}, Expertise: ${t.expertise}`).join('\n')}
 
 TASK:
-Analyze the project information and the expertise of all available teachers. Select exactly 3 teachers who are the most relevant to guide this project.
-Classify your 3 recommendations into 'High', 'Medium', and 'Low' relevance.
-- High: The teacher's expertise perfectly aligns with the core problem or solution of the project.
-- Medium: The teacher's expertise covers a secondary aspect of the project.
-- Low: The teacher's expertise is tangentially related or provides general STEAM guidance.
+1. Carefully read the project title, problem, solution, and key STEAM concepts.
+2. Identify which STEAM disciplines are MOST involved in solving this project.
+3. Match those disciplines to the available teachers' expertise.
+4. Select exactly 3 teachers — ranked from most to least relevant.
+5. Assign rank levels:
+   - 'High': This teacher's expertise directly addresses the core discipline(s) driving the project's problem or solution.
+   - 'Medium': This teacher's expertise covers a secondary STEAM discipline used in the project.
+   - 'Low': This teacher provides useful supplementary guidance from a tangentially related STEAM area.
+6. Write a specific, objective reason (2-3 sentences) explaining EXACTLY why each teacher's expertise matches this project. Reference the project's actual content, not generic statements.
+7. Estimate a relevance percentage (0–100%) based on how well the expertise aligns.
 
-Provide a short, objective reason for why each teacher was selected and estimate a percentage of relevance (0-100%).
+RULES:
+- Only recommend teachers from the AVAILABLE GUIDE TEACHERS list above.
+- Do NOT recommend a teacher whose expertise has no logical connection to the project.
+- If fewer than 3 teachers have relevant expertise, still return 3 but rank the least-relevant ones as 'Low' with an honest, specific reason.
+- Be precise and STEAM-discipline-aware in your reasoning.
 `;
 
         const responseSchemaProperties: Record<string, any> = {
@@ -104,28 +128,37 @@ Provide a short, objective reason for why each teacher was selected and estimate
             }
         };
 
-        const model = genAI.getGenerativeModel({
-            model: "gemini-2.0-flash",
-            generationConfig: {
-                temperature: 0.2,
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: SchemaType.OBJECT,
-                    properties: responseSchemaProperties,
-                    required: ["recommendations"]
-                }
+        const generationConfig = {
+            temperature: 0.2,
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: SchemaType.OBJECT,
+                properties: responseSchemaProperties,
+                required: ["recommendations"]
             }
-        });
+        };
 
-        console.log(`[AI-Classify] Analyzing project: ${project.title}`);
-        const result = await model.generateContent(prompt, { timeout: 55000 });
-        const responseText = result.response.text();
-        const jsonPayload = JSON.parse(responseText);
+        const fallbackModels = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+        let recommendations: any[] = [];
+        let lastError: any = null;
 
-        const recommendations = jsonPayload.recommendations;
+        for (let attempt = 0; attempt < fallbackModels.length; attempt++) {
+            const modelName = fallbackModels[attempt];
+            try {
+                console.log(`[AI-Classify] Attempt ${attempt + 1}/${fallbackModels.length} with model ${modelName} for project: ${project.title}`);
+                const model = genAI.getGenerativeModel({ model: modelName, generationConfig });
+                const result = await model.generateContent(prompt, { timeout: 55000 });
+                const jsonPayload = JSON.parse(result.response.text());
+                recommendations = jsonPayload.recommendations || [];
+                if (recommendations.length > 0) break;
+            } catch (e: any) {
+                lastError = e;
+                console.error(`[AI-Classify] Model ${modelName} failed:`, e?.message?.slice(0, 150));
+            }
+        }
 
         if (!recommendations || recommendations.length === 0) {
-             throw new Error('AI returned no recommendations');
+            throw new Error(lastError?.message || 'AI returned no recommendations after all attempts');
         }
 
         // 4. Save recommendations to database
