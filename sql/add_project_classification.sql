@@ -26,6 +26,12 @@ CREATE POLICY "Enable read access for all authenticated users" ON project_teache
 CREATE POLICY "Enable insert for authenticated users" ON project_teacher_recommendations
     FOR INSERT WITH CHECK (auth.role() = 'authenticated');
 
+CREATE POLICY "Enable delete for authenticated users" ON project_teacher_recommendations
+    FOR DELETE USING (auth.role() = 'authenticated');
+
+CREATE POLICY "Enable update for authenticated users" ON project_teacher_recommendations
+    FOR UPDATE USING (auth.role() = 'authenticated');
+
 -- Seed existing teachers with subjects from the approved list for testing
 -- This sets a random expertise to any teacher who doesn't have one yet
 DO $$ 

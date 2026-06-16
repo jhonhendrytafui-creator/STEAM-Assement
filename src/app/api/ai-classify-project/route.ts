@@ -7,17 +7,24 @@ export const maxDuration = 60;
 // Initialize the Gemini client
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
-// Initialize Supabase client for server-side
-// We use the service role key if available to bypass RLS for background jobs, 
-// otherwise fallback to anon key.
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseKey);
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
 export async function POST(req: Request) {
     try {
         const body = await req.json();
         const { projectId } = body;
+
+        // Build a Supabase client that can bypass RLS.
+        // Priority: service role key (full bypass) → user's JWT token (RLS as teacher) → anon key (likely blocked)
+        const authHeader = req.headers.get('Authorization');
+        const userToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+        const supabase = serviceRoleKey
+            ? createClient(supabaseUrl, serviceRoleKey)
+            : userToken
+                ? createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: `Bearer ${userToken}` } } })
+                : createClient(supabaseUrl, anonKey);
 
         if (!projectId) {
             return NextResponse.json({ error: 'Missing projectId' }, { status: 400 });
@@ -36,21 +43,34 @@ export async function POST(req: Request) {
         }
 
         // 2. Fetch all teachers and their expertise
-        const { data: teachers, error: teacherError } = await supabase
+        // Use select('*') so the query doesn't fail if the expertise column is missing from profiles.
+        const { data: teachersRaw, error: teacherError } = await supabase
             .from('profiles')
-            .select('email, full_name, expertise')
+            .select('*')
             .eq('role', 'teacher');
 
-        if (teacherError || !teachers || teachers.length === 0) {
+        if (teacherError) {
             console.error("Failed to fetch teachers:", teacherError);
-            return NextResponse.json({ error: 'No teachers found' }, { status: 404 });
+            return NextResponse.json({ error: `Failed to fetch teacher list: ${teacherError.message}` }, { status: 500 });
         }
 
-        // Filter out teachers without expertise (or we can just include them and let AI decide)
+        if (!teachersRaw || teachersRaw.length === 0) {
+            return NextResponse.json({ error: 'No teacher profiles found in the system. Make sure teacher accounts exist with role="teacher".' }, { status: 400 });
+        }
+
+        // Normalize the teacher list — support expertise OR subject column names
+        const teachers = teachersRaw.map((t: any) => ({
+            email: t.email || '',
+            full_name: t.full_name || t.name || t.email || 'Unknown',
+            expertise: t.expertise || t.subject || t.subjects || ''
+        }));
+
         const teachersWithExpertise = teachers.filter(t => t.expertise && t.expertise.trim().length > 0);
-        
+
         if (teachersWithExpertise.length === 0) {
-            return NextResponse.json({ error: 'No teachers with defined expertise found. Cannot classify.' }, { status: 400 });
+            return NextResponse.json({
+                error: 'No teachers have their subject expertise configured. Please update teacher profiles with their STEAM subject (e.g. Biology, Mathematics, Music) in the "expertise" field.'
+            }, { status: 400 });
         }
 
         // 3. Prepare data for Gemini
@@ -138,7 +158,7 @@ RULES:
             }
         };
 
-        const fallbackModels = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+        const fallbackModels = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite', 'gemini-2.0-flash'];
         let recommendations: any[] = [];
         let lastError: any = null;
 
@@ -162,12 +182,6 @@ RULES:
         }
 
         // 4. Save recommendations to database
-        // Delete old recommendations for this project first
-        await supabase
-            .from('project_teacher_recommendations')
-            .delete()
-            .eq('project_id', projectId);
-
         const insertData = recommendations.map((rec: any) => {
             const teacher = teachers.find(t => t.email === rec.teacher_email);
             return {
@@ -181,13 +195,24 @@ RULES:
             };
         });
 
+        // Delete old recommendations first so re-classification replaces them cleanly.
+        // If DELETE is blocked by RLS (no service role key), we fall back to upsert.
+        const { error: deleteError } = await supabase
+            .from('project_teacher_recommendations')
+            .delete()
+            .eq('project_id', projectId);
+
+        if (deleteError) {
+            console.warn('[AI-Classify] DELETE blocked (likely RLS without service role). Falling back to upsert:', deleteError.message);
+        }
+
         const { error: insertError } = await supabase
             .from('project_teacher_recommendations')
-            .insert(insertData);
+            .upsert(insertData, { onConflict: 'project_id,teacher_email' });
 
         if (insertError) {
-             console.error("Failed to insert recommendations:", insertError);
-             return NextResponse.json({ error: 'Failed to save recommendations' }, { status: 500 });
+            console.error("Failed to save recommendations:", insertError);
+            return NextResponse.json({ error: `Failed to save recommendations: ${insertError.message}` }, { status: 500 });
         }
 
         return NextResponse.json({ success: true, count: insertData.length });

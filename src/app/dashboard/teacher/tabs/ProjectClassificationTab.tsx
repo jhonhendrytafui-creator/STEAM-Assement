@@ -25,8 +25,9 @@ export default function ProjectClassificationTab({ showToast }: ProjectClassific
     // Modal state
     const [selectedProject, setSelectedProject] = useState<ProjectWithRecommendations | null>(null);
 
-    const fetchClassifications = async () => {
-        setIsLoading(true);
+    // silent=true skips the skeleton animation — used for background polls and post-classify refreshes
+    const fetchClassifications = async (silent = false) => {
+        if (!silent) setIsLoading(true);
         try {
             // Fetch all approved projects for the current academic year
             const { data: approvedProjects, error: projectError } = await supabase
@@ -50,19 +51,20 @@ export default function ProjectClassificationTab({ showToast }: ProjectClassific
                 .select('*')
                 .in('project_id', projectIds);
 
-            if (recsError) throw recsError;
+            // If the table doesn't exist yet, treat as empty (don't crash)
+            const safeRecs = recsError ? [] : (recs || []);
 
             // Merge
             const merged = approvedProjects.map(p => ({
                 ...p,
-                recommendations: recs ? recs.filter(r => r.project_id === p.id) : []
+                recommendations: safeRecs.filter(r => r.project_id === p.id)
             }));
 
             setProjects(merged);
         } catch (error: any) {
-            showToast(error.message || 'Failed to fetch classification data', 'error');
+            if (!silent) showToast(error.message || 'Failed to fetch classification data', 'error');
         } finally {
-            setIsLoading(false);
+            if (!silent) setIsLoading(false);
         }
     };
 
@@ -70,14 +72,15 @@ export default function ProjectClassificationTab({ showToast }: ProjectClassific
         fetchClassifications();
     }, []);
 
-    // Auto-poll every 5 seconds while any project is still waiting for recommendations.
+    // Silently poll every 5 seconds while any project is still waiting for recommendations.
+    // Uses silent=true so there is no skeleton flash during polling.
     // Stops automatically once all projects have recommendations.
     useEffect(() => {
         const hasPending = projects.some(p => !p.recommendations || p.recommendations.length === 0);
         if (!hasPending || isLoading) return;
 
         const timer = setTimeout(() => {
-            fetchClassifications();
+            fetchClassifications(true);
         }, 5000);
 
         return () => clearTimeout(timer);
@@ -97,15 +100,19 @@ export default function ProjectClassificationTab({ showToast }: ProjectClassific
     const handleClassifyProject = async (projectId: string) => {
         setClassifyingProjectIds(prev => new Set(prev).add(projectId));
         try {
+            const { data: { session } } = await supabase.auth.getSession();
             const res = await fetch('/api/ai-classify-project', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {})
+                },
                 body: JSON.stringify({ projectId })
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Classification failed');
             showToast('AI classification complete!', 'success');
-            await fetchClassifications();
+            await fetchClassifications(true);
         } catch (err: any) {
             showToast(err.message || 'AI classification failed. Check if teacher expertise is configured.', 'error');
         } finally {
@@ -272,10 +279,20 @@ export default function ProjectClassificationTab({ showToast }: ProjectClassific
                                             ))}
                                         </div>
                                     ) : (
-                                        <div className="flex-1 flex flex-col items-center justify-center py-6">
-                                            <div className="w-12 h-12 rounded-full border-2 border-indigo-500/20 border-t-indigo-500 animate-spin mb-3"></div>
-                                            <p className="text-sm text-slate-400 text-center">AI is analyzing this project...</p>
-                                            <p className="text-xs text-slate-600 mt-1 text-center">Auto-refreshing every 5 seconds</p>
+                                        <div className="flex-1 flex flex-col items-center justify-center py-6 gap-3">
+                                            <div className="w-12 h-12 rounded-full border-2 border-indigo-500/20 border-t-indigo-500 animate-spin"></div>
+                                            <div className="text-center">
+                                                <p className="text-sm text-slate-400">Waiting for AI classification...</p>
+                                                <p className="text-xs text-slate-600 mt-1">Auto-checks every 5 seconds</p>
+                                            </div>
+                                            <button
+                                                onClick={() => handleClassifyProject(project.id)}
+                                                disabled={classifyingProjectIds.has(project.id)}
+                                                className="mt-1 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                            >
+                                                <Wand2 className="w-3.5 h-3.5" />
+                                                Run Now
+                                            </button>
                                         </div>
                                     )}
                                 </div>

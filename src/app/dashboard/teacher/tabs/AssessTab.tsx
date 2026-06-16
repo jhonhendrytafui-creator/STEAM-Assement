@@ -341,11 +341,16 @@ export default function AssessTab({
                     
                     // Trigger AI classification in the background if approved
                     if (assessStatus === 'approved') {
-                        fetch('/api/ai-classify-project', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ projectId: assessProject.id })
-                        }).catch(err => console.error('Failed to trigger AI classification:', err));
+                        supabase.auth.getSession().then(({ data: { session } }) => {
+                            fetch('/api/ai-classify-project', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {})
+                                },
+                                body: JSON.stringify({ projectId: assessProject.id })
+                            }).catch(err => console.error('Failed to trigger AI classification:', err));
+                        });
                     }
                 }
             }
