@@ -1,7 +1,9 @@
 -- Override Themes for Grade 10, 11, 12 for Academic Year 2026/2027
 
--- Delete existing themes for Grades 10, 11, 12
-DELETE FROM themes 
+-- Archive existing themes instead of deleting them, 
+-- this prevents foreign key constraint errors for projects already using them.
+UPDATE themes 
+SET academic_year = 'Archived-2026/2027'
 WHERE grade IN ('10', '11', '12') 
 AND academic_year = '2026/2027';
 
