@@ -6,6 +6,10 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { ACADEMIC_YEAR } from '@/lib/constants';
+import {
+    contributionMultiplier, applyMultiplier,
+    WEIGHTING_DEFAULTS, type WeightingConfig, type PeerAssessmentRow,
+} from '@/lib/contribution';
 import type { AssessmentCategory, RubricDimension, RubricIndicator } from '@/lib/types';
 
 interface ScoreTabProps {
@@ -24,6 +28,10 @@ export default function ScoreTab({ allStudents, assessmentCategories, rubricDime
     const [classScores, setClassScores] = useState<any[]>([]);
     const [isFetchingScores, setIsFetchingScores] = useState(false);
     const [scoreGrouping, setScoreGrouping] = useState<'group' | 'alphabetical'>('group');
+    // Individual contribution weighting from peer assessment. Off by default —
+    // whether an individual mark may differ from the group mark is a school
+    // assessment-policy decision, not something to switch on silently.
+    const [weighting, setWeighting] = useState<WeightingConfig>(WEIGHTING_DEFAULTS);
 
     const availableGrades = Array.from(new Set(allStudents.map(s => String(s.class_name).split('.')[0]))).sort((a, b) => Number(a) - Number(b));
     const availableClasses = Array.from(new Set(allStudents.filter(s => String(s.class_name).split('.')[0] === scoreGrade).map(s => s.class_name))).sort();
@@ -48,8 +56,25 @@ export default function ScoreTab({ allStudents, assessmentCategories, rubricDime
             .in('category_id', scoreCategories)
             .eq('academic_year', ACADEMIC_YEAR);
 
+        // Peer assessments drive the per-student contribution multiplier.
+        const { data: peerData } = await supabase
+            .from('peer_assessments')
+            .select('assessor_email, assessed_email, q1_score, q2_score, q3_score, q4_score, q5_score, q6_score')
+            .eq('class_name', scoreClass)
+            .eq('academic_year', ACADEMIC_YEAR);
+
+        const peerRows = (peerData ?? []) as PeerAssessmentRow[];
+
         const results = studentsInClass.map(student => {
             const proj = classProjects?.find(p => p.group_number === student.group_number);
+
+            const groupPeerRows = peerRows.filter(r =>
+                studentsInClass.some(s =>
+                    s.group_number === student.group_number &&
+                    (s.email === r.assessor_email || s.email === r.assessed_email)
+                )
+            );
+            const contribution = contributionMultiplier(student.email, groupPeerRows, weighting);
 
             const studentAssessments: Record<string, any> = {};
 
@@ -63,21 +88,26 @@ export default function ScoreTab({ allStudents, assessmentCategories, rubricDime
                 const totalMax = isChecklist ? inds.length : inds.length * maxScale;
 
                 const groupCatScores = scoresData?.filter(s => s.group_number === student.group_number && s.category_id === catId) || [];
-                const totalScore = groupCatScores.reduce((sum, s) => sum + s.score, 0);
+                const groupScore = groupCatScores.reduce((sum, s) => sum + s.score, 0);
+                const totalScore = applyMultiplier(groupScore, totalMax, contribution.multiplier);
 
                 studentAssessments[catId] = {
+                    groupScore,
                     totalScore,
                     totalMax,
                     percentage: totalMax > 0 ? Math.round((totalScore / totalMax) * 100) : 0,
-                    isAssessed: groupCatScores.length > 0
+                    isAssessed: groupCatScores.length > 0,
+                    adjusted: totalScore !== groupScore,
                 };
             });
 
             return {
                 student_name: student.full_name,
+                student_email: student.email,
                 group_number: student.group_number,
                 project_title: proj?.title || 'No Project Submitted',
-                assessments: studentAssessments
+                assessments: studentAssessments,
+                contribution,
             };
         });
 
@@ -104,6 +134,7 @@ export default function ScoreTab({ allStudents, assessmentCategories, rubricDime
         if (classScores.length === 0) return;
 
         const headers = ['Student Name', 'Group', 'Project Title'];
+        if (weighting.enabled) headers.push('Contribution');
         scoreCategories.forEach(catId => {
             const cat = assessmentCategories.find(c => c.id === catId);
             if (cat) headers.push(cat.name);
@@ -117,6 +148,14 @@ export default function ScoreTab({ allStudents, assessmentCategories, rubricDime
                 csvCell(row.group_number),
                 csvCell(row.project_title),
             ];
+
+            if (weighting.enabled) {
+                rowData.push(csvCell(
+                    row.contribution.meanRating === null
+                        ? '-'
+                        : `x${row.contribution.multiplier.toFixed(2)}`
+                ));
+            }
 
             scoreCategories.forEach(catId => {
                 const assessment = row.assessments[catId];
@@ -196,6 +235,29 @@ export default function ScoreTab({ allStudents, assessmentCategories, rubricDime
                             </button>
                         </div>
                     </div>
+
+                    <div>
+                        <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Individual Contribution</label>
+                        <label className="flex items-start gap-2.5 bg-[#1a1811] border border-slate-800 rounded-lg p-3 cursor-pointer select-none">
+                            <input
+                                type="checkbox"
+                                checked={weighting.enabled}
+                                onChange={(e) => {
+                                    setWeighting(w => ({ ...w, enabled: e.target.checked }));
+                                    setClassScores([]);
+                                }}
+                                className="accent-amber-500 mt-0.5"
+                            />
+                            <span className="text-xs leading-relaxed">
+                                <span className="text-slate-200 font-medium block">Weight by peer assessment</span>
+                                <span className="text-slate-500">
+                                    Adjusts each student between &times;{weighting.floor} and &times;{weighting.ceiling} of
+                                    the group score, based on how their teammates rated them.
+                                    Needs at least {weighting.minRatings} ratings. Self-ratings are ignored.
+                                </span>
+                            </span>
+                        </label>
+                    </div>
                 </div>
 
                 <div className="lg:col-span-2">
@@ -259,6 +321,9 @@ export default function ScoreTab({ allStudents, assessmentCategories, rubricDime
                                     <th className="p-4 font-semibold w-64 bg-[#1a1811] sticky left-0 z-10 border-r border-slate-800/50">Student Name</th>
                                     <th className="p-4 font-semibold text-center w-20">Group</th>
                                     <th className="p-4 font-semibold w-64">Project Title</th>
+                                    {weighting.enabled && (
+                                        <th className="p-4 font-semibold text-center w-32">Contribution</th>
+                                    )}
                                     {scoreCategories.map(catId => {
                                         const cat = assessmentCategories.find(c => c.id === catId);
                                         return <th key={catId} className="p-4 font-semibold text-center">{cat?.code || 'Score'}</th>;
@@ -280,6 +345,34 @@ export default function ScoreTab({ allStudents, assessmentCategories, rubricDime
                                             <span className="line-clamp-2">{score.project_title}</span>
                                         </td>
 
+                                        {weighting.enabled && (
+                                            <td className="p-4 text-center">
+                                                {score.contribution.reason === 'not-enough-ratings' ? (
+                                                    <span
+                                                        className="text-[11px] text-slate-500"
+                                                        title={`Only ${score.contribution.ratingCount} teammate rating(s) — at least ${weighting.minRatings} are needed.`}
+                                                    >
+                                                        Not enough ratings
+                                                    </span>
+                                                ) : score.contribution.meanRating === null ? (
+                                                    <span className="text-slate-600">—</span>
+                                                ) : (
+                                                    <div className="flex flex-col items-center">
+                                                        <span className={`text-sm font-bold ${
+                                                            score.contribution.multiplier > 1.001 ? 'text-emerald-400'
+                                                                : score.contribution.multiplier < 0.999 ? 'text-amber-400'
+                                                                : 'text-slate-400'
+                                                        }`}>
+                                                            &times;{score.contribution.multiplier.toFixed(2)}
+                                                        </span>
+                                                        <span className="text-[10px] text-slate-500 font-medium block">
+                                                            {score.contribution.meanRating.toFixed(1)} vs {score.contribution.groupMean?.toFixed(1)} avg
+                                                        </span>
+                                                    </div>
+                                                )}
+                                            </td>
+                                        )}
+
                                         {scoreCategories.map(catId => {
                                             const assessment = score.assessments[catId];
                                             return (
@@ -289,7 +382,14 @@ export default function ScoreTab({ allStudents, assessmentCategories, rubricDime
                                                             <span className={`text-sm font-bold ${assessment.percentage >= 80 ? 'text-emerald-400' : assessment.percentage >= 60 ? 'text-amber-400' : 'text-red-400'}`}>
                                                                 {assessment.percentage}%
                                                             </span>
-                                                            <span className="text-[10px] text-slate-500 font-medium block">{assessment.totalScore}/{assessment.totalMax}</span>
+                                                            <span className="text-[10px] text-slate-500 font-medium block">
+                                                                {assessment.totalScore}/{assessment.totalMax}
+                                                                {assessment.adjusted && (
+                                                                    <span className="text-slate-600" title="Group score before the contribution multiplier">
+                                                                        {' '}(group {assessment.groupScore})
+                                                                    </span>
+                                                                )}
+                                                            </span>
                                                         </div>
                                                     ) : (
                                                         <span className="text-slate-600">—</span>

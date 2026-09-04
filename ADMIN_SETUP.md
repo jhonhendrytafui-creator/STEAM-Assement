@@ -15,6 +15,12 @@ admin flag sees exactly what they see today.
 
 ---
 
+## Run the security hardening too
+
+`sql/harden_security.sql` goes with this. It scopes student data access, makes
+the RLS scripts safe to re-run, and adds the `app_settings` table. Run it after
+`add_admin_role.sql`. See `sql/README.md` for the full order.
+
 ## One-time setup
 
 1. Open the **Supabase SQL Editor** for this project.

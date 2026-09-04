@@ -4,6 +4,7 @@ import React from 'react';
 import { History, X, MessageSquare, BookOpen, Link as LinkIcon } from 'lucide-react';
 import { SUBJECTS } from '@/lib/constants';
 import type { ProjectData } from '@/lib/types';
+import { parseAbstract } from '@/lib/abstract';
 
 interface PastIterationModalProps {
     iteration: ProjectData | null;
@@ -67,9 +68,16 @@ export default function PastIterationModal({ iteration, onClose, renderFormatted
                     )}
 
                     {iteration.abstract && (() => {
-                        try {
-                            const parsed = JSON.parse(iteration.abstract);
+                        const parsed = parseAbstract(iteration.abstract);
+                        if (parsed.isPlainText) {
                             return (
+                                <div className="bg-[#1a1811] border border-slate-800 rounded-xl p-5">
+                                    <span className="text-xs text-slate-500 uppercase tracking-wider block mb-2">Abstract</span>
+                                    <p className="text-sm text-slate-300 whitespace-pre-line">{parsed.raw}</p>
+                                </div>
+                            );
+                        }
+                        return (
                                 <div className="space-y-4 bg-[#1a1811] border border-slate-800 rounded-xl p-5">
                                     <div>
                                         <span className="text-xs text-slate-500 uppercase tracking-wider block mb-2 cursor-help" title="Describe the problem your project aims to solve.">The Problem</span>
@@ -105,16 +113,8 @@ export default function PastIterationModal({ iteration, onClose, renderFormatted
                                             </div>
                                         </div>
                                     )}
-                                </div>
-                            );
-                        } catch (e) {
-                            return (
-                                <div className="bg-[#1a1811] border border-slate-800 rounded-xl p-5">
-                                    <span className="text-xs text-slate-500 uppercase tracking-wider block mb-2">Abstract</span>
-                                    <p className="text-sm text-slate-300 whitespace-pre-line">{iteration.abstract}</p>
-                                </div>
-                            );
-                        }
+                            </div>
+                        );
                     })()}
 
                     {iteration.google_doc_url && (

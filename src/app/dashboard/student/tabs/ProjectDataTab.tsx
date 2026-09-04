@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { SUBJECTS } from '@/lib/constants';
 import type { ProjectData, StudentInfo, TeamMember } from '@/lib/types';
+import { parseAbstract } from '@/lib/abstract';
 
 interface ProjectDataTabProps {
     projectData: ProjectData | null;
@@ -100,9 +101,16 @@ export default function ProjectDataTab({
                             <p className="text-lg font-semibold text-white">{projectData.title}</p>
                         </div>
                         {projectData.abstract && (() => {
-                            try {
-                                const parsed = JSON.parse(projectData.abstract);
+                            const parsed = parseAbstract(projectData.abstract);
+                            if (parsed.isPlainText) {
                                 return (
+                                    <div className="bg-[#1c1b14] border border-slate-800 rounded-xl p-5">
+                                        <span className="text-xs text-slate-500 uppercase tracking-wider">Abstract</span>
+                                        <p className="text-sm text-slate-300 mt-1 whitespace-pre-line">{parsed.raw}</p>
+                                    </div>
+                                );
+                            }
+                            return (
                                     <div className="space-y-4">
                                         <div className="bg-[#1c1b14] border border-slate-800 rounded-xl p-5">
                                             <span className="text-xs text-slate-500 uppercase tracking-wider">Problem</span>
@@ -136,16 +144,8 @@ export default function ProjectDataTab({
                                         )}
                                     </div>
                                 );
-                            } catch (e) {
-                                // Fallback for old simple text format
-                                return (
-                                    <div className="bg-[#1c1b14] border border-slate-800 rounded-xl p-5">
-                                        <span className="text-xs text-slate-500 uppercase tracking-wider">Abstract</span>
-                                        <p className="text-sm text-slate-300 mt-1 whitespace-pre-line">{projectData.abstract}</p>
-                                    </div>
-                                );
-                            }
-                        })()}                                          {projectData.google_doc_url && (
+                        })()}
+                        {projectData.google_doc_url && (
                             <div className="bg-[#1c1b14] border border-slate-800 rounded-xl p-5">
                                 <span className="text-xs text-slate-500 uppercase tracking-wider">Google Doc</span>
                                 <a

@@ -8,6 +8,7 @@ import {
 import { supabase } from '@/lib/supabase/client';
 import { ACADEMIC_YEAR } from '@/lib/constants';
 import type { ToastType, ProjectData } from '@/lib/types';
+import { parseAbstract } from '@/lib/abstract';
 
 interface PlagiarismTabProps {
     allStudents: any[];
@@ -320,8 +321,7 @@ export default function PlagiarismTab({ allStudents, showToast }: PlagiarismTabP
 
                                 {/* Project Abstract Content Preview */}
                                 {project.abstract && (() => {
-                                    let absData: any = {};
-                                    try { absData = JSON.parse(project.abstract); } catch (e) { }
+                                    const absData = parseAbstract(project.abstract);
                                     return (
                                         <div className="space-y-4 opacity-70">
                                             <h4 className="text-sm font-bold text-slate-300 uppercase tracking-wider mb-2">Abstract Preview</h4>

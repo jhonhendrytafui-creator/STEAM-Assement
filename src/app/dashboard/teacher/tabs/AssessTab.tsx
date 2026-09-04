@@ -8,6 +8,7 @@ import {
 import { supabase } from '@/lib/supabase/client';
 import { ACADEMIC_YEAR } from '@/lib/constants';
 import type { AssessmentCategory, RubricDimension, RubricIndicator, ProjectData, ToastType } from '@/lib/types';
+import { parseAbstract, subjectLabel } from '@/lib/abstract';
 import { jsPDF } from 'jspdf';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from 'recharts';
 
@@ -524,8 +525,7 @@ export default function AssessTab({
                                                     </div>
 
                                                     {assessProject.abstract && (() => {
-                                                        let absData: any = {};
-                                                        try { absData = JSON.parse(assessProject.abstract); } catch (e) { }
+                                                        const absData = parseAbstract(assessProject.abstract);
                                                         return (
                                                             <div className="space-y-4">
                                                                 <div>

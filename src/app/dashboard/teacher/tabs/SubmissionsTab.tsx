@@ -8,6 +8,7 @@ import {
 import { supabase } from '@/lib/supabase/client';
 import { ACADEMIC_YEAR } from '@/lib/constants';
 import type { ToastType } from '@/lib/types';
+import { parseAbstract, subjectLabel } from '@/lib/abstract';
 
 interface SubmissionsTabProps {
     allStudents: any[];
@@ -346,8 +347,7 @@ export default function SubmissionsTab({ allStudents, showToast }: SubmissionsTa
                                 <div className="space-y-6">
                                     {(() => {
                                         const sub = groupSubmissions[currentSubmissionIndex];
-                                        let absData: any = {};
-                                        try { absData = JSON.parse(sub.abstract); } catch (e) { }
+                                        const absData = parseAbstract(sub.abstract);
 
                                         return (
                                             <div className="bg-[#1c1b14] border border-slate-800 rounded-2xl p-6 md:p-8 shadow-xl">
