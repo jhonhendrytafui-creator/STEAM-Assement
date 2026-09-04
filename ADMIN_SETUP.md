@@ -15,6 +15,16 @@ admin flag sees exactly what they see today.
 
 ---
 
+## Before you deploy: one new environment variable
+
+`SUPABASE_SERVICE_ROLE_KEY` is now **required**. `/api/precheck` uses it to
+count the AI Pre-Check quota server-side — the browser used to do it, under a
+policy that let any student reset their group's allowance from the console.
+
+Set it in Netlify alongside the existing keys. Without it the AI Pre-Check
+returns a 503 and tells students to contact their teacher; nothing else breaks.
+See `.env.example` for the full list.
+
 ## Run the security hardening too
 
 `sql/harden_security.sql` goes with this. It scopes student data access, makes
