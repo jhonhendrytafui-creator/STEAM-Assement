@@ -3,17 +3,19 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     LayoutDashboard, FolderOpen, BookOpen, ClipboardCheck,
-    Users, BarChart2, Star, TrendingUp, HelpCircle, Search, BrainCircuit
+    Users, BarChart2, Star, TrendingUp, HelpCircle, Search, BrainCircuit,
+    ShieldCheck, DatabaseZap, ScrollText
 } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase/client';
 import { ACADEMIC_YEAR } from '@/lib/constants';
 import type {
     ProjectData, AssessmentCategory, RubricDimension,
-    RubricIndicator, ToastType,
+    RubricIndicator, TeacherProfile, ConfirmDialogState,
 } from '@/lib/types';
 import { useToast } from '@/hooks/useToast';
 import ToastContainer from '@/components/ui/ToastContainer';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import Navbar from '@/components/ui/Navbar';
 import Sidebar from '@/components/ui/Sidebar';
 import LoadingScreen from '@/components/ui/LoadingScreen';
@@ -31,6 +33,12 @@ import PeerAssessmentResultsTab from './PeerAssessmentResultsTab';
 import HelpCenterTab from '../components/HelpCenterTab';
 import ProjectClassificationTab from './tabs/ProjectClassificationTab';
 
+// Admin-only tab components
+import AdminStudentsTab from './tabs/admin/AdminStudentsTab';
+import AdminAccessTab from './tabs/admin/AdminAccessTab';
+import AdminProjectsTab from './tabs/admin/AdminProjectsTab';
+import AdminAuditTab from './tabs/admin/AdminAuditTab';
+
 // Tab definitions for sidebar
 const TEACHER_TABS = [
     { id: 'overview', label: 'Project Overview', icon: LayoutDashboard },
@@ -46,10 +54,26 @@ const TEACHER_TABS = [
     { id: 'help', label: 'Help Center', icon: HelpCircle },
 ];
 
+// Extra tabs shown only to teachers flagged as admins in profiles.is_admin.
+// See sql/add_admin_role.sql for how the flag is granted.
+const ADMIN_TABS = [
+    { id: 'admin-students', label: 'Admin · Students', icon: Users },
+    { id: 'admin-access', label: 'Admin · Teacher Access', icon: ShieldCheck },
+    { id: 'admin-projects', label: 'Admin · Project Data', icon: DatabaseZap },
+    { id: 'admin-audit', label: 'Admin · Activity Log', icon: ScrollText },
+];
+
+const ADMIN_TAB_IDS = new Set(ADMIN_TABS.map(t => t.id));
+
 export default function TeacherDashboardPage() {
     const [activeTab, setActiveTab] = useState('overview');
     const [loading, setLoading] = useState(true);
-    const [teacherProfile, setTeacherProfile] = useState<any>(null);
+    const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
+
+    // Admin rights come from profiles.is_admin (see sql/add_admin_role.sql).
+    // This only controls the menu — the database RLS policies are what actually
+    // enforce who may write.
+    const isAdmin = teacherProfile?.is_admin === true;
 
     // Overview data
     const [totalGroups, setTotalGroups] = useState(0);
@@ -71,6 +95,32 @@ export default function TeacherDashboardPage() {
 
     // Toast
     const { toasts, showToast, dismissToast } = useToast();
+
+    // Confirm dialog (used by the admin tabs for destructive actions)
+    const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState>({
+        open: false, title: '', message: '', onConfirm: () => { },
+    });
+
+    const showConfirm = useCallback((title: string, message: string, onConfirm: () => void, confirmLabel = 'Delete') => {
+        setConfirmDialog({ open: true, title, message, confirmLabel, onConfirm });
+    }, []);
+
+    const closeConfirm = useCallback(() => {
+        setConfirmDialog(prev => ({ ...prev, open: false }));
+    }, []);
+
+    // Re-read the roster after an admin edits students or groups, so every
+    // other tab (assessment, scores, analytics) sees the change without a reload.
+    const refreshStudents = useCallback(async () => {
+        const { data: students } = await supabase
+            .from('student_master')
+            .select('full_name, class_name, group_number, email')
+            .eq('academic_year', ACADEMIC_YEAR);
+        if (students) {
+            setAllStudents(students);
+            setTotalGroups(new Set(students.map(s => `${s.class_name}-${s.group_number}`)).size);
+        }
+    }, []);
 
     // Leaderboard refresh (used by VotingTab)
     const fetchLeaderboard = useCallback(async () => {
@@ -111,7 +161,7 @@ export default function TeacherDashboardPage() {
                 window.location.href = '/';
                 return;
             }
-            setTeacherProfile({ ...profile, email: authData.user.email });
+            setTeacherProfile({ ...profile, email: authData.user.email } as TeacherProfile);
 
             // Fetch my votes
             const { data: votes } = await supabase
@@ -193,11 +243,20 @@ export default function TeacherDashboardPage() {
         <div className="min-h-screen bg-[#1c1b14] text-[#d4d4d4] font-sans">
             <ToastContainer toasts={toasts} onDismiss={dismissToast} />
 
-            <Navbar portalName="Teacher Portal" userEmail={teacherProfile?.email} />
+            <ConfirmDialog
+                open={confirmDialog.open}
+                title={confirmDialog.title}
+                message={confirmDialog.message}
+                confirmLabel={confirmDialog.confirmLabel}
+                onConfirm={() => { confirmDialog.onConfirm(); closeConfirm(); }}
+                onCancel={closeConfirm}
+            />
+
+            <Navbar portalName={isAdmin ? 'Teacher Portal · Admin' : 'Teacher Portal'} userEmail={teacherProfile?.email} />
 
             <main className="w-full px-3 sm:px-6 lg:px-8 py-4 sm:py-6 flex flex-col md:flex-row gap-4 md:gap-6 lg:gap-8 h-[calc(100vh-65px)] overflow-hidden">
                 <Sidebar
-                    tabs={TEACHER_TABS}
+                    tabs={isAdmin ? [...TEACHER_TABS, ...ADMIN_TABS] : TEACHER_TABS}
                     activeTab={activeTab}
                     onTabChange={setActiveTab}
                 />
@@ -292,6 +351,50 @@ export default function TeacherDashboardPage() {
 
                     {activeTab === 'help' && (
                         <HelpCenterTab />
+                    )}
+
+                    {/* Admin area. The isAdmin guard here is a UI convenience —
+                        the database RLS policies are the real enforcement. */}
+                    {isAdmin && activeTab === 'admin-students' && (
+                        <AdminStudentsTab
+                            adminEmail={teacherProfile?.email ?? null}
+                            showToast={showToast}
+                            showConfirm={showConfirm}
+                            onRosterChanged={refreshStudents}
+                        />
+                    )}
+
+                    {isAdmin && activeTab === 'admin-access' && (
+                        <AdminAccessTab
+                            adminEmail={teacherProfile?.email ?? null}
+                            showToast={showToast}
+                            showConfirm={showConfirm}
+                        />
+                    )}
+
+                    {isAdmin && activeTab === 'admin-projects' && (
+                        <AdminProjectsTab
+                            adminEmail={teacherProfile?.email ?? null}
+                            allStudents={allStudents}
+                            showToast={showToast}
+                            showConfirm={showConfirm}
+                        />
+                    )}
+
+                    {isAdmin && activeTab === 'admin-audit' && (
+                        <AdminAuditTab showToast={showToast} />
+                    )}
+
+                    {/* A teacher who loses admin rights mid-session would
+                        otherwise be left staring at a blank pane. */}
+                    {!isAdmin && ADMIN_TAB_IDS.has(activeTab) && (
+                        <div className="bg-[#1a1811] border border-amber-900/20 rounded-2xl p-8 text-center">
+                            <ShieldCheck className="w-12 h-12 text-slate-600 mx-auto mb-3" />
+                            <h3 className="text-lg font-bold text-white mb-2">Admin access required</h3>
+                            <p className="text-slate-400 text-sm">
+                                This section is only available to teachers with admin rights.
+                            </p>
+                        </div>
                     )}
                 </div>
             </main>

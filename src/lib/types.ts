@@ -112,6 +112,44 @@ export interface ConfirmDialogState {
     onConfirm: () => void;
 }
 
+export interface TeacherProfile {
+    id: string;
+    email: string;
+    role: string;
+    full_name?: string | null;
+    expertise?: string | null;
+    is_admin?: boolean;
+}
+
+export interface StudentRecord {
+    id: string;
+    email: string;
+    full_name: string;
+    class_name: string;
+    group_number: number;
+    academic_year: string;
+    created_at?: string;
+}
+
+export interface TeacherEmailRecord {
+    id: string;
+    email: string;
+    is_admin: boolean;
+    created_at?: string;
+    /** Filled in from profiles — null when the teacher has never logged in. */
+    has_logged_in?: boolean;
+}
+
+export interface AdminAuditEntry {
+    id: string;
+    actor_email: string;
+    action: string;
+    target: string | null;
+    details: Record<string, unknown>;
+    academic_year: string | null;
+    created_at: string;
+}
+
 export interface ProjectTeacherRecommendation {
     id: string;
     project_id: string;
