@@ -268,7 +268,7 @@ export default function PeerAssessmentResultsTab({
                                             {row.totalMembers}
                                         </td>
                                         <td className="py-3 px-4 text-sm text-center">
-                                            <button
+                                            <button aria-label="View this student's peer assessment"
                                                 onClick={() => setDetailModalStudent(row)}
                                                 className="bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 p-1.5 rounded transition-colors inline-block"
                                                 title="See Details"
@@ -293,7 +293,7 @@ export default function PeerAssessmentResultsTab({
                                 <Users className="text-amber-500 w-5 h-5" />
                                 Feedback for {detailModalStudent.full_name}
                             </h3>
-                            <button
+                            <button aria-label="Close peer assessment details"
                                 onClick={() => setDetailModalStudent(null)}
                                 className="text-slate-500 hover:text-white p-2 rounded-lg transition-colors"
                             >

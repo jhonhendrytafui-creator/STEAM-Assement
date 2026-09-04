@@ -36,6 +36,15 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* Keyboard focus.
+   Inputs carried a focus:ring from Tailwind, but buttons, tabs and links had
+   nothing, so a keyboard user could not tell where they were on a near-black
+   ground. :focus-visible means mouse users never see this. */
+:focus-visible {
+  outline: 2px solid var(--brand-amber);
+  outline-offset: 2px;
+}
+
 @keyframes slideIn {
   from {
     opacity: 0;

@@ -6,6 +6,7 @@ import {
     AlertTriangle, CheckCircle, Clock, ClipboardCheck
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
+import { safeExternalUrl } from '@/lib/url';
 import { ACADEMIC_YEAR } from '@/lib/constants';
 import type { ToastType, ProjectData } from '@/lib/types';
 import { parseAbstract } from '@/lib/abstract';
@@ -168,8 +169,9 @@ export default function PlagiarismTab({ allStudents, showToast }: PlagiarismTabP
             {/* Top Selection Bar */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8 bg-[#1c1b14] border border-slate-800 rounded-xl p-4">
                 <div>
-                    <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Grade</label>
+                    <label htmlFor="plagiarism-tab-grade" className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Grade</label>
                     <select
+                        id="plagiarism-tab-grade"
                         value={selectedGrade}
                         onChange={(e) => {
                             setSelectedGrade(e.target.value);
@@ -183,8 +185,9 @@ export default function PlagiarismTab({ allStudents, showToast }: PlagiarismTabP
                     </select>
                 </div>
                 <div>
-                    <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Class</label>
+                    <label htmlFor="plagiarism-tab-class" className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Class</label>
                     <select
+                        id="plagiarism-tab-class"
                         value={selectedClass}
                         onChange={(e) => { setSelectedClass(e.target.value); }}
                         disabled={!selectedGrade}
@@ -230,7 +233,7 @@ export default function PlagiarismTab({ allStudents, showToast }: PlagiarismTabP
 
                                     {project.google_doc_url && (
                                         <a
-                                            href={project.google_doc_url}
+                                            href={safeExternalUrl(project.google_doc_url) ?? undefined}
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             className="shrink-0 flex items-center gap-2 bg-[#1a1811] text-blue-400 border border-slate-800 py-2.5 px-4 rounded-lg hover:border-blue-500/30 hover:bg-blue-500/10 transition-colors text-sm font-semibold"

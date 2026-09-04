@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { SUBJECTS, ACADEMIC_YEAR } from '@/lib/constants';
-import type { ProjectData, StudentInfo, Theme, AssessmentCategory, ToastType } from '@/lib/types';
+import type { ProjectData, StudentInfo, Theme, ToastType } from '@/lib/types';
 
 // Maximum AI pre-checks allowed per group per academic year
 const MAX_PRECHECKS = 5;
@@ -39,7 +39,6 @@ interface SubmitProjectTabProps {
     userEmail: string | null;
     themesList: Theme[];
     projectHistory: ProjectData[];
-    assessmentCategories: AssessmentCategory[];
     showToast: (message: string, type: ToastType) => void;
     onSubmitSuccess: (newProject: ProjectData) => void;
     onStartPrecheck: () => void;
@@ -55,7 +54,6 @@ export default function SubmitProjectTab({
     userEmail,
     themesList,
     projectHistory,
-    assessmentCategories,
     showToast,
     onSubmitSuccess,
     onStartPrecheck,
@@ -243,7 +241,20 @@ export default function SubmitProjectTab({
                 })
             });
 
-            const data = await res.json();
+            // Never assume the body is JSON. When the hosting platform kills
+            // the function for running too long it answers with an HTML
+            // gateway-error page, and parsing that blindly used to surface as
+            // "Unexpected token '<'" instead of something a student can act on.
+            let data: { result?: string; error?: string; usageCount?: number } = {};
+            try {
+                data = await res.json();
+            } catch {
+                throw new Error(
+                    res.status === 504 || res.status === 502
+                        ? 'The AI Pre-Check took too long to answer. Your draft is safe — please try again.'
+                        : 'The AI Pre-Check could not be completed. Your draft is safe — please try again.'
+                );
+            }
 
             if (typeof data.usageCount === 'number') {
                 setPrecheckUsage(data.usageCount);
@@ -251,6 +262,10 @@ export default function SubmitProjectTab({
 
             if (!res.ok) {
                 throw new Error(data.error || 'Failed to analyze project');
+            }
+
+            if (!data.result) {
+                throw new Error('The AI Pre-Check returned no feedback. Please try again.');
             }
 
             onEndPrecheck(data.result);
@@ -326,19 +341,11 @@ export default function SubmitProjectTab({
         } else if (data) {
             showToast(nextIteration > 1 ? 'Project resubmitted successfully!' : 'Project submitted successfully!', 'success');
 
-            // Reset C1 assessment scores for this group so the new iteration gets a fresh start
-            if (nextIteration > 1) {
-                const c1Category = assessmentCategories.find(c => c.code === 'C1');
-                if (c1Category) {
-                    await supabase
-                        .from('assessment_scores')
-                        .delete()
-                        .eq('class_name', studentInfo.class_name)
-                        .eq('group_number', studentInfo.group_number)
-                        .eq('category_id', c1Category.id)
-                        .eq('academic_year', ACADEMIC_YEAR);
-                }
-            }
+            // C1 scores are reset by the reset_c1_on_resubmission trigger
+            // (sql/fix_silent_rls_failures.sql). It used to be done here, but
+            // students hold no DELETE policy on assessment_scores, so PostgREST
+            // matched zero rows and returned success — the previous iteration's
+            // C1 marks stayed attached to the group and nothing reported it.
 
             // Reset local form and drop the saved draft — it is submitted now
             resetForm();
@@ -410,8 +417,9 @@ export default function SubmitProjectTab({
 
                     {/* Title */}
                     <div>
-                        <label className="block text-sm font-semibold text-slate-300 mb-2">Project Title</label>
+                        <label htmlFor="submit-project-tab-project-title" className="block text-sm font-semibold text-slate-300 mb-2">Project Title</label>
                         <input
+                            id="submit-project-tab-project-title"
                             type="text"
                             required
                             value={title}
@@ -423,10 +431,11 @@ export default function SubmitProjectTab({
 
                     {/* Theme Dropdown */}
                     <div>
-                        <label className="block text-sm font-semibold text-slate-300 mb-2">Theme</label>
+                        <label htmlFor="submit-project-tab-theme" className="block text-sm font-semibold text-slate-300 mb-2">Theme</label>
                         {themesList.length > 0 ? (
                             <div className="relative">
                                 <select
+                                    id="submit-project-tab-theme"
                                     value={theme}
                                     onChange={(e) => setTheme(e.target.value)}
                                     className="w-full bg-[#1c1b14] border border-slate-800 rounded-xl py-3 px-4 pr-10 text-slate-200 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all appearance-none"
@@ -447,8 +456,9 @@ export default function SubmitProjectTab({
                     {/* Problem & Solution */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                            <label className="block text-sm font-semibold text-slate-300 mb-2">Problem</label>
+                            <label htmlFor="submit-project-tab-problem" className="block text-sm font-semibold text-slate-300 mb-2">Problem</label>
                             <textarea
+                                id="submit-project-tab-problem"
                                 required
                                 rows={4}
                                 value={problem}
@@ -458,8 +468,9 @@ export default function SubmitProjectTab({
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-semibold text-slate-300 mb-2">Solution</label>
+                            <label htmlFor="submit-project-tab-solution" className="block text-sm font-semibold text-slate-300 mb-2">Solution</label>
                             <textarea
+                                id="submit-project-tab-solution"
                                 required
                                 rows={4}
                                 value={solution}
@@ -473,7 +484,7 @@ export default function SubmitProjectTab({
                     {/* Key Concepts */}
                     <div className="pt-4 border-t border-slate-800/50">
                         <div className="flex justify-between items-center mb-4">
-                            <label className="block text-sm font-semibold text-slate-300">Key Concepts</label>
+                            <span className="block text-sm font-semibold text-slate-300">Key Concepts</span>
                             <button
                                 type="button"
                                 onClick={addConcept}
@@ -516,7 +527,7 @@ export default function SubmitProjectTab({
                                         placeholder="Describe the concept..."
                                     />
                                     {keyConcepts.length > 1 && (
-                                        <button
+                                        <button aria-label="Remove this key concept"
                                             type="button"
                                             onClick={() => removeConcept(index)}
                                             className="p-2.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"

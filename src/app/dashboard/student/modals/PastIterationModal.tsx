@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { safeExternalUrl } from '@/lib/url';
 import { History, X, MessageSquare, BookOpen, Link as LinkIcon } from 'lucide-react';
 import { SUBJECTS } from '@/lib/constants';
 import type { ProjectData } from '@/lib/types';
@@ -26,7 +27,7 @@ export default function PastIterationModal({ iteration, onClose, renderFormatted
                         </h3>
                         <p className="text-sm text-slate-400 mt-1">Submitted on {new Date(iteration.created_at).toLocaleDateString()}</p>
                     </div>
-                    <button
+                    <button aria-label="Close this past version"
                         onClick={onClose}
                         className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
                     >
@@ -119,7 +120,7 @@ export default function PastIterationModal({ iteration, onClose, renderFormatted
 
                     {iteration.google_doc_url && (
                         <a
-                            href={iteration.google_doc_url}
+                            href={safeExternalUrl(iteration.google_doc_url) ?? undefined}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex items-center justify-center gap-2 w-full bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 font-bold py-4 rounded-xl transition-colors border border-blue-500/20"

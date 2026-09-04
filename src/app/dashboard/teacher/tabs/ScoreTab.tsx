@@ -195,8 +195,9 @@ export default function ScoreTab({ allStudents, assessmentCategories, rubricDime
                 <div className="space-y-4 lg:col-span-2">
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Grade</label>
+                            <label htmlFor="score-tab-grade" className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Grade</label>
                             <select
+                                id="score-tab-grade"
                                 value={scoreGrade}
                                 onChange={(e) => { setScoreGrade(e.target.value); setScoreClass(''); setClassScores([]); }}
                                 className="w-full bg-[#1a1811] border border-slate-800 rounded-lg py-2.5 px-3 text-sm text-slate-200 focus:outline-none focus:border-amber-500"
@@ -206,8 +207,9 @@ export default function ScoreTab({ allStudents, assessmentCategories, rubricDime
                             </select>
                         </div>
                         <div>
-                            <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Class</label>
+                            <label htmlFor="score-tab-class" className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Class</label>
                             <select
+                                id="score-tab-class"
                                 value={scoreClass}
                                 onChange={(e) => { setScoreClass(e.target.value); setClassScores([]); }}
                                 disabled={!scoreGrade}
@@ -219,8 +221,8 @@ export default function ScoreTab({ allStudents, assessmentCategories, rubricDime
                         </div>
                     </div>
                     <div>
-                        <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Grouping Options</label>
-                        <div className="flex bg-[#1a1811] border border-slate-800 rounded-lg overflow-hidden">
+                        <span className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase" id="score-grouping-options">Grouping Options</span>
+                        <div className="flex bg-[#1a1811] border border-slate-800 rounded-lg overflow-hidden" role="group" aria-labelledby="score-grouping-options">
                             <button
                                 onClick={() => { setScoreGrouping('group'); setClassScores([]); }}
                                 className={`flex-1 py-2 text-xs font-bold transition-colors ${scoreGrouping === 'group' ? 'bg-amber-500/20 text-amber-500 border-b-2 border-amber-500' : 'text-slate-500 hover:text-slate-300'}`}
@@ -237,7 +239,7 @@ export default function ScoreTab({ allStudents, assessmentCategories, rubricDime
                     </div>
 
                     <div>
-                        <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Individual Contribution</label>
+                        <span className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Individual Contribution</span>
                         <label className="flex items-start gap-2.5 bg-[#1a1811] border border-slate-800 rounded-lg p-3 cursor-pointer select-none">
                             <input
                                 type="checkbox"
@@ -261,8 +263,8 @@ export default function ScoreTab({ allStudents, assessmentCategories, rubricDime
                 </div>
 
                 <div className="lg:col-span-2">
-                    <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Assessments (Multi-Select)</label>
-                    <div className="bg-[#1a1811] border border-slate-800 rounded-lg p-3 custom-scrollbar overflow-y-auto max-h-48">
+                    <span className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase" id="score-assessments">Assessments (Multi-Select)</span>
+                    <div className="bg-[#1a1811] border border-slate-800 rounded-lg p-3 custom-scrollbar overflow-y-auto max-h-48" role="group" aria-labelledby="score-assessments">
                         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
                             {assessmentCategories.map(c => {
                                 const isSelected = scoreCategories.includes(c.id);

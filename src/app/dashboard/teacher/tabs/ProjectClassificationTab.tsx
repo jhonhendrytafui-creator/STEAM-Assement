@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase/client';
+import { fetchAll } from '@/lib/supabase/fetchAll';
 import { ACADEMIC_YEAR } from '@/lib/constants';
 import type { ToastType, ProjectData, ProjectTeacherRecommendation } from '@/lib/types';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -33,12 +34,13 @@ export default function ProjectClassificationTab({ showToast }: ProjectClassific
     const fetchClassifications = async (silent = false) => {
         if (!silent) setIsLoading(true);
         try {
-            const { data: approvedProjects, error: projectError } = await supabase
+            const { data: approvedProjects, error: projectError } = await fetchAll((from, to) => supabase
                 .from('projects')
                 .select('*, themes(theme_name)')
                 .eq('academic_year', ACADEMIC_YEAR)
                 .eq('status', 'approved')
-                .order('created_at', { ascending: false });
+                .order('created_at', { ascending: false })
+                .range(from, to));
 
             if (projectError) throw projectError;
 
@@ -184,7 +186,7 @@ export default function ProjectClassificationTab({ showToast }: ProjectClassific
                         <Zap className={`w-4 h-4 ${isClassifyingAll ? 'animate-pulse' : ''}`} />
                         {isClassifyingAll ? 'Classifying...' : 'Classify Pending'}
                     </button>
-                    <button
+                    <button aria-label="Refresh classifications"
                         onClick={() => fetchClassifications()}
                         className="p-2 bg-[#1c1b14] hover:bg-[#252318] text-slate-300 hover:text-amber-400 rounded-xl border border-amber-900/30 transition-colors"
                         title="Refresh"
@@ -224,7 +226,7 @@ export default function ProjectClassificationTab({ showToast }: ProjectClassific
                         className="w-full bg-[#1c1b14] border border-amber-900/30 rounded-xl pl-9 pr-4 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500 transition-colors"
                     />
                     {searchQuery && (
-                        <button
+                        <button aria-label="Clear the search box"
                             onClick={() => setSearchQuery('')}
                             className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-amber-400 transition-colors"
                         >
@@ -235,14 +237,14 @@ export default function ProjectClassificationTab({ showToast }: ProjectClassific
 
                 {/* View mode toggle */}
                 <div className="bg-[#1c1b14] p-1 rounded-xl border border-amber-900/30 flex flex-shrink-0">
-                    <button
+                    <button aria-label="Show projects as cards"
                         onClick={() => setViewMode('grid')}
                         className={`p-1.5 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-amber-500 text-[#1a1811]' : 'text-slate-400 hover:text-amber-400 hover:bg-amber-900/20'}`}
                         title="Grid view"
                     >
                         <LayoutGrid className="w-4 h-4" />
                     </button>
-                    <button
+                    <button aria-label="Show projects as a list"
                         onClick={() => setViewMode('list')}
                         className={`p-1.5 rounded-lg transition-all ${viewMode === 'list' ? 'bg-amber-500 text-[#1a1811]' : 'text-slate-400 hover:text-amber-400 hover:bg-amber-900/20'}`}
                         title="List view"
@@ -456,7 +458,7 @@ export default function ProjectClassificationTab({ showToast }: ProjectClassific
 
                                     {/* Actions */}
                                     <div className="flex items-center gap-1.5 flex-shrink-0">
-                                        <button
+                                        <button aria-label="View the AI reasoning for this project"
                                             onClick={() => setSelectedProject(project)}
                                             disabled={!hasRecs || isClassifying}
                                             className="p-2 rounded-lg bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 border border-amber-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -464,7 +466,7 @@ export default function ProjectClassificationTab({ showToast }: ProjectClassific
                                         >
                                             <Info className="w-4 h-4" />
                                         </button>
-                                        <button
+                                        <button aria-label="Re-run AI classification for this project"
                                             onClick={() => handleClassifyProject(project.id)}
                                             disabled={isClassifying || isClassifyingAll}
                                             className="p-2 rounded-lg bg-[#252318] text-slate-400 hover:bg-amber-900/30 hover:text-amber-400 border border-slate-700/50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -506,7 +508,7 @@ export default function ProjectClassificationTab({ showToast }: ProjectClassific
                                         </h3>
                                         <p className="text-sm text-slate-400 line-clamp-1">{selectedProject.title}</p>
                                     </div>
-                                    <button
+                                    <button aria-label="Close project details"
                                         onClick={() => setSelectedProject(null)}
                                         className="p-1.5 text-slate-400 hover:text-amber-400 bg-[#1a1811] hover:bg-amber-900/20 rounded-lg border border-slate-800 hover:border-amber-900/30 transition-colors"
                                     >

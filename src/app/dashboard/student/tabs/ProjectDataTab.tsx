@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { safeExternalUrl } from '@/lib/url';
 import {
     Users, Database, PenSquare, BookOpen,
     Link as LinkIcon, MessageSquare, History
@@ -149,7 +150,7 @@ export default function ProjectDataTab({
                             <div className="bg-[#1c1b14] border border-slate-800 rounded-xl p-5">
                                 <span className="text-xs text-slate-500 uppercase tracking-wider">Google Doc</span>
                                 <a
-                                    href={projectData.google_doc_url}
+                                    href={safeExternalUrl(projectData.google_doc_url) ?? undefined}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="inline-flex items-center justify-center gap-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 font-medium py-2.5 px-5 rounded-xl mt-3 transition-all active:scale-95 text-sm w-full sm:w-auto"

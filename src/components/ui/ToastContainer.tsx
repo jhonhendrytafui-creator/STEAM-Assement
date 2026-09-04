@@ -24,18 +24,29 @@ interface ToastContainerProps {
 
 export default function ToastContainer({ toasts, onDismiss }: ToastContainerProps) {
     return (
-        <div className="fixed top-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none max-w-sm w-full">
+        // aria-live so a screen reader announces the result of an action;
+        // without it a toast is a silent visual-only confirmation.
+        <div
+            aria-live="polite"
+            aria-atomic="false"
+            className="fixed top-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none max-w-sm w-full"
+        >
             {toasts.map(toast => {
                 const Icon = TOAST_ICONS[toast.type];
                 return (
                     <div
                         key={toast.id}
+                        role={toast.type === 'error' || toast.type === 'warning' ? 'alert' : 'status'}
                         className={`pointer-events-auto flex items-start gap-3 px-4 py-3 rounded-xl border backdrop-blur-md shadow-2xl animate-[slideIn_0.3s_ease-out] ${TOAST_STYLES[toast.type]}`}
                     >
-                        <Icon className="w-5 h-5 shrink-0 mt-0.5" />
+                        <Icon className="w-5 h-5 shrink-0 mt-0.5" aria-hidden="true" />
                         <p className="text-sm flex-1 font-medium">{toast.message}</p>
-                        <button onClick={() => onDismiss(toast.id)} className="shrink-0 opacity-60 hover:opacity-100 transition-opacity">
-                            <X className="w-4 h-4" />
+                        <button
+                            onClick={() => onDismiss(toast.id)}
+                            aria-label="Dismiss notification"
+                            className="shrink-0 opacity-60 hover:opacity-100 transition-opacity"
+                        >
+                            <X className="w-4 h-4" aria-hidden="true" />
                         </button>
                     </div>
                 );

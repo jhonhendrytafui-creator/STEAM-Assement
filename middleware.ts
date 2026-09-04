@@ -1,6 +1,11 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+// API routes that must answer without a session. The health probe is called by
+// the container platform, which holds no cookies — returning 401 to it would
+// make Coolify judge a healthy container dead and restart it in a loop.
+const PUBLIC_API_ROUTES = ['/api/health']
+
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
@@ -42,7 +47,12 @@ export async function middleware(request: NextRequest) {
     console.error('Middleware getSession error:', e)
   }
 
-  const isApiRoute = request.nextUrl.pathname.startsWith('/api')
+  const path = request.nextUrl.pathname
+  const isApiRoute = path.startsWith('/api')
+
+  if (PUBLIC_API_ROUTES.includes(path)) {
+    return supabaseResponse
+  }
 
   // API callers get JSON, not a redirect — a 302 to the login page would reach
   // fetch() as an HTML body and surface to the user as a JSON parse error.
@@ -54,7 +64,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // If no session and trying to access dashboard, redirect to login
-  if (!session && request.nextUrl.pathname.startsWith('/dashboard')) {
+  if (!session && path.startsWith('/dashboard')) {
     const url = request.nextUrl.clone()
     url.pathname = '/'
     return NextResponse.redirect(url)
@@ -72,7 +82,6 @@ export async function middleware(request: NextRequest) {
         .single()
 
       const role = profile?.role
-      const path = request.nextUrl.pathname
 
       // Students cannot access teacher area
       if (role === 'student' && path.startsWith('/dashboard/teacher')) {

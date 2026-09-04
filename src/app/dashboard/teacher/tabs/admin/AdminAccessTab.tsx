@@ -274,7 +274,7 @@ export default function AdminAccessTab({ adminEmail, showToast, showConfirm }: A
                                         >
                                             {t.is_admin ? 'Remove admin' : 'Make admin'}
                                         </button>
-                                        <button
+                                        <button aria-label="Remove this teacher"
                                             onClick={() => handleRevoke(t)}
                                             className="p-2 ml-1 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors align-middle"
                                             title="Revoke teacher access"

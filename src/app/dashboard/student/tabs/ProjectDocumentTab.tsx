@@ -8,6 +8,7 @@ import {
     FilePlus2, Sparkles
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
+import { safeExternalUrl } from '@/lib/url';
 import type { ProjectData, StudentInfo, TeamMember, ToastType } from '@/lib/types';
 
 interface ProjectDocumentTabProps {
@@ -185,7 +186,7 @@ export default function ProjectDocumentTab({
                                     </div>
                                     <div className="min-w-0">
                                         <p className="text-sm font-bold text-emerald-400 mb-0.5">Google Doc Linked Successfully</p>
-                                        <a href={projectData.google_doc_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 mt-1.5 px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 rounded-lg text-xs font-semibold transition-colors">
+                                        <a href={safeExternalUrl(projectData.google_doc_url) ?? undefined} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 mt-1.5 px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 rounded-lg text-xs font-semibold transition-colors">
                                             <ExternalLink className="w-3.5 h-3.5" />
                                             Open Google Doc
                                         </a>
@@ -302,13 +303,13 @@ export default function ProjectDocumentTab({
                                             </div>
                                             <div>
                                                 <p className="text-sm font-bold text-slate-300">{doc.type}</p>
-                                                <a href={doc.url} target="_blank" rel="noopener noreferrer" className="text-xs text-amber-500/80 hover:text-amber-400 block truncate max-w-[200px] sm:max-w-md">
+                                                <a href={safeExternalUrl(doc.url) ?? undefined} target="_blank" rel="noopener noreferrer" className="text-xs text-amber-500/80 hover:text-amber-400 block truncate max-w-[200px] sm:max-w-md">
                                                     {doc.url}
                                                 </a>
                                             </div>
                                         </div>
                                         <div className="relative">
-                                            <button
+                                            <button aria-label="Remove this document link"
                                                 onClick={() => setConfirmDeleteDocIdx(idx)}
                                                 className="text-slate-500 hover:text-red-400 p-2 transition-colors"
                                             >
@@ -366,9 +367,10 @@ export default function ProjectDocumentTab({
 
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                             <div>
-                                <label className="block text-xs font-semibold text-slate-400 mb-2">Type</label>
+                                <label htmlFor="project-document-tab-type" className="block text-xs font-semibold text-slate-400 mb-2">Type</label>
                                 <div className="relative">
                                     <select
+                                        id="project-document-tab-type"
                                         value={newDocType}
                                         onChange={(e) => setNewDocType(e.target.value)}
                                         className="w-full bg-[#1c1b14] border border-slate-800 rounded-xl py-3 px-4 text-slate-200 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all appearance-none text-sm"
@@ -384,12 +386,13 @@ export default function ProjectDocumentTab({
                                 </div>
                             </div>
                             <div className="md:col-span-2">
-                                <label className="block text-xs font-semibold text-slate-400 mb-2">Document URL</label>
+                                <label htmlFor="project-document-tab-document-url" className="block text-xs font-semibold text-slate-400 mb-2">Document URL</label>
                                 <div className="relative">
                                     <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
                                         <LinkIcon className="w-4 h-4" />
                                     </div>
                                     <input
+                                        id="project-document-tab-document-url"
                                         type="url"
                                         value={newDocUrl}
                                         onChange={(e) => setNewDocUrl(e.target.value)}

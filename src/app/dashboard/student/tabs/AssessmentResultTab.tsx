@@ -188,7 +188,7 @@ export default function AssessmentResultTab({
                                                                     </div>
                                                                 ) : (
                                                                     <div className="w-6 h-6 rounded-md bg-slate-800 flex items-center justify-center">
-                                                                        <X className="w-3 h-3 text-slate-600" />
+                                                                        <X className="w-3 h-3 text-slate-600" aria-hidden="true" />
                                                                     </div>
                                                                 )
                                                             ) : (

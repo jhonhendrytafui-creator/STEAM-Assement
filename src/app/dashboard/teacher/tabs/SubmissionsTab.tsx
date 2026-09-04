@@ -6,6 +6,8 @@ import {
     LinkIcon, Star
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
+import { safeExternalUrl } from '@/lib/url';
+import { fetchAll } from '@/lib/supabase/fetchAll';
 import { ACADEMIC_YEAR } from '@/lib/constants';
 import type { ToastType } from '@/lib/types';
 import { parseAbstract, subjectLabel } from '@/lib/abstract';
@@ -44,12 +46,13 @@ export default function SubmissionsTab({ allStudents, showToast }: SubmissionsTa
         });
 
         // Get all submitted projects
-        const { data: projs } = await supabase
+        const { data: projs } = await fetchAll((from, to) => supabase
             .from('projects')
             .select(`*, themes(theme_name)`)
             .eq('academic_year', ACADEMIC_YEAR)
             .ilike('class_name', `${submissionGrade}.%`)
-            .order('iteration', { ascending: false });
+            .order('iteration', { ascending: false })
+            .range(from, to));
 
         const listView: any[] = [];
         uniqueGroups.forEach((group) => {
@@ -176,8 +179,9 @@ export default function SubmissionsTab({ allStudents, showToast }: SubmissionsTa
                         {/* Grade selector + Search */}
                         <div className="flex flex-col sm:flex-row gap-4 mb-4 bg-[#1c1b14] border border-slate-800 rounded-xl p-4">
                             <div className="flex-1">
-                                <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Grade</label>
+                                <label htmlFor="submissions-tab-grade" className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Grade</label>
                                 <select
+                                    id="submissions-tab-grade"
                                     value={submissionGrade}
                                     onChange={(e) => { setSubmissionGrade(e.target.value); setGradeSubmissionsList([]); setSubmissionClassFilter(''); setSubmissionStatusFilter([]); }}
                                     className="w-full bg-[#1a1811] border border-slate-800 rounded-lg py-2.5 px-3 text-sm text-slate-200 focus:outline-none focus:border-amber-500"
@@ -203,8 +207,9 @@ export default function SubmissionsTab({ allStudents, showToast }: SubmissionsTa
                                 <div className="flex flex-col sm:flex-row gap-4">
                                     {/* Class Filter */}
                                     <div className="w-full sm:w-48">
-                                        <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Filter by Class</label>
+                                        <label htmlFor="submissions-tab-filter-by-class" className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Filter by Class</label>
                                         <select
+                                            id="submissions-tab-filter-by-class"
                                             value={submissionClassFilter}
                                             onChange={(e) => setSubmissionClassFilter(e.target.value)}
                                             className="w-full bg-[#1a1811] border border-slate-800 rounded-lg py-2 px-3 text-sm text-slate-200 focus:outline-none focus:border-amber-500"
@@ -221,14 +226,14 @@ export default function SubmissionsTab({ allStudents, showToast }: SubmissionsTa
                                         >
                                             <Users className="w-3.5 h-3.5" /> Group by Class
                                         </button>
-                                        <button
+                                        <button aria-label="Show submissions as cards"
                                             onClick={() => setSubmissionViewMode('card')}
                                             className={`p-2 rounded-lg border transition-all ${submissionViewMode === 'card' ? 'bg-amber-500/20 text-amber-400 border-amber-500/50' : 'bg-[#1a1811] text-slate-400 border-slate-800 hover:border-slate-600'}`}
                                             title="Card View"
                                         >
                                             <LayoutGrid className="w-4 h-4" />
                                         </button>
-                                        <button
+                                        <button aria-label="Show submissions as a list"
                                             onClick={() => setSubmissionViewMode('list')}
                                             className={`p-2 rounded-lg border transition-all ${submissionViewMode === 'list' ? 'bg-amber-500/20 text-amber-400 border-amber-500/50' : 'bg-[#1a1811] text-slate-400 border-slate-800 hover:border-slate-600'}`}
                                             title="List View"
@@ -239,8 +244,8 @@ export default function SubmissionsTab({ allStudents, showToast }: SubmissionsTa
                                 </div>
                                 {/* Status Filter Pills */}
                                 <div>
-                                    <label className="block text-xs font-semibold text-slate-400 mb-2 uppercase">Filter by Status</label>
-                                    <div className="flex flex-wrap gap-2">
+                                    <span className="block text-xs font-semibold text-slate-400 mb-2 uppercase" id="submissions-status-filter">Filter by Status</span>
+                                    <div className="flex flex-wrap gap-2" role="group" aria-labelledby="submissions-status-filter">
                                         {statusOptions.map(st => {
                                             const isActive = submissionStatusFilter.includes(st);
                                             return (
@@ -401,21 +406,21 @@ export default function SubmissionsTab({ allStudents, showToast }: SubmissionsTa
 
                                                     <div className="pt-2 flex flex-wrap gap-3">
                                                         {sub.google_doc_url && (
-                                                            <a href={sub.google_doc_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-blue-500/10 text-blue-400 border border-blue-500/20 py-2.5 px-5 rounded-lg hover:bg-blue-500/20 transition-colors text-sm font-semibold">
+                                                            <a href={safeExternalUrl(sub.google_doc_url) ?? undefined} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-blue-500/10 text-blue-400 border border-blue-500/20 py-2.5 px-5 rounded-lg hover:bg-blue-500/20 transition-colors text-sm font-semibold">
                                                                 <LinkIcon className="w-4 h-4" />
                                                                 Open Google Doc
                                                             </a>
                                                         )}
 
                                                         {sub.presentation_url && (
-                                                            <a href={sub.presentation_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-purple-500/10 text-purple-400 border border-purple-500/20 py-2.5 px-5 rounded-lg hover:bg-purple-500/20 transition-colors text-sm font-semibold">
+                                                            <a href={safeExternalUrl(sub.presentation_url) ?? undefined} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-purple-500/10 text-purple-400 border border-purple-500/20 py-2.5 px-5 rounded-lg hover:bg-purple-500/20 transition-colors text-sm font-semibold">
                                                                 <Star className="w-4 h-4" />
                                                                 View Canva Presentation
                                                             </a>
                                                         )}
 
                                                         {sub.additional_documents && sub.additional_documents.map((doc: any, i: number) => (
-                                                            <a key={i} href={doc.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-amber-500/10 text-amber-500 border border-amber-500/20 py-2.5 px-5 rounded-lg hover:bg-amber-500/20 transition-colors text-sm font-semibold">
+                                                            <a key={i} href={safeExternalUrl(doc.url) ?? undefined} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-amber-500/10 text-amber-500 border border-amber-500/20 py-2.5 px-5 rounded-lg hover:bg-amber-500/20 transition-colors text-sm font-semibold">
                                                                 <LinkIcon className="w-4 h-4" />
                                                                 {doc.type}
                                                             </a>

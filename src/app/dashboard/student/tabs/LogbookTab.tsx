@@ -6,6 +6,7 @@ import {
     Calendar, Save, X, AlertTriangle, Camera, Image as ImageIcon
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
+import { safeExternalUrl } from '@/lib/url';
 import { sanitizeRichText } from '@/lib/sanitize';
 import { ACADEMIC_YEAR } from '@/lib/constants';
 import type { ProjectData, StudentInfo, TeamMember, LogbookEntry, ToastType } from '@/lib/types';
@@ -21,6 +22,23 @@ interface LogbookTabProps {
     teamMembers: TeamMember[];
     showToast: (message: string, type: ToastType) => void;
     onLogbooksUpdate: (logbooks: LogbookEntry[]) => void;
+}
+
+const PHOTO_BUCKET = 'logbook_photos';
+
+// Public URLs look like <supabase>/storage/v1/object/public/logbook_photos/<key>.
+// Everything after the bucket segment is the object key we need in order to
+// delete the file again.
+function storageKeyFromPublicUrl(url: string | null | undefined): string | null {
+    if (!url) return null;
+    const marker = `/${PHOTO_BUCKET}/`;
+    const at = url.indexOf(marker);
+    if (at === -1) return null;
+    try {
+        return decodeURIComponent(url.slice(at + marker.length).split('?')[0]);
+    } catch {
+        return null;
+    }
 }
 
 export default function LogbookTab({
@@ -108,23 +126,33 @@ export default function LogbookTab({
             let photoUrl = null;
 
             if (newLogPhoto) {
-                const fileExt = newLogPhoto.name.split('.').pop() || 'jpg';
-                const imageCounter = logbooks.filter(l => l.photo_url).length + 1;
+                // The key must be unique. It used to be numbered by counting the
+                // group's existing photos, so deleting an entry made the next
+                // upload reuse a number, and two teammates uploading at once got
+                // the same one. upload() does not overwrite by default, so the
+                // second write failed with a message blaming the bucket setup.
+                const nameParts = newLogPhoto.name.split('.');
+                const fileExt = (nameParts.length > 1 ? nameParts.pop() : '')?.toLowerCase() || 'jpg';
                 const safeClassName = studentInfo.class_name.replace(/\s+/g, '_');
                 const safeAcademicYear = ACADEMIC_YEAR.replace(/\//g, '-'); // Replace / with - to prevent splitting into two folders
-                const fileName = `${safeAcademicYear}_${safeClassName}_Group${studentInfo.group_number}_Image${imageCounter}.${fileExt}`;
-                const filePath = `${safeAcademicYear}/${studentInfo.class_name}/Group_${studentInfo.group_number}/${fileName}`;
+                const stamp = new Date().toISOString().slice(0, 10);
+                const unique = (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`).slice(0, 8);
+                const fileName = `${safeAcademicYear}_${safeClassName}_Group${studentInfo.group_number}_${stamp}_${unique}.${fileExt}`;
+                const filePath = `${safeAcademicYear}/${safeClassName}/Group_${studentInfo.group_number}/${fileName}`;
 
                 const { error: uploadError } = await supabase.storage
-                    .from('logbook_photos')
+                    .from(PHOTO_BUCKET)
                     .upload(filePath, newLogPhoto);
-                    
-                if (uploadError) throw new Error('Failed to upload photo. Ensure the bucket "logbook_photos" exists and is public.');
-                
+
+                if (uploadError) {
+                    console.error('Photo upload failed:', uploadError);
+                    throw new Error(`Could not upload the photo: ${uploadError.message}`);
+                }
+
                 const { data: { publicUrl } } = supabase.storage
-                    .from('logbook_photos')
+                    .from(PHOTO_BUCKET)
                     .getPublicUrl(filePath);
-                    
+
                 photoUrl = publicUrl;
             }
 
@@ -165,19 +193,37 @@ export default function LogbookTab({
             message: 'Are you sure you want to delete this logbook entry? This action cannot be undone.',
             onConfirm: async () => {
                 setConfirmDialog(prev => ({ ...prev, open: false }));
-                const { error } = await supabase
+                const entry = logbooks.find(l => l.id === logId);
+                const { data, error } = await supabase
                     .from('logbooks')
                     .delete()
                     .eq('id', logId)
-                    .eq('student_email', userEmail!);
+                    .eq('student_email', userEmail!)
+                    .select('id');
 
                 if (error) {
                     console.error('Error deleting logbook:', error);
                     showToast('Failed to delete logbook entry.', 'error');
-                } else {
-                    onLogbooksUpdate(logbooks.filter(l => l.id !== logId));
-                    showToast('Logbook entry deleted.', 'success');
+                    return;
                 }
+
+                // RLS rejects a delete by matching nothing, not by erroring, so
+                // check that a row actually went before telling the student it did.
+                if (!data || data.length === 0) {
+                    showToast('That entry could not be deleted. Only the student who wrote it can remove it.', 'error');
+                    return;
+                }
+
+                // Drop the photo as well. Nothing else references it, and the
+                // bucket lives on the same disk as the rest of the server.
+                const key = storageKeyFromPublicUrl(entry?.photo_url);
+                if (key) {
+                    const { error: removeError } = await supabase.storage.from(PHOTO_BUCKET).remove([key]);
+                    if (removeError) console.error('Logbook photo left behind:', removeError.message);
+                }
+
+                onLogbooksUpdate(logbooks.filter(l => l.id !== logId));
+                showToast('Logbook entry deleted.', 'success');
             }
         });
     };
@@ -225,7 +271,7 @@ export default function LogbookTab({
                         <h3 className="text-lg font-semibold text-amber-500 flex items-center gap-2">
                             <PenSquare className="w-5 h-5" /> New Log Entry
                         </h3>
-                        <button
+                        <button aria-label="Close the new entry form"
                             type="button"
                             onClick={clearForm}
                             className="text-slate-500 hover:text-red-400 transition-colors"
@@ -236,10 +282,11 @@ export default function LogbookTab({
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                            <label className="block text-sm font-medium text-slate-400 mb-1">Date</label>
+                            <label htmlFor="logbook-tab-date" className="block text-sm font-medium text-slate-400 mb-1">Date</label>
                             <div className="relative">
                                 <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                                 <select
+                                    id="logbook-tab-date"
                                     required
                                     value={newLogDate}
                                     onChange={(e) => setNewLogDate(e.target.value)}
@@ -254,7 +301,7 @@ export default function LogbookTab({
                         </div>
                         
                         <div>
-                            <label className="block text-sm font-medium text-slate-400 mb-1">Photo (Optional)</label>
+                            <span className="block text-sm font-medium text-slate-400 mb-1">Photo (Optional)</span>
                             <div className="flex items-center gap-3">
                                 <label className="cursor-pointer bg-[#110e08] hover:bg-slate-800 border border-slate-800 text-slate-300 px-4 py-2 rounded-lg transition-colors flex items-center gap-2 text-sm font-medium">
                                     <Camera className="w-4 h-4 text-amber-500" />
@@ -270,7 +317,7 @@ export default function LogbookTab({
                                 {photoPreview && (
                                     <div className="relative">
                                         <img src={photoPreview} alt="Preview" className="h-10 w-10 object-cover rounded-md border border-slate-700" />
-                                        <button 
+                                        <button aria-label="Remove the selected photo" 
                                             type="button"
                                             onClick={() => {
                                                 setNewLogPhoto(null);
@@ -288,8 +335,9 @@ export default function LogbookTab({
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium text-slate-400 mb-1">Task</label>
+                        <label htmlFor="logbook-tab-task" className="block text-sm font-medium text-slate-400 mb-1">Task</label>
                         <textarea
+                            id="logbook-tab-task"
                             required
                             rows={2}
                             value={newLogTask}
@@ -301,8 +349,9 @@ export default function LogbookTab({
 
                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
                         <div>
-                            <label className="block text-sm font-medium text-slate-400 mb-1">Result</label>
+                            <span className="block text-sm font-medium text-slate-400 mb-1">Result</span>
                             <RichTextEditor
+                                ariaLabel="Result"
                                 value={newLogResult}
                                 onChange={setNewLogResult}
                                 placeholder="What was the outcome of your task?"
@@ -310,8 +359,9 @@ export default function LogbookTab({
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-slate-400 mb-1">Feedback</label>
+                            <span className="block text-sm font-medium text-slate-400 mb-1">Feedback</span>
                             <RichTextEditor
+                                ariaLabel="Feedback"
                                 value={newLogFeedback}
                                 onChange={setNewLogFeedback}
                                 placeholder="Any feedback, reflections, or challenges?"
@@ -405,9 +455,9 @@ export default function LogbookTab({
                                     </td>
                                     <td className="py-5 px-5 text-sm align-top">
                                         {log.photo_url ? (
-                                            <a href={log.photo_url} target="_blank" rel="noopener noreferrer" className="block relative group">
+                                            <a href={safeExternalUrl(log.photo_url) ?? undefined} target="_blank" rel="noopener noreferrer" className="block relative group">
                                                 <div className="w-16 h-16 rounded-lg overflow-hidden border border-slate-700 bg-slate-800 relative z-0">
-                                                    <img src={log.photo_url} alt="Log photo" className="w-full h-full object-cover transition-transform group-hover:scale-110" />
+                                                    <img src={safeExternalUrl(log.photo_url) ?? undefined} alt="Log photo" className="w-full h-full object-cover transition-transform group-hover:scale-110" />
                                                 </div>
                                             </a>
                                         ) : (
@@ -418,7 +468,7 @@ export default function LogbookTab({
                                     </td>
                                     <td className="py-5 px-2 text-sm align-top">
                                         {log.student_email === userEmail && (
-                                            <button
+                                            <button aria-label="Delete this logbook entry"
                                                 onClick={() => handleLogbookDelete(log.id)}
                                                 className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
                                                 title="Delete this entry"

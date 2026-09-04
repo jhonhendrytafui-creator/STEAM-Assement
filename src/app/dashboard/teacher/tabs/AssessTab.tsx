@@ -6,6 +6,7 @@ import {
     AlertTriangle, CheckCircle2, Clock, Sparkles, X
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
+import { safeExternalUrl } from '@/lib/url';
 import { ACADEMIC_YEAR } from '@/lib/constants';
 import type { AssessmentCategory, RubricDimension, RubricIndicator, ProjectData, ToastType } from '@/lib/types';
 import { parseAbstract, subjectLabel } from '@/lib/abstract';
@@ -414,8 +415,9 @@ export default function AssessTab({
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8 bg-[#1c1b14] border border-slate-800 rounded-xl p-4">
                     <div>
-                        <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Grade</label>
+                        <label htmlFor="assess-tab-grade" className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Grade</label>
                         <select
+                            id="assess-tab-grade"
                             value={assessGrade}
                             onChange={(e) => { setAssessGrade(e.target.value); setAssessClass(''); setAssessGroup(''); }}
                             className="w-full bg-[#1a1811] border border-slate-800 rounded-lg py-2.5 px-3 text-sm text-slate-200 focus:outline-none focus:border-amber-500"
@@ -425,8 +427,9 @@ export default function AssessTab({
                         </select>
                     </div>
                     <div>
-                        <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Class</label>
+                        <label htmlFor="assess-tab-class" className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Class</label>
                         <select
+                            id="assess-tab-class"
                             value={assessClass}
                             onChange={(e) => { setAssessClass(e.target.value); }}
                             disabled={!assessGrade}
@@ -437,8 +440,9 @@ export default function AssessTab({
                         </select>
                     </div>
                     <div>
-                        <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Assessment</label>
+                        <label htmlFor="assess-tab-assessment" className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Assessment</label>
                         <select
+                            id="assess-tab-assessment"
                             value={assessCategory}
                             onChange={(e) => setAssessCategory(e.target.value)}
                             className="w-full bg-[#1a1811] border border-slate-800 rounded-lg py-2.5 px-3 text-sm text-slate-200 focus:outline-none focus:border-amber-500"
@@ -561,19 +565,19 @@ export default function AssessTab({
 
                                                     <div className="mt-4 space-y-3">
                                                         {assessProject.google_doc_url && (
-                                                            <a href={assessProject.google_doc_url} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 w-full bg-blue-500/10 text-blue-400 border border-blue-500/20 py-2.5 px-4 rounded-lg hover:bg-blue-500/20 transition-colors text-sm font-semibold">
+                                                            <a href={safeExternalUrl(assessProject.google_doc_url) ?? undefined} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 w-full bg-blue-500/10 text-blue-400 border border-blue-500/20 py-2.5 px-4 rounded-lg hover:bg-blue-500/20 transition-colors text-sm font-semibold">
                                                                 <LinkIcon className="w-4 h-4" /> Open Google Doc
                                                             </a>
                                                         )}
 
                                                         {assessProject.presentation_url && (
-                                                            <a href={assessProject.presentation_url} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 w-full bg-purple-500/10 text-purple-400 border border-purple-500/20 py-2.5 px-4 rounded-lg hover:bg-purple-500/20 transition-colors text-sm font-semibold">
+                                                            <a href={safeExternalUrl(assessProject.presentation_url) ?? undefined} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 w-full bg-purple-500/10 text-purple-400 border border-purple-500/20 py-2.5 px-4 rounded-lg hover:bg-purple-500/20 transition-colors text-sm font-semibold">
                                                                 <Star className="w-4 h-4" /> View Canva Presentation
                                                             </a>
                                                         )}
 
                                                         {assessProject.additional_documents && assessProject.additional_documents.map((doc: any, i: number) => (
-                                                            <a key={i} href={doc.url} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 w-full bg-amber-500/10 text-amber-500 border border-amber-500/20 py-2.5 px-4 rounded-lg hover:bg-amber-500/20 transition-colors text-sm font-semibold">
+                                                            <a key={i} href={safeExternalUrl(doc.url) ?? undefined} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 w-full bg-amber-500/10 text-amber-500 border border-amber-500/20 py-2.5 px-4 rounded-lg hover:bg-amber-500/20 transition-colors text-sm font-semibold">
                                                                 <LinkIcon className="w-4 h-4" /> View {doc.type}
                                                             </a>
                                                         ))}
@@ -711,9 +715,13 @@ export default function AssessTab({
                                                                     {isChecklist ? (
                                                                         <button
                                                                             onClick={() => !isAssessmentLocked && setCurrentScores(prev => ({ ...prev, [ind.id]: prev[ind.id] === 1 ? 0 : 1 }))}
+                                                                            aria-pressed={currentScores[ind.id] === 1}
+                                                                            aria-label={`Mark as met: ${ind.description}`}
                                                                             className={`w-10 h-10 rounded-lg flex items-center justify-center border transition-all ${currentScores[ind.id] === 1 ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400' : 'bg-[#1a1811] border-slate-700 text-slate-600 hover:border-slate-500'}`}
                                                                         >
-                                                                            {currentScores[ind.id] === 1 ? <CheckCircle2 className="w-5 h-5" /> : <X className="w-5 h-5" />}
+                                                                            {currentScores[ind.id] === 1
+                                                                                ? <CheckCircle2 className="w-5 h-5" aria-hidden="true" />
+                                                                                : <X className="w-5 h-5" aria-hidden="true" />}
                                                                         </button>
                                                                     ) : (
                                                                         <div className="flex gap-1.5 p-1.5 bg-[#1a1811] border border-slate-800 rounded-lg">
@@ -766,8 +774,8 @@ export default function AssessTab({
                                                     <div className="space-y-5">
                                                         {!isNoStatusCat && (
                                                             <div>
-                                                                <label className="block text-sm font-semibold text-slate-300 mb-3">Project Status</label>
-                                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                                                <span className="block text-sm font-semibold text-slate-300 mb-3" id="assess-project-status">Project Status</span>
+                                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3" role="group" aria-labelledby="assess-project-status">
                                                                     {[
                                                                         { val: 'approved', label: 'Approved', color: 'emerald' },
                                                                         { val: 'revision', label: 'Needs Revision', color: 'amber' },
@@ -789,8 +797,9 @@ export default function AssessTab({
                                                             </div>
                                                         )}
                                                         <div>
-                                                            <label className="block text-sm font-semibold text-slate-300 mb-2">Teacher Comment / Feedback</label>
+                                                            <label htmlFor="assess-tab-teacher-comment-feedback" className="block text-sm font-semibold text-slate-300 mb-2">Teacher Comment / Feedback</label>
                                                             <textarea
+                                                                id="assess-tab-teacher-comment-feedback"
                                                                 value={assessComment}
                                                                 onChange={e => setAssessComment(e.target.value)}
                                                                 rows={12}

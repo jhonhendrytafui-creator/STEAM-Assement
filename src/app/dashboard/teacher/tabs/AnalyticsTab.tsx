@@ -136,8 +136,9 @@ export default function AnalyticsTab({ allStudents, allAssessmentScores, assessm
             {/* ANALYTICS FILTERS */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-[#1c1b14] border border-slate-800 rounded-xl p-4 shadow-xl">
                 <div>
-                    <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Grade Filter</label>
+                    <label htmlFor="analytics-tab-grade-filter" className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Grade Filter</label>
                     <select
+                        id="analytics-tab-grade-filter"
                         value={analyticsGrade}
                         onChange={(e) => { setAnalyticsGrade(e.target.value); setAnalyticsClass(''); }}
                         className="w-full bg-[#1a1811] border border-slate-800 rounded-lg py-2.5 px-3 text-sm text-slate-200 focus:outline-none focus:border-amber-500"
@@ -147,8 +148,9 @@ export default function AnalyticsTab({ allStudents, allAssessmentScores, assessm
                     </select>
                 </div>
                 <div>
-                    <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Class Filter</label>
+                    <label htmlFor="analytics-tab-class-filter" className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Class Filter</label>
                     <select
+                        id="analytics-tab-class-filter"
                         value={analyticsClass}
                         onChange={(e) => setAnalyticsClass(e.target.value)}
                         disabled={!analyticsGrade}
@@ -159,8 +161,9 @@ export default function AnalyticsTab({ allStudents, allAssessmentScores, assessm
                     </select>
                 </div>
                 <div>
-                    <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Assessment Filter (Charts 2 & 3)</label>
+                    <label htmlFor="analytics-tab-assessment-filter-charts-2-3" className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Assessment Filter (Charts 2 & 3)</label>
                     <select
+                        id="analytics-tab-assessment-filter-charts-2-3"
                         value={analyticsCategory}
                         onChange={(e) => setAnalyticsCategory(e.target.value)}
                         className="w-full bg-[#1a1811] border border-slate-800 rounded-lg py-2.5 px-3 text-sm text-slate-200 focus:outline-none focus:border-emerald-500"
