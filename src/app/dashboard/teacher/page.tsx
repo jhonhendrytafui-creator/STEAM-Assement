@@ -17,7 +17,7 @@ import { useToast } from '@/hooks/useToast';
 import ToastContainer from '@/components/ui/ToastContainer';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import Navbar from '@/components/ui/Navbar';
-import Sidebar from '@/components/ui/Sidebar';
+import Sidebar, { type SidebarSection } from '@/components/ui/Sidebar';
 import LoadingScreen from '@/components/ui/LoadingScreen';
 
 // Tab components
@@ -39,31 +39,54 @@ import AdminAccessTab from './tabs/admin/AdminAccessTab';
 import AdminProjectsTab from './tabs/admin/AdminProjectsTab';
 import AdminAuditTab from './tabs/admin/AdminAuditTab';
 
-// Tab definitions for sidebar
-const TEACHER_TABS = [
-    { id: 'overview', label: 'Project Overview', icon: LayoutDashboard },
-    { id: 'submissions', label: 'Project Submission', icon: FolderOpen },
-    { id: 'logbook', label: 'Project Logbook', icon: BookOpen },
-    { id: 'plagiarism', label: 'AI Plagiarism Check', icon: Search },
-    { id: 'assess', label: 'Project Assessment', icon: ClipboardCheck },
-    { id: 'classification', label: 'Project Classification', icon: BrainCircuit },
-    { id: 'peer', label: 'Peer Assessment Result', icon: Users },
-    { id: 'score', label: 'Student Score', icon: BarChart2 },
-    { id: 'voting', label: 'Voting and Leaderboard', icon: Star },
-    { id: 'analytics', label: 'Analytics', icon: TrendingUp },
-    { id: 'help', label: 'Help Center', icon: HelpCircle },
+// Sidebar sections. Eleven teacher tabs plus four admin ones is too long for a
+// flat list — grouping gives the menu a shape and lets the admin items drop the
+// "Admin ·" prefix they were carrying to stand apart.
+const TEACHER_SECTIONS: SidebarSection[] = [
+    {
+        label: 'Review',
+        tabs: [
+            { id: 'overview', label: 'Project Overview', icon: LayoutDashboard },
+            { id: 'submissions', label: 'Project Submission', icon: FolderOpen },
+            { id: 'logbook', label: 'Project Logbook', icon: BookOpen },
+            { id: 'plagiarism', label: 'AI Plagiarism Check', icon: Search },
+        ],
+    },
+    {
+        label: 'Assess',
+        tabs: [
+            { id: 'assess', label: 'Project Assessment', icon: ClipboardCheck },
+            { id: 'classification', label: 'Project Classification', icon: BrainCircuit },
+            { id: 'peer', label: 'Peer Assessment Result', icon: Users },
+        ],
+    },
+    {
+        label: 'Report',
+        tabs: [
+            { id: 'score', label: 'Student Score', icon: BarChart2 },
+            { id: 'voting', label: 'Voting and Leaderboard', icon: Star },
+            { id: 'analytics', label: 'Analytics', icon: TrendingUp },
+        ],
+    },
+    {
+        label: '',
+        tabs: [{ id: 'help', label: 'Help Center', icon: HelpCircle }],
+    },
 ];
 
-// Extra tabs shown only to teachers flagged as admins in profiles.is_admin.
+// Shown only to teachers flagged as admins in profiles.is_admin.
 // See sql/add_admin_role.sql for how the flag is granted.
-const ADMIN_TABS = [
-    { id: 'admin-students', label: 'Admin · Students', icon: Users },
-    { id: 'admin-access', label: 'Admin · Teacher Access', icon: ShieldCheck },
-    { id: 'admin-projects', label: 'Admin · Project Data', icon: DatabaseZap },
-    { id: 'admin-audit', label: 'Admin · Activity Log', icon: ScrollText },
-];
+const ADMIN_SECTION: SidebarSection = {
+    label: 'Admin',
+    tabs: [
+        { id: 'admin-students', label: 'Students & Groups', icon: Users },
+        { id: 'admin-access', label: 'Teacher Access', icon: ShieldCheck },
+        { id: 'admin-projects', label: 'Project Data', icon: DatabaseZap },
+        { id: 'admin-audit', label: 'Activity Log', icon: ScrollText },
+    ],
+};
 
-const ADMIN_TAB_IDS = new Set(ADMIN_TABS.map(t => t.id));
+const ADMIN_TAB_IDS = new Set(ADMIN_SECTION.tabs.map(t => t.id));
 
 export default function TeacherDashboardPage() {
     const [activeTab, setActiveTab] = useState('overview');
@@ -256,7 +279,7 @@ export default function TeacherDashboardPage() {
 
             <main className="w-full px-3 sm:px-6 lg:px-8 py-4 sm:py-6 flex flex-col md:flex-row gap-4 md:gap-6 lg:gap-8 md:h-[calc(100dvh-65px)] md:overflow-hidden">
                 <Sidebar
-                    tabs={isAdmin ? [...TEACHER_TABS, ...ADMIN_TABS] : TEACHER_TABS}
+                    sections={isAdmin ? [...TEACHER_SECTIONS, ADMIN_SECTION] : TEACHER_SECTIONS}
                     activeTab={activeTab}
                     onTabChange={setActiveTab}
                 />

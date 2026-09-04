@@ -90,6 +90,16 @@ export default function ScoreTab({ allStudents, assessmentCategories, rubricDime
         setIsFetchingScores(false);
     };
 
+    // Escape one CSV field: quote it, double any inner quotes, and defuse
+    // spreadsheet formulas. Students choose their own project titles, so a
+    // title starting with = + - or @ would otherwise execute in Excel when a
+    // teacher opens the export.
+    const csvCell = (value: unknown): string => {
+        const text = value === null || value === undefined ? '' : String(value);
+        const safe = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
+        return `"${safe.replace(/"/g, '""')}"`;
+    };
+
     const downloadScoresCSV = () => {
         if (classScores.length === 0) return;
 
@@ -99,28 +109,30 @@ export default function ScoreTab({ allStudents, assessmentCategories, rubricDime
             if (cat) headers.push(cat.name);
         });
 
-        const csvRows = [headers.join(',')];
+        const csvRows = [headers.map(csvCell).join(',')];
 
         classScores.forEach(row => {
             const rowData = [
-                `"${row.student_name}"`,
-                row.group_number,
-                `"${row.project_title.replace(/"/g, '""')}"`
+                csvCell(row.student_name),
+                csvCell(row.group_number),
+                csvCell(row.project_title),
             ];
 
             scoreCategories.forEach(catId => {
                 const assessment = row.assessments[catId];
-                if (assessment.isAssessed) {
-                    rowData.push(`${assessment.totalScore}/${assessment.totalMax} (${assessment.percentage}%)`);
-                } else {
-                    rowData.push('-');
-                }
+                rowData.push(csvCell(
+                    assessment.isAssessed
+                        ? `${assessment.totalScore}/${assessment.totalMax} (${assessment.percentage}%)`
+                        : '-'
+                ));
             });
 
             csvRows.push(rowData.join(','));
         });
 
-        const csvString = csvRows.join('\n');
+        // CRLF and a UTF-8 BOM so Excel on Windows opens it with the right
+        // encoding instead of mangling accented names.
+        const csvString = '\uFEFF' + csvRows.join('\r\n');
         const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
@@ -129,6 +141,7 @@ export default function ScoreTab({ allStudents, assessmentCategories, rubricDime
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        URL.revokeObjectURL(url);
     };
 
     return (
