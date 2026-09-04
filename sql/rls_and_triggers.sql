@@ -20,7 +20,16 @@ ALTER TABLE rubric_dimensions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rubric_indicators ENABLE ROW LEVEL SECURITY;
 ALTER TABLE assessment_scores ENABLE ROW LEVEL SECURITY;
 
--- Drop existing policies to ensure clean state
+-- Drop existing policies to ensure clean state.
+--
+-- SCOPED ON PURPOSE. This loop used to drop every policy in the public schema
+-- while only rebuilding the ten tables below, so re-running the file silently
+-- stripped the policies from peer_assessments, project_votes,
+-- ai_precheck_usage, project_teacher_recommendations, admin_audit_log and
+-- app_settings. RLS stayed enabled on those tables, so with zero policies every
+-- read and write was denied and the features broke with no obvious cause.
+--
+-- If you add a table to this file, add it to this list too.
 DO $$ 
 DECLARE
     pol record;
@@ -29,6 +38,11 @@ BEGIN
         SELECT policyname, tablename 
         FROM pg_policies 
         WHERE schemaname = 'public'
+          AND tablename IN (
+              'profiles', 'teacher_emails', 'student_master', 'themes', 'projects',
+              'logbooks', 'assessment_categories', 'rubric_dimensions',
+              'rubric_indicators', 'assessment_scores'
+          )
     LOOP
         EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', pol.policyname, pol.tablename);
     END LOOP;

@@ -311,17 +311,7 @@ export default function AssessTab({
             showToast('Please select an approval status before saving.', 'warning');
             return;
         }
-        setIsSubmittingScore(true);
-
         const groupNum = parseInt(assessGroup);
-
-        await supabase
-            .from('assessment_scores')
-            .delete()
-            .eq('class_name', assessClass)
-            .eq('group_number', groupNum)
-            .eq('category_id', assessCategory)
-            .eq('academic_year', ACADEMIC_YEAR);
 
         const scoreEntries = Object.entries(currentScores).map(([indicatorId, score]) => ({
             class_name: assessClass,
@@ -330,14 +320,45 @@ export default function AssessTab({
             category_id: assessCategory,
             indicator_id: indicatorId,
             score: score,
-            teacher_comment: indicatorComments[indicatorId] || assessComment || null
+            teacher_comment: indicatorComments[indicatorId] || assessComment || null,
+            // Record who graded this, so a disputed mark can be traced back.
+            assessed_by: teacherProfile.id,
+            assessed_at: new Date().toISOString(),
         }));
 
-        if (scoreEntries.length > 0) {
-            const { error } = await supabase.from('assessment_scores').insert(scoreEntries);
+        // Refuse to save an empty rubric. This check used to come after the
+        // delete, so clicking Save on a blank form wiped a completed assessment
+        // while showing only "No scores provided".
+        if (scoreEntries.length === 0) {
+            showToast('No scores provided. Please fill out the rubric.', 'warning');
+            return;
+        }
+
+        setIsSubmittingScore(true);
+
+        {
+            // Upsert on the (class_name, group_number, academic_year, indicator_id)
+            // unique constraint. The old code deleted every existing score first
+            // and inserted afterwards with no transaction between the two, so a
+            // failed insert left the teacher with nothing at all.
+            const { error } = await supabase
+                .from('assessment_scores')
+                .upsert(scoreEntries, { onConflict: 'class_name,group_number,academic_year,indicator_id' });
             if (error) {
                 showToast('Failed to save assessment: ' + error.message, 'error');
             } else {
+                // Only once the new scores are safely stored, drop any indicator
+                // rows left over from a previous, longer version of this rubric.
+                const savedIndicatorIds = scoreEntries.map(e => e.indicator_id);
+                await supabase
+                    .from('assessment_scores')
+                    .delete()
+                    .eq('class_name', assessClass)
+                    .eq('group_number', groupNum)
+                    .eq('category_id', assessCategory)
+                    .eq('academic_year', ACADEMIC_YEAR)
+                    .not('indicator_id', 'in', `(${savedIndicatorIds.join(',')})`);
+
                 showToast('Assessment saved successfully!', 'success');
                 setIsAssessmentLocked(true);
                 setAssessedGroupsMap(prev => ({ ...prev, [groupNum]: true }));
@@ -368,8 +389,6 @@ export default function AssessTab({
                     }
                 }
             }
-        } else {
-            showToast('No scores provided. Please fill out the rubric.', 'warning');
         }
         setIsSubmittingScore(false);
     };

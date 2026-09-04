@@ -6,6 +6,7 @@ import {
     Calendar, Save, X, AlertTriangle, Camera, Image as ImageIcon
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
+import { sanitizeRichText } from '@/lib/sanitize';
 import { ACADEMIC_YEAR } from '@/lib/constants';
 import type { ProjectData, StudentInfo, TeamMember, LogbookEntry, ToastType } from '@/lib/types';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
@@ -389,14 +390,14 @@ export default function LogbookTab({
                                     <td className="py-5 px-5 text-sm text-slate-300 align-top">
                                         <div 
                                             className="prose prose-sm prose-invert max-w-none text-slate-300"
-                                            dangerouslySetInnerHTML={{ __html: log.result }}
+                                            dangerouslySetInnerHTML={{ __html: sanitizeRichText(log.result) }}
                                         />
                                     </td>
                                     <td className="py-5 px-5 text-sm align-top">
                                         {log.feedback && log.feedback !== '<p></p>' ? (
                                             <div 
                                                 className="prose prose-sm prose-invert max-w-none text-amber-100/90"
-                                                dangerouslySetInnerHTML={{ __html: log.feedback }}
+                                                dangerouslySetInnerHTML={{ __html: sanitizeRichText(log.feedback) }}
                                             />
                                         ) : (
                                             <span className="text-slate-600 italic">No feedback yet</span>

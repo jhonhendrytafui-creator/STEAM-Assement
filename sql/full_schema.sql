@@ -20,6 +20,9 @@
 --  13. Seed data: assessment categories, rubric dimensions/indicators, themes
 --
 -- Generated: 2026-04-06
+--
+-- RUN ORDER: this file first, then the migrations listed in sql/README.md.
+-- On its own it does NOT include the admin role or the security hardening.
 -- ================================================================
 
 
@@ -241,14 +244,47 @@ CREATE POLICY "Authenticated users can read projects"
 ON projects FOR SELECT TO authenticated
 USING (true);
 
-CREATE POLICY "Authenticated users can insert projects"
+-- Students may only create/update projects for the group they are rostered in.
+-- These were previously WITH CHECK (true), which let any signed-in student
+-- create or edit any group's project.
+CREATE POLICY "Students can create projects for their group"
 ON projects FOR INSERT TO authenticated
-WITH CHECK (true);
+WITH CHECK (
+    EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.role = 'teacher')
+    OR EXISTS (
+        SELECT 1 FROM profiles p
+        JOIN student_master sm ON sm.email = p.email
+        WHERE p.id = auth.uid()
+          AND sm.class_name = projects.class_name
+          AND sm.group_number = projects.group_number
+          AND sm.academic_year = projects.academic_year
+    )
+);
 
-CREATE POLICY "Students can update projects"
+CREATE POLICY "Students can update their group's projects"
 ON projects FOR UPDATE TO authenticated
-USING (true)
-WITH CHECK (true);
+USING (
+    EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.role = 'teacher')
+    OR EXISTS (
+        SELECT 1 FROM profiles p
+        JOIN student_master sm ON sm.email = p.email
+        WHERE p.id = auth.uid()
+          AND sm.class_name = projects.class_name
+          AND sm.group_number = projects.group_number
+          AND sm.academic_year = projects.academic_year
+    )
+)
+WITH CHECK (
+    EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.role = 'teacher')
+    OR EXISTS (
+        SELECT 1 FROM profiles p
+        JOIN student_master sm ON sm.email = p.email
+        WHERE p.id = auth.uid()
+          AND sm.class_name = projects.class_name
+          AND sm.group_number = projects.group_number
+          AND sm.academic_year = projects.academic_year
+    )
+);
 
 CREATE POLICY "Teachers can manage projects"
 ON projects FOR ALL TO authenticated

@@ -9,6 +9,7 @@ import {
     BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell
 } from 'recharts';
 import { supabase } from '@/lib/supabase/client';
+import { sanitizeRichText } from '@/lib/sanitize';
 import { ACADEMIC_YEAR } from '@/lib/constants';
 import type { ToastType } from '@/lib/types';
 
@@ -499,10 +500,10 @@ export default function LogbookTab({ allStudents, showToast }: LogbookTabProps) 
                                                             <div className="whitespace-pre-wrap">{log.task}</div>
                                                         </td>
                                                         <td className="p-4 text-slate-300 align-top">
-                                                            <div className="prose prose-sm prose-invert max-w-none text-slate-300" dangerouslySetInnerHTML={{ __html: log.result }} />
+                                                            <div className="prose prose-sm prose-invert max-w-none text-slate-300" dangerouslySetInnerHTML={{ __html: sanitizeRichText(log.result) }} />
                                                         </td>
                                                         <td className="p-4 text-slate-300 align-top">
-                                                            <div className="prose prose-sm prose-invert max-w-none text-amber-100/90" dangerouslySetInnerHTML={{ __html: log.feedback || '<span class="text-slate-600 italic">No feedback</span>' }} />
+                                                            <div className="prose prose-sm prose-invert max-w-none text-amber-100/90" dangerouslySetInnerHTML={{ __html: sanitizeRichText(log.feedback) || '<span class="text-slate-600 italic">No feedback</span>' }} />
                                                         </td>
                                                         <td className="p-4 align-top">
                                                             {log.photo_url ? (
