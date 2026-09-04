@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { requireTeacher } from '@/lib/api-auth';
 import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 
 // Initialize the Gemini client
@@ -58,6 +59,9 @@ function buildScoringLogic(indicators: any[], maxScale: number = 4) {
 
 export async function POST(req: Request) {
     try {
+        const auth = await requireTeacher(req);
+        if ('response' in auth) return auth.response;
+
         const body = await req.json();
         const { project, categoryName, indicators, googleDocUrl, assessLogbooks } = body;
 

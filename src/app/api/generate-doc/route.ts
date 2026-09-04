@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
+import { requireUser } from '@/lib/api-auth';
 
 export async function POST(request: Request) {
     try {
+        const auth = await requireUser(request);
+        if ('response' in auth) return auth.response;
+
         const { className, groupNumber, projectTitle, teamMembers } = await request.json();
 
         if (!className || !groupNumber || !projectTitle) {

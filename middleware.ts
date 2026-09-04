@@ -42,6 +42,17 @@ export async function middleware(request: NextRequest) {
     console.error('Middleware getSession error:', e)
   }
 
+  const isApiRoute = request.nextUrl.pathname.startsWith('/api')
+
+  // API callers get JSON, not a redirect — a 302 to the login page would reach
+  // fetch() as an HTML body and surface to the user as a JSON parse error.
+  if (!session && isApiRoute) {
+    return NextResponse.json(
+      { error: 'You must be signed in to use this feature.' },
+      { status: 401 }
+    )
+  }
+
   // If no session and trying to access dashboard, redirect to login
   if (!session && request.nextUrl.pathname.startsWith('/dashboard')) {
     const url = request.nextUrl.clone()
@@ -49,8 +60,10 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // Role-based route protection
-  if (session) {
+  // Role-based route protection. Only page routes are redirected by role;
+  // API routes do their own per-route checks in src/lib/api-auth.ts, which can
+  // distinguish student / teacher / admin properly.
+  if (session && !isApiRoute) {
     try {
       const { data: profile } = await supabase
         .from('profiles')
@@ -84,5 +97,9 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*'],
+  // /api is included so anonymous calls are rejected before a route handler
+  // starts spending Gemini or Google Docs quota. Each handler still checks the
+  // caller itself via src/lib/api-auth.ts — this is defence in depth, not the
+  // only gate.
+  matcher: ['/dashboard/:path*', '/api/:path*'],
 }

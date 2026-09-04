@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { requireTeacher } from '@/lib/api-auth';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export const maxDuration = 60;
@@ -71,6 +72,9 @@ Kesepuluh pertanyaan harus langsung menyasar dimensi utama presentasi STEAM. Bag
 
 export async function POST(req: Request) {
     try {
+        const auth = await requireTeacher(req);
+        if ('response' in auth) return auth.response;
+
         const body = await req.json();
         const { projectData, language } = body;
         const lang: 'en' | 'id' = language === 'id' ? 'id' : 'en';

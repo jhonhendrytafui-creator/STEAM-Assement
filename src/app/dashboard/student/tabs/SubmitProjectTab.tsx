@@ -230,24 +230,9 @@ export default function SubmitProjectTab({
         onStartPrecheck();
 
         try {
-            // Check quota first
-            const { data: quotaData } = await supabase
-                .from('ai_precheck_usage')
-                .select('usage_count')
-                .eq('class_name', studentInfo.class_name)
-                .eq('group_number', studentInfo.group_number)
-                .eq('academic_year', ACADEMIC_YEAR)
-                .single();
-
-            const currentUsage = quotaData ? quotaData.usage_count : 0;
-
-            if (currentUsage >= MAX_PRECHECKS) {
-                setPrecheckUsage(currentUsage);
-                showToast(`Your group has reached the maximum of ${MAX_PRECHECKS} AI Pre-checks.`, 'warning');
-                onPrecheckError();
-                return;
-            }
-
+            // The quota is counted and enforced by /api/precheck, which derives
+            // the group from the signed-in student's own roster row. The browser
+            // only displays the number the server reports back.
             const res = await fetch('/api/precheck', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -260,27 +245,12 @@ export default function SubmitProjectTab({
 
             const data = await res.json();
 
-            if (!res.ok) {
-                throw new Error(data.error || 'Failed to analyze project');
+            if (typeof data.usageCount === 'number') {
+                setPrecheckUsage(data.usageCount);
             }
 
-            // Update quota on success
-            if (quotaData) {
-                await supabase.from('ai_precheck_usage')
-                    .update({ usage_count: currentUsage + 1 })
-                    .eq('class_name', studentInfo.class_name)
-                    .eq('group_number', studentInfo.group_number)
-                    .eq('academic_year', ACADEMIC_YEAR);
-                setPrecheckUsage(currentUsage + 1);
-            } else {
-                await supabase.from('ai_precheck_usage')
-                    .insert({
-                        class_name: studentInfo.class_name,
-                        group_number: studentInfo.group_number,
-                        academic_year: ACADEMIC_YEAR,
-                        usage_count: 1
-                    });
-                setPrecheckUsage(1);
+            if (!res.ok) {
+                throw new Error(data.error || 'Failed to analyze project');
             }
 
             onEndPrecheck(data.result);

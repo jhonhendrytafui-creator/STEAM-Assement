@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
+import { GoogleGenerativeAI, SchemaType, type GenerationConfig, type Schema } from '@google/generative-ai';
 import { createClient } from '@supabase/supabase-js';
+import { requireTeacher } from '@/lib/api-auth';
 
 export const maxDuration = 60;
 
@@ -13,11 +14,22 @@ const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
 export async function POST(req: Request) {
     try {
+        // Establish who is calling BEFORE reaching for the service role key.
+        // That key bypasses every RLS policy, so an unverified caller would be
+        // able to read any project and the entire teacher directory.
+        const auth = await requireTeacher(req);
+        if ('response' in auth) return auth.response;
+
         const body = await req.json();
         const { projectId } = body;
 
-        // Build a Supabase client that can bypass RLS.
-        // Priority: service role key (full bypass) → user's JWT token (RLS as teacher) → anon key (likely blocked)
+        if (!projectId) {
+            return NextResponse.json({ error: 'Missing projectId' }, { status: 400 });
+        }
+
+        // Now that the caller is a verified teacher, use the elevated client so
+        // the classification can read every teacher profile. Falls back to the
+        // caller's own token when no service role key is configured.
         const authHeader = req.headers.get('Authorization');
         const userToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
         const supabase = serviceRoleKey
@@ -25,10 +37,6 @@ export async function POST(req: Request) {
             : userToken
                 ? createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: `Bearer ${userToken}` } } })
                 : createClient(supabaseUrl, anonKey);
-
-        if (!projectId) {
-            return NextResponse.json({ error: 'Missing projectId' }, { status: 400 });
-        }
 
         // 1. Fetch project data
         const { data: project, error: projectError } = await supabase
@@ -131,7 +139,7 @@ RULES:
 - Be precise and STEAM-discipline-aware in your reasoning.
 `;
 
-        const responseSchemaProperties: Record<string, any> = {
+        const responseSchemaProperties: Record<string, Schema> = {
             recommendations: {
                 type: SchemaType.ARRAY,
                 description: "Array of exactly 3 teacher recommendations",
@@ -148,7 +156,9 @@ RULES:
             }
         };
 
-        const generationConfig = {
+        // Annotated so SchemaType.OBJECT narrows to the literal member type the
+        // SDK expects, instead of widening to the whole SchemaType enum.
+        const generationConfig: GenerationConfig = {
             temperature: 0.2,
             responseMimeType: "application/json",
             responseSchema: {

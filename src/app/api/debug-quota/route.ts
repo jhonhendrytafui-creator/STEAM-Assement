@@ -1,12 +1,19 @@
 import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { google } from 'googleapis';
+import { requireAdmin } from '@/lib/api-auth';
 
 /**
  * Diagnostic endpoint to check the status of all API quotas.
- * Hit GET /api/debug-quota to see which services are working and which are blocked.
+ *
+ * Admins only. The response exposes the service account address, the Google
+ * project id and the files it owns, and every call spends real Gemini quota,
+ * so this must never be reachable anonymously.
  */
-export async function GET() {
+export async function GET(req: Request) {
+    const auth = await requireAdmin(req);
+    if ('response' in auth) return auth.response;
+
     const results: Record<string, any> = {
         timestamp: new Date().toISOString(),
         checks: {},

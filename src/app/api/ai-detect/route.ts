@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { requireTeacher } from '@/lib/api-auth';
 import { GoogleGenerativeAI, SchemaType, Schema } from '@google/generative-ai';
 
 export const maxDuration = 60;
@@ -33,6 +34,9 @@ async function fetchGoogleDocText(url: string): Promise<string> {
 
 export async function POST(req: Request) {
     try {
+        const auth = await requireTeacher(req);
+        if ('response' in auth) return auth.response;
+
         const body = await req.json();
         const { googleDocUrl, abstractText } = body;
 

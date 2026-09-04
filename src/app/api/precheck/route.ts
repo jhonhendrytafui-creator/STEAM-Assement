@@ -1,7 +1,14 @@
 import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { createClient } from '@supabase/supabase-js';
+import { requireUser } from '@/lib/api-auth';
+import { ACADEMIC_YEAR } from '@/lib/constants';
 
 export const maxDuration = 60;
+
+// Kept in sync with MAX_PRECHECKS in SubmitProjectTab. The limit is enforced
+// here, on the server, because the browser copy can be edited by the student.
+const MAX_PRECHECKS = 5;
 
 // Subject constants for mapping IDs to readable names
 const SUBJECTS = [
@@ -43,6 +50,9 @@ const SUBJECTS = [
 
 export async function POST(req: Request) {
     try {
+        const auth = await requireUser(req);
+        if ('response' in auth) return auth.response;
+
         const { problem, solution, keyConcepts } = await req.json();
 
         if (!problem || !solution) {
@@ -51,6 +61,83 @@ export async function POST(req: Request) {
                 { status: 400 }
             );
         }
+
+        // ── Quota: derived from the caller's own roster row ──
+        // The group is never taken from the request body, so a student cannot
+        // spend another group's allowance or claim a fresh one.
+        const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+        if (!serviceKey) {
+            console.error('SUPABASE_SERVICE_ROLE_KEY is missing — cannot enforce the pre-check quota.');
+            return NextResponse.json(
+                { error: 'AI Pre-Check is temporarily unavailable. Please tell your teacher.' },
+                { status: 503 }
+            );
+        }
+
+        const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceKey);
+
+        const { data: roster } = await admin
+            .from('student_master')
+            .select('class_name, group_number')
+            .eq('email', auth.user.email)
+            .eq('academic_year', ACADEMIC_YEAR)
+            .single();
+
+        if (!roster) {
+            return NextResponse.json(
+                { error: `You are not registered in a group for ${ACADEMIC_YEAR}. Please contact your teacher.` },
+                { status: 403 }
+            );
+        }
+
+        const quotaKey = {
+            class_name: roster.class_name,
+            group_number: roster.group_number,
+            academic_year: ACADEMIC_YEAR,
+        };
+
+        const { data: quotaRow } = await admin
+            .from('ai_precheck_usage')
+            .select('usage_count')
+            .match(quotaKey)
+            .maybeSingle();
+
+        const usedSoFar = quotaRow?.usage_count ?? 0;
+        if (usedSoFar >= MAX_PRECHECKS) {
+            return NextResponse.json(
+                {
+                    error: `Your group has used all ${MAX_PRECHECKS} AI Pre-checks for this year.`,
+                    usageCount: usedSoFar,
+                },
+                { status: 429 }
+            );
+        }
+
+        // Reserve the slot before calling Gemini. Two students clicking at the
+        // same moment then consume two slots instead of racing to one.
+        const { error: reserveError } = await admin
+            .from('ai_precheck_usage')
+            .upsert(
+                { ...quotaKey, usage_count: usedSoFar + 1 },
+                { onConflict: 'class_name,group_number,academic_year' }
+            );
+
+        if (reserveError) {
+            console.error('Failed to reserve pre-check quota:', reserveError.message);
+            return NextResponse.json(
+                { error: 'Could not start the AI Pre-Check. Please try again.' },
+                { status: 500 }
+            );
+        }
+
+        // If generation fails below, hand the slot back so a failed attempt
+        // does not cost the group one of their five.
+        const refundQuota = async () => {
+            await admin
+                .from('ai_precheck_usage')
+                .update({ usage_count: usedSoFar })
+                .match(quotaKey);
+        };
 
         const apiKey = process.env.GEMINI_API_KEY;
         if (!apiKey) {
@@ -122,6 +209,7 @@ Provide 1-2 clear, actionable next steps for them to take before submitting thei
         ];
         const maxRetries = fallbackModels.length;
 
+        try {
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
             const currentModelName = fallbackModels[attempt - 1];
             const model = genAI.getGenerativeModel({ model: currentModelName });
@@ -148,8 +236,20 @@ Provide 1-2 clear, actionable next steps for them to take before submitting thei
                 await new Promise(res => setTimeout(res, attempt * 2000));
             }
         }
+        } catch (generationError) {
+            await refundQuota();
+            throw generationError;
+        }
 
-        return NextResponse.json({ result: responseText });
+        if (!responseText.trim()) {
+            await refundQuota();
+            return NextResponse.json(
+                { error: 'The AI returned an empty response. Please try again.' },
+                { status: 502 }
+            );
+        }
+
+        return NextResponse.json({ result: responseText, usageCount: usedSoFar + 1 });
 
     } catch (error: any) {
         console.error('Error generating pre-check:', error);
