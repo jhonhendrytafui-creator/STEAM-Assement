@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { SUBJECTS, ACADEMIC_YEAR } from '@/lib/constants';
-import type { ProjectData, StudentInfo, Theme, AssessmentCategory, ToastType } from '@/lib/types';
+import type { ProjectData, StudentInfo, Theme, ToastType } from '@/lib/types';
 
 // Maximum AI pre-checks allowed per group per academic year
 const MAX_PRECHECKS = 5;
@@ -39,7 +39,6 @@ interface SubmitProjectTabProps {
     userEmail: string | null;
     themesList: Theme[];
     projectHistory: ProjectData[];
-    assessmentCategories: AssessmentCategory[];
     showToast: (message: string, type: ToastType) => void;
     onSubmitSuccess: (newProject: ProjectData) => void;
     onStartPrecheck: () => void;
@@ -55,7 +54,6 @@ export default function SubmitProjectTab({
     userEmail,
     themesList,
     projectHistory,
-    assessmentCategories,
     showToast,
     onSubmitSuccess,
     onStartPrecheck,
@@ -343,19 +341,11 @@ export default function SubmitProjectTab({
         } else if (data) {
             showToast(nextIteration > 1 ? 'Project resubmitted successfully!' : 'Project submitted successfully!', 'success');
 
-            // Reset C1 assessment scores for this group so the new iteration gets a fresh start
-            if (nextIteration > 1) {
-                const c1Category = assessmentCategories.find(c => c.code === 'C1');
-                if (c1Category) {
-                    await supabase
-                        .from('assessment_scores')
-                        .delete()
-                        .eq('class_name', studentInfo.class_name)
-                        .eq('group_number', studentInfo.group_number)
-                        .eq('category_id', c1Category.id)
-                        .eq('academic_year', ACADEMIC_YEAR);
-                }
-            }
+            // C1 scores are reset by the reset_c1_on_resubmission trigger
+            // (sql/fix_silent_rls_failures.sql). It used to be done here, but
+            // students hold no DELETE policy on assessment_scores, so PostgREST
+            // matched zero rows and returned success — the previous iteration's
+            // C1 marks stayed attached to the group and nothing reported it.
 
             // Reset local form and drop the saved draft — it is submitted now
             resetForm();

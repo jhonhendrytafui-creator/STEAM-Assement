@@ -192,12 +192,24 @@ export default function PeerAssessmentTab({
 
         let err;
         if (existing) {
-            // Update
-            const { error } = await supabase
+            // .select() so we can see how many rows were actually written.
+            // An UPDATE that RLS rejects is not an error in PostgREST: it
+            // matches nothing and returns 200 with an empty array. Without this
+            // check, editing an already-submitted assessment said "saved" and
+            // changed nothing. sql/fix_silent_rls_failures.sql adds the missing
+            // UPDATE policy; this catches it if that script has not been run.
+            const { data, error } = await supabase
                 .from('peer_assessments')
                 .update(payload)
-                .eq('id', existing.id);
+                .eq('id', existing.id)
+                .select('id');
             err = error;
+            if (!error && (!data || data.length === 0)) {
+                err = {
+                    message:
+                        'Your change was not saved. Please tell your teacher — the database is missing the permission that lets you edit a submitted assessment.',
+                };
+            }
         } else {
             // Insert
             const { error } = await supabase
@@ -210,7 +222,7 @@ export default function PeerAssessmentTab({
 
         if (err) {
             console.error(err);
-            showToast('Failed to save assessment.', 'error');
+            showToast(err.message || 'Failed to save assessment.', 'error');
         } else {
             showToast('Assessment saved successfully.', 'success');
             if (draftKey) {

@@ -324,7 +324,6 @@ export default function StudentDashboardPage() {
                                 userEmail={userEmail}
                                 themesList={themesList}
                                 projectHistory={projectHistory}
-                                assessmentCategories={assessmentCategories}
                                 showToast={showToast}
                                 onSubmitSuccess={handleSubmitSuccess}
                                 onStartPrecheck={handleStartPrecheck}

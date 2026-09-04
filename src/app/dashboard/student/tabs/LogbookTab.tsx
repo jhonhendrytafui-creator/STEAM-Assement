@@ -23,6 +23,23 @@ interface LogbookTabProps {
     onLogbooksUpdate: (logbooks: LogbookEntry[]) => void;
 }
 
+const PHOTO_BUCKET = 'logbook_photos';
+
+// Public URLs look like <supabase>/storage/v1/object/public/logbook_photos/<key>.
+// Everything after the bucket segment is the object key we need in order to
+// delete the file again.
+function storageKeyFromPublicUrl(url: string | null | undefined): string | null {
+    if (!url) return null;
+    const marker = `/${PHOTO_BUCKET}/`;
+    const at = url.indexOf(marker);
+    if (at === -1) return null;
+    try {
+        return decodeURIComponent(url.slice(at + marker.length).split('?')[0]);
+    } catch {
+        return null;
+    }
+}
+
 export default function LogbookTab({
     projectData,
     studentInfo,
@@ -108,23 +125,33 @@ export default function LogbookTab({
             let photoUrl = null;
 
             if (newLogPhoto) {
-                const fileExt = newLogPhoto.name.split('.').pop() || 'jpg';
-                const imageCounter = logbooks.filter(l => l.photo_url).length + 1;
+                // The key must be unique. It used to be numbered by counting the
+                // group's existing photos, so deleting an entry made the next
+                // upload reuse a number, and two teammates uploading at once got
+                // the same one. upload() does not overwrite by default, so the
+                // second write failed with a message blaming the bucket setup.
+                const nameParts = newLogPhoto.name.split('.');
+                const fileExt = (nameParts.length > 1 ? nameParts.pop() : '')?.toLowerCase() || 'jpg';
                 const safeClassName = studentInfo.class_name.replace(/\s+/g, '_');
                 const safeAcademicYear = ACADEMIC_YEAR.replace(/\//g, '-'); // Replace / with - to prevent splitting into two folders
-                const fileName = `${safeAcademicYear}_${safeClassName}_Group${studentInfo.group_number}_Image${imageCounter}.${fileExt}`;
-                const filePath = `${safeAcademicYear}/${studentInfo.class_name}/Group_${studentInfo.group_number}/${fileName}`;
+                const stamp = new Date().toISOString().slice(0, 10);
+                const unique = (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`).slice(0, 8);
+                const fileName = `${safeAcademicYear}_${safeClassName}_Group${studentInfo.group_number}_${stamp}_${unique}.${fileExt}`;
+                const filePath = `${safeAcademicYear}/${safeClassName}/Group_${studentInfo.group_number}/${fileName}`;
 
                 const { error: uploadError } = await supabase.storage
-                    .from('logbook_photos')
+                    .from(PHOTO_BUCKET)
                     .upload(filePath, newLogPhoto);
-                    
-                if (uploadError) throw new Error('Failed to upload photo. Ensure the bucket "logbook_photos" exists and is public.');
-                
+
+                if (uploadError) {
+                    console.error('Photo upload failed:', uploadError);
+                    throw new Error(`Could not upload the photo: ${uploadError.message}`);
+                }
+
                 const { data: { publicUrl } } = supabase.storage
-                    .from('logbook_photos')
+                    .from(PHOTO_BUCKET)
                     .getPublicUrl(filePath);
-                    
+
                 photoUrl = publicUrl;
             }
 
@@ -165,19 +192,37 @@ export default function LogbookTab({
             message: 'Are you sure you want to delete this logbook entry? This action cannot be undone.',
             onConfirm: async () => {
                 setConfirmDialog(prev => ({ ...prev, open: false }));
-                const { error } = await supabase
+                const entry = logbooks.find(l => l.id === logId);
+                const { data, error } = await supabase
                     .from('logbooks')
                     .delete()
                     .eq('id', logId)
-                    .eq('student_email', userEmail!);
+                    .eq('student_email', userEmail!)
+                    .select('id');
 
                 if (error) {
                     console.error('Error deleting logbook:', error);
                     showToast('Failed to delete logbook entry.', 'error');
-                } else {
-                    onLogbooksUpdate(logbooks.filter(l => l.id !== logId));
-                    showToast('Logbook entry deleted.', 'success');
+                    return;
                 }
+
+                // RLS rejects a delete by matching nothing, not by erroring, so
+                // check that a row actually went before telling the student it did.
+                if (!data || data.length === 0) {
+                    showToast('That entry could not be deleted. Only the student who wrote it can remove it.', 'error');
+                    return;
+                }
+
+                // Drop the photo as well. Nothing else references it, and the
+                // bucket lives on the same disk as the rest of the server.
+                const key = storageKeyFromPublicUrl(entry?.photo_url);
+                if (key) {
+                    const { error: removeError } = await supabase.storage.from(PHOTO_BUCKET).remove([key]);
+                    if (removeError) console.error('Logbook photo left behind:', removeError.message);
+                }
+
+                onLogbooksUpdate(logbooks.filter(l => l.id !== logId));
+                showToast('Logbook entry deleted.', 'success');
             }
         });
     };

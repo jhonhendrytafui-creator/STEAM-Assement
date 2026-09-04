@@ -18,10 +18,17 @@ noted, so re-running in this order is safe.
 | 8 | `fix_security_issues.sql` | `security_invoker` on the leaderboard view, fixed `search_path` |
 | 9 | `add_admin_role.sql` | Admin flag, `is_admin()`, audit log — **edit Section 7 first** |
 | 10 | `harden_security.sql` | Audit fixes: scoped policies, `app_settings` |
+| 11 | `fix_silent_rls_failures.sql` | Missing peer-assessment UPDATE policy, C1 reset trigger, re-runnable storage policies |
 
 ## Existing database
 
-Run **9** then **10**. Both are safe to re-run.
+Run **9**, **10**, then **11**. All three are safe to re-run.
+
+**11 is not optional.** Without it, a student editing a peer assessment they
+already submitted sees "Assessment saved successfully" and nothing is written —
+PostgREST does not report an UPDATE that RLS refuses, it just matches no rows.
+Since individual marks are weighted by peer assessment, that silently feeds
+stale ratings into grades.
 
 Before running 10, run its Section 0 pre-flight query and keep the output — it
 tells you which of the two conflicting policy sets was live, which is worth
@@ -33,6 +40,11 @@ knowing if you ever need to explain the gap.
   drop loop used to cover the whole `public` schema, which silently removed the
   policies from every table added later. It is scoped now — if you add a table
   to that file, add it to the list at the top too.
+- `add_logbook_photo.sql` is **not** safe to re-run on its own: it creates four
+  storage policies with no `DROP POLICY IF EXISTS`, so a second run aborts on
+  the first one and skips everything after it. `fix_silent_rls_failures.sql`
+  replaces those policies with idempotent, bucket-scoped versions — run that
+  instead of re-running `add_logbook_photo.sql`.
 - `seed_test_data.sql` is test data. Never run it against production.
 - Rubric seeds (`seed_c1_rubric.sql` … `seed_c5_rubric.sql`,
   `revise_c2_c5_rubrics.sql`) delete and recreate the dimensions for their
