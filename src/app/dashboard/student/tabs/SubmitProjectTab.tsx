@@ -3,11 +3,35 @@
 import React, { useState, useEffect } from 'react';
 import {
     PenSquare, Plus, Trash2,
-    ChevronDown, AlertTriangle, Award, Sparkles, Calculator
+    ChevronDown, AlertTriangle, Award, Sparkles, Calculator, Save, RotateCcw
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { SUBJECTS, ACADEMIC_YEAR } from '@/lib/constants';
 import type { ProjectData, StudentInfo, Theme, AssessmentCategory, ToastType } from '@/lib/types';
+
+// Maximum AI pre-checks allowed per group per academic year
+const MAX_PRECHECKS = 5;
+
+// localStorage key prefix for the in-progress submission draft.
+// The draft is scoped per group + academic year so two students sharing a
+// browser (or a student moving between groups/years) never see each other's text.
+const DRAFT_KEY_PREFIX = 'steam:submit-draft';
+
+interface KeyConcept {
+    subject: string;
+    concept: string;
+}
+
+interface SubmissionDraft {
+    title: string;
+    theme: string;
+    problem: string;
+    solution: string;
+    keyConcepts: KeyConcept[];
+    savedAt: string;
+}
+
+const emptyConcept = (): KeyConcept => ({ subject: 'biology_marine', concept: '' });
 
 interface SubmitProjectTabProps {
     projectData: ProjectData | null;
@@ -20,6 +44,7 @@ interface SubmitProjectTabProps {
     onSubmitSuccess: (newProject: ProjectData) => void;
     onStartPrecheck: () => void;
     onEndPrecheck: (result: string) => void;
+    onPrecheckError: () => void;
     isPrechecking: boolean;
     onNavigateToData: () => void;
 }
@@ -35,6 +60,7 @@ export default function SubmitProjectTab({
     onSubmitSuccess,
     onStartPrecheck,
     onEndPrecheck,
+    onPrecheckError,
     isPrechecking,
     onNavigateToData,
 }: SubmitProjectTabProps) {
@@ -43,9 +69,107 @@ export default function SubmitProjectTab({
     const [theme, setTheme] = useState(themesList.length > 0 ? themesList[0].id : '');
     const [problem, setProblem] = useState('');
     const [solution, setSolution] = useState('');
-    const [keyConcepts, setKeyConcepts] = useState([{ subject: 'biology_marine', concept: '' }]);
+    const [keyConcepts, setKeyConcepts] = useState<KeyConcept[]>([emptyConcept()]);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [precheckUsage, setPrecheckUsage] = useState(0);
+
+    // Draft persistence state
+    const [draftLoaded, setDraftLoaded] = useState(false);
+    const [draftRestored, setDraftRestored] = useState(false);
+    const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
+
+    const draftKey = studentInfo
+        ? `${DRAFT_KEY_PREFIX}:${ACADEMIC_YEAR}:${studentInfo.class_name}:${studentInfo.group_number}`
+        : null;
+
+    // ─── Draft: restore on mount ───────────────────────
+    // The form lives in local state and this tab is unmounted whenever the
+    // student switches sidebar tabs (and wiped completely on a reload or when a
+    // mobile browser discards the backgrounded tab during the ~30-60s AI
+    // pre-check). Restoring from localStorage keeps their typed text safe.
+    useEffect(() => {
+        if (!draftKey) {
+            setDraftLoaded(true);
+            return;
+        }
+        try {
+            const raw = window.localStorage.getItem(draftKey);
+            if (raw) {
+                const saved = JSON.parse(raw) as Partial<SubmissionDraft>;
+                if (typeof saved.title === 'string') setTitle(saved.title);
+                if (typeof saved.problem === 'string') setProblem(saved.problem);
+                if (typeof saved.solution === 'string') setSolution(saved.solution);
+                if (typeof saved.theme === 'string' && saved.theme) setTheme(saved.theme);
+                if (Array.isArray(saved.keyConcepts) && saved.keyConcepts.length > 0) {
+                    setKeyConcepts(saved.keyConcepts.map(c => ({
+                        subject: typeof c?.subject === 'string' ? c.subject : 'biology_marine',
+                        concept: typeof c?.concept === 'string' ? c.concept : '',
+                    })));
+                }
+                if (typeof saved.savedAt === 'string') setDraftSavedAt(saved.savedAt);
+                const hasContent = Boolean(saved.title?.trim() || saved.problem?.trim() || saved.solution?.trim());
+                if (hasContent) setDraftRestored(true);
+            }
+        } catch {
+            // Corrupt or unreadable draft — start clean rather than crashing the form
+        }
+        setDraftLoaded(true);
+    }, [draftKey]);
+
+    // Keep the selected theme valid: a restored draft (or a theme the teacher
+    // later archived) can point at a theme that no longer exists for this grade.
+    useEffect(() => {
+        if (themesList.length === 0) return;
+        if (!theme || !themesList.some(t => t.id === theme)) {
+            setTheme(themesList[0].id);
+        }
+    }, [themesList, theme]);
+
+    // ─── Draft: save on every change ───────────────────
+    // Guarded by draftLoaded so the initial empty state can never overwrite a
+    // stored draft before it has been restored.
+    useEffect(() => {
+        if (!draftLoaded || !draftKey) return;
+
+        const isEmpty =
+            !title.trim() && !problem.trim() && !solution.trim() &&
+            keyConcepts.every(c => !c.concept.trim());
+
+        try {
+            if (isEmpty) {
+                window.localStorage.removeItem(draftKey);
+                setDraftSavedAt(null);
+            } else {
+                const savedAt = new Date().toISOString();
+                const draft: SubmissionDraft = { title, theme, problem, solution, keyConcepts, savedAt };
+                window.localStorage.setItem(draftKey, JSON.stringify(draft));
+                setDraftSavedAt(savedAt);
+            }
+        } catch {
+            // Storage full or blocked (private mode) — the form still works,
+            // it just won't survive a reload.
+        }
+    }, [draftLoaded, draftKey, title, theme, problem, solution, keyConcepts]);
+
+    const clearDraft = () => {
+        if (draftKey) {
+            try {
+                window.localStorage.removeItem(draftKey);
+            } catch {
+                // ignore — nothing we can do if storage is unavailable
+            }
+        }
+        setDraftSavedAt(null);
+        setDraftRestored(false);
+    };
+
+    const resetForm = () => {
+        setTitle('');
+        setProblem('');
+        setSolution('');
+        setKeyConcepts([emptyConcept()]);
+        clearDraft();
+    };
 
     // Fetch initial precheck quota
     useEffect(() => {
@@ -67,17 +191,17 @@ export default function SubmitProjectTab({
 
     // ─── Key Concepts Handlers ─────────────────────────
     const addConcept = () => {
-        setKeyConcepts([...keyConcepts, { subject: 'biology_marine', concept: '' }]);
+        setKeyConcepts(prev => [...prev, emptyConcept()]);
     };
 
     const removeConcept = (index: number) => {
-        setKeyConcepts(keyConcepts.filter((_, i) => i !== index));
+        setKeyConcepts(prev => prev.filter((_, i) => i !== index));
     };
 
     const updateConcept = (index: number, field: 'subject' | 'concept', value: string) => {
-        const newConcepts = [...keyConcepts];
-        newConcepts[index][field] = value;
-        setKeyConcepts(newConcepts);
+        // Replace the entry instead of mutating it in place so React always
+        // sees fresh objects and never reuses a stale render.
+        setKeyConcepts(prev => prev.map((c, i) => (i === index ? { ...c, [field]: value } : c)));
     };
 
     // ─── Title Case Helper ────────────────────────────
@@ -98,11 +222,16 @@ export default function SubmitProjectTab({
             return;
         }
 
+        // Snapshot what we send so the request is never affected by later edits.
+        const problemSnapshot = problem;
+        const solutionSnapshot = solution;
+        const conceptsSnapshot = keyConcepts.filter(c => c.concept.trim() !== '');
+
         onStartPrecheck();
 
         try {
             // Check quota first
-            const { data: quotaData, error: quotaError } = await supabase
+            const { data: quotaData } = await supabase
                 .from('ai_precheck_usage')
                 .select('usage_count')
                 .eq('class_name', studentInfo.class_name)
@@ -112,9 +241,10 @@ export default function SubmitProjectTab({
 
             const currentUsage = quotaData ? quotaData.usage_count : 0;
 
-            if (currentUsage >= 5) {
-                showToast('Your group has reached the maximum of 5 AI Pre-checks.', 'warning');
-                onEndPrecheck('');
+            if (currentUsage >= MAX_PRECHECKS) {
+                setPrecheckUsage(currentUsage);
+                showToast(`Your group has reached the maximum of ${MAX_PRECHECKS} AI Pre-checks.`, 'warning');
+                onPrecheckError();
                 return;
             }
 
@@ -122,9 +252,9 @@ export default function SubmitProjectTab({
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    problem,
-                    solution,
-                    keyConcepts: keyConcepts.filter(c => c.concept.trim() !== '')
+                    problem: problemSnapshot,
+                    solution: solutionSnapshot,
+                    keyConcepts: conceptsSnapshot
                 })
             });
 
@@ -155,8 +285,9 @@ export default function SubmitProjectTab({
 
             onEndPrecheck(data.result);
         } catch (error: any) {
-            showToast(error.message || 'An error occurred during AI Pre-Check.', 'error');
-            onEndPrecheck('');
+            showToast(error.message || 'An error occurred during AI Pre-Check. Your draft has been kept.', 'error');
+            // Close the overlay without opening an empty results modal.
+            onPrecheckError();
         }
     };
 
@@ -220,10 +351,11 @@ export default function SubmitProjectTab({
 
         if (error) {
             console.error(error);
+            // The draft stays in localStorage so nothing typed is lost.
             showToast('Error submitting project: ' + error.message, 'error');
         } else if (data) {
             showToast(nextIteration > 1 ? 'Project resubmitted successfully!' : 'Project submitted successfully!', 'success');
-            
+
             // Reset C1 assessment scores for this group so the new iteration gets a fresh start
             if (nextIteration > 1) {
                 const c1Category = assessmentCategories.find(c => c.code === 'C1');
@@ -238,16 +370,15 @@ export default function SubmitProjectTab({
                 }
             }
 
-            // Reset local form
-            setTitle('');
-            setProblem('');
-            setSolution('');
-            setKeyConcepts([{ subject: 'biology_marine', concept: '' }]);
+            // Reset local form and drop the saved draft — it is submitted now
+            resetForm();
 
             // Notify parent
             onSubmitSuccess(data[0]);
         }
     };
+
+    const precheckRemaining = Math.max(0, MAX_PRECHECKS - precheckUsage);
 
     return (
         <div className="bg-[#1a1811] border border-amber-900/20 rounded-2xl p-6 sm:p-8 shadow-2xl">
@@ -287,6 +418,26 @@ export default function SubmitProjectTab({
                             </div>
                         </div>
                     )}
+
+                    {draftRestored && (
+                        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 flex items-start gap-3">
+                            <Save className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                            <div className="text-sm text-emerald-200 flex-1">
+                                <p className="font-semibold mb-1">Draft restored</p>
+                                <p className="opacity-80">
+                                    We brought back what you typed last time. Keep editing and submit when you are ready.
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setDraftRestored(false)}
+                                className="text-emerald-400/70 hover:text-emerald-300 text-xs font-medium shrink-0"
+                            >
+                                Dismiss
+                            </button>
+                        </div>
+                    )}
+
                     {/* Title */}
                     <div>
                         <label className="block text-sm font-semibold text-slate-300 mb-2">Project Title</label>
@@ -408,13 +559,31 @@ export default function SubmitProjectTab({
                         </div>
                     </div>
 
+                    {/* Draft status */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500 pt-2">
+                        <span className="flex items-center gap-1.5">
+                            <Save className="w-3.5 h-3.5" />
+                            {draftSavedAt
+                                ? `Draft saved on this device at ${new Date(draftSavedAt).toLocaleTimeString()} — it is safe to run the AI Pre-Check or switch tabs.`
+                                : 'Your typing is saved automatically on this device as you go.'}
+                        </span>
+                        {draftSavedAt && (
+                            <button
+                                type="button"
+                                onClick={resetForm}
+                                className="flex items-center gap-1.5 text-slate-500 hover:text-red-400 transition-colors"
+                            >
+                                <RotateCcw className="w-3.5 h-3.5" /> Clear form
+                            </button>
+                        )}
+                    </div>
 
                     {/* Submit & PreCheck Buttons */}
                     <div className="flex flex-col sm:flex-row gap-4 mt-8">
                         <button
                             type="button"
                             onClick={handlePreCheck}
-                            disabled={isPrechecking || isSubmitting || precheckUsage >= 5}
+                            disabled={isPrechecking || isSubmitting || precheckUsage >= MAX_PRECHECKS}
                             className="w-full sm:w-1/2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 font-bold py-4 rounded-xl flex flex-col items-center justify-center gap-1 transition-all active:scale-95 shadow-lg shadow-indigo-900/10 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             <div className="flex items-center gap-2">
@@ -425,7 +594,7 @@ export default function SubmitProjectTab({
                                 )}
                                 <span>{isPrechecking ? 'Analyzing...' : 'AI Pre-Check'}</span>
                             </div>
-                            <span className="text-xs font-normal opacity-80">({precheckUsage}/5 uses remaining)</span>
+                            <span className="text-xs font-normal opacity-80">({precheckRemaining} of {MAX_PRECHECKS} uses remaining)</span>
                         </button>
 
                         <button

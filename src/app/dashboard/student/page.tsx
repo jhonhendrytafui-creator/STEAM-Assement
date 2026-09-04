@@ -219,11 +219,17 @@ export default function StudentDashboardPage() {
     const handleEndPrecheck = useCallback((result: string) => {
         setIsPrechecking(false);
         setPrecheckResult(result);
-        setShowPrecheckModal(true);
+        // Only open the results modal when there is actually something to show.
+        // Errors and quota rejections go through handlePrecheckError instead.
+        setShowPrecheckModal(Boolean(result && result.trim()));
     }, []);
 
+    // Closes the "analyzing" overlay without opening an empty results modal.
+    // The student's typed draft is untouched so they can retry or submit.
     const handlePrecheckError = useCallback(() => {
         setIsPrechecking(false);
+        setPrecheckResult('');
+        setShowPrecheckModal(false);
     }, []);
 
     const handleProjectDataUpdate = useCallback((updated: ProjectData) => {
@@ -323,6 +329,7 @@ export default function StudentDashboardPage() {
                                 onSubmitSuccess={handleSubmitSuccess}
                                 onStartPrecheck={handleStartPrecheck}
                                 onEndPrecheck={handleEndPrecheck}
+                                onPrecheckError={handlePrecheckError}
                                 isPrechecking={isPrechecking}
                                 onNavigateToData={() => setActiveTab('data')}
                             />
