@@ -308,7 +308,7 @@ export default function ProjectDocumentTab({
                                             </div>
                                         </div>
                                         <div className="relative">
-                                            <button
+                                            <button aria-label="Remove this document link"
                                                 onClick={() => setConfirmDeleteDocIdx(idx)}
                                                 className="text-slate-500 hover:text-red-400 p-2 transition-colors"
                                             >
@@ -366,9 +366,10 @@ export default function ProjectDocumentTab({
 
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                             <div>
-                                <label className="block text-xs font-semibold text-slate-400 mb-2">Type</label>
+                                <label htmlFor="project-document-tab-type" className="block text-xs font-semibold text-slate-400 mb-2">Type</label>
                                 <div className="relative">
                                     <select
+                                        id="project-document-tab-type"
                                         value={newDocType}
                                         onChange={(e) => setNewDocType(e.target.value)}
                                         className="w-full bg-[#1c1b14] border border-slate-800 rounded-xl py-3 px-4 text-slate-200 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all appearance-none text-sm"
@@ -384,12 +385,13 @@ export default function ProjectDocumentTab({
                                 </div>
                             </div>
                             <div className="md:col-span-2">
-                                <label className="block text-xs font-semibold text-slate-400 mb-2">Document URL</label>
+                                <label htmlFor="project-document-tab-document-url" className="block text-xs font-semibold text-slate-400 mb-2">Document URL</label>
                                 <div className="relative">
                                     <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
                                         <LinkIcon className="w-4 h-4" />
                                     </div>
                                     <input
+                                        id="project-document-tab-document-url"
                                         type="url"
                                         value={newDocUrl}
                                         onChange={(e) => setNewDocUrl(e.target.value)}

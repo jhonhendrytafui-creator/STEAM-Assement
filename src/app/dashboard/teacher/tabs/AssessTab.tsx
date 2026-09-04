@@ -414,8 +414,9 @@ export default function AssessTab({
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8 bg-[#1c1b14] border border-slate-800 rounded-xl p-4">
                     <div>
-                        <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Grade</label>
+                        <label htmlFor="assess-tab-grade" className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Grade</label>
                         <select
+                            id="assess-tab-grade"
                             value={assessGrade}
                             onChange={(e) => { setAssessGrade(e.target.value); setAssessClass(''); setAssessGroup(''); }}
                             className="w-full bg-[#1a1811] border border-slate-800 rounded-lg py-2.5 px-3 text-sm text-slate-200 focus:outline-none focus:border-amber-500"
@@ -425,8 +426,9 @@ export default function AssessTab({
                         </select>
                     </div>
                     <div>
-                        <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Class</label>
+                        <label htmlFor="assess-tab-class" className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Class</label>
                         <select
+                            id="assess-tab-class"
                             value={assessClass}
                             onChange={(e) => { setAssessClass(e.target.value); }}
                             disabled={!assessGrade}
@@ -437,8 +439,9 @@ export default function AssessTab({
                         </select>
                     </div>
                     <div>
-                        <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Assessment</label>
+                        <label htmlFor="assess-tab-assessment" className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Assessment</label>
                         <select
+                            id="assess-tab-assessment"
                             value={assessCategory}
                             onChange={(e) => setAssessCategory(e.target.value)}
                             className="w-full bg-[#1a1811] border border-slate-800 rounded-lg py-2.5 px-3 text-sm text-slate-200 focus:outline-none focus:border-amber-500"
@@ -711,9 +714,13 @@ export default function AssessTab({
                                                                     {isChecklist ? (
                                                                         <button
                                                                             onClick={() => !isAssessmentLocked && setCurrentScores(prev => ({ ...prev, [ind.id]: prev[ind.id] === 1 ? 0 : 1 }))}
+                                                                            aria-pressed={currentScores[ind.id] === 1}
+                                                                            aria-label={`Mark as met: ${ind.description}`}
                                                                             className={`w-10 h-10 rounded-lg flex items-center justify-center border transition-all ${currentScores[ind.id] === 1 ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400' : 'bg-[#1a1811] border-slate-700 text-slate-600 hover:border-slate-500'}`}
                                                                         >
-                                                                            {currentScores[ind.id] === 1 ? <CheckCircle2 className="w-5 h-5" /> : <X className="w-5 h-5" />}
+                                                                            {currentScores[ind.id] === 1
+                                                                                ? <CheckCircle2 className="w-5 h-5" aria-hidden="true" />
+                                                                                : <X className="w-5 h-5" aria-hidden="true" />}
                                                                         </button>
                                                                     ) : (
                                                                         <div className="flex gap-1.5 p-1.5 bg-[#1a1811] border border-slate-800 rounded-lg">
@@ -766,8 +773,8 @@ export default function AssessTab({
                                                     <div className="space-y-5">
                                                         {!isNoStatusCat && (
                                                             <div>
-                                                                <label className="block text-sm font-semibold text-slate-300 mb-3">Project Status</label>
-                                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                                                <span className="block text-sm font-semibold text-slate-300 mb-3" id="assess-project-status">Project Status</span>
+                                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3" role="group" aria-labelledby="assess-project-status">
                                                                     {[
                                                                         { val: 'approved', label: 'Approved', color: 'emerald' },
                                                                         { val: 'revision', label: 'Needs Revision', color: 'amber' },
@@ -789,8 +796,9 @@ export default function AssessTab({
                                                             </div>
                                                         )}
                                                         <div>
-                                                            <label className="block text-sm font-semibold text-slate-300 mb-2">Teacher Comment / Feedback</label>
+                                                            <label htmlFor="assess-tab-teacher-comment-feedback" className="block text-sm font-semibold text-slate-300 mb-2">Teacher Comment / Feedback</label>
                                                             <textarea
+                                                                id="assess-tab-teacher-comment-feedback"
                                                                 value={assessComment}
                                                                 onChange={e => setAssessComment(e.target.value)}
                                                                 rows={12}

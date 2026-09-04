@@ -168,8 +168,9 @@ export default function PlagiarismTab({ allStudents, showToast }: PlagiarismTabP
             {/* Top Selection Bar */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8 bg-[#1c1b14] border border-slate-800 rounded-xl p-4">
                 <div>
-                    <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Grade</label>
+                    <label htmlFor="plagiarism-tab-grade" className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Grade</label>
                     <select
+                        id="plagiarism-tab-grade"
                         value={selectedGrade}
                         onChange={(e) => {
                             setSelectedGrade(e.target.value);
@@ -183,8 +184,9 @@ export default function PlagiarismTab({ allStudents, showToast }: PlagiarismTabP
                     </select>
                 </div>
                 <div>
-                    <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Class</label>
+                    <label htmlFor="plagiarism-tab-class" className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Class</label>
                     <select
+                        id="plagiarism-tab-class"
                         value={selectedClass}
                         onChange={(e) => { setSelectedClass(e.target.value); }}
                         disabled={!selectedGrade}

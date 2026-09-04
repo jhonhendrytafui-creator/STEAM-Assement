@@ -26,7 +26,7 @@ export default function PastIterationModal({ iteration, onClose, renderFormatted
                         </h3>
                         <p className="text-sm text-slate-400 mt-1">Submitted on {new Date(iteration.created_at).toLocaleDateString()}</p>
                     </div>
-                    <button
+                    <button aria-label="Close this past version"
                         onClick={onClose}
                         className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
                     >

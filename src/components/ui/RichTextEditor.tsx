@@ -9,9 +9,15 @@ interface RichTextEditorProps {
     value: string;
     onChange: (value: string) => void;
     placeholder?: string;
+    /**
+     * Accessible name for the editing area. TipTap renders a contenteditable
+     * div, which a <label> cannot point at, so callers pass the field name
+     * here instead.
+     */
+    ariaLabel?: string;
 }
 
-export default function RichTextEditor({ value, onChange, placeholder }: RichTextEditorProps) {
+export default function RichTextEditor({ value, onChange, placeholder, ariaLabel }: RichTextEditorProps) {
     const editor = useEditor({
         extensions: [
             StarterKit,
@@ -23,6 +29,9 @@ export default function RichTextEditor({ value, onChange, placeholder }: RichTex
         editorProps: {
             attributes: {
                 class: 'prose prose-sm prose-invert focus:outline-none min-h-[100px] w-full p-4',
+                role: 'textbox',
+                'aria-multiline': 'true',
+                ...(ariaLabel ? { 'aria-label': ariaLabel } : {}),
             },
         },
     });
@@ -55,6 +64,7 @@ export default function RichTextEditor({ value, onChange, placeholder }: RichTex
                     className={`p-1.5 rounded-md transition-colors ${
                         editor.isActive('bold') ? 'bg-amber-500 text-[#1a160d]' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
                     }`}
+                    aria-label="Bold"
                     title="Bold"
                 >
                     <Bold className="w-4 h-4" />
@@ -66,6 +76,7 @@ export default function RichTextEditor({ value, onChange, placeholder }: RichTex
                     className={`p-1.5 rounded-md transition-colors ${
                         editor.isActive('italic') ? 'bg-amber-500 text-[#1a160d]' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
                     }`}
+                    aria-label="Italic"
                     title="Italic"
                 >
                     <Italic className="w-4 h-4" />
@@ -79,6 +90,7 @@ export default function RichTextEditor({ value, onChange, placeholder }: RichTex
                     className={`p-1.5 rounded-md transition-colors ${
                         editor.isActive('bulletList') ? 'bg-amber-500 text-[#1a160d]' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
                     }`}
+                    aria-label="Bullet list"
                     title="Bullet List"
                 >
                     <List className="w-4 h-4" />
@@ -89,6 +101,7 @@ export default function RichTextEditor({ value, onChange, placeholder }: RichTex
                     className={`p-1.5 rounded-md transition-colors ${
                         editor.isActive('orderedList') ? 'bg-amber-500 text-[#1a160d]' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
                     }`}
+                    aria-label="Numbered list"
                     title="Numbered List"
                 >
                     <ListOrdered className="w-4 h-4" />

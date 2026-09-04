@@ -175,8 +175,9 @@ export default function LogbookTab({ allStudents, showToast }: LogbookTabProps) 
                         {/* Grade + Search */}
                         <div className="flex flex-col sm:flex-row gap-4 mb-4 bg-[#1c1b14] border border-slate-800 rounded-xl p-4">
                             <div className="flex-1">
-                                <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Grade</label>
+                                <label htmlFor="logbook-tab-grade" className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Grade</label>
                                 <select
+                                    id="logbook-tab-grade"
                                     value={logbookGrade}
                                     onChange={(e) => { setLogbookGrade(e.target.value); setGradeLogbooksList([]); setLogbookClassFilter(''); }}
                                     className="w-full bg-[#1a1811] border border-slate-800 rounded-lg py-2.5 px-3 text-sm text-slate-200 focus:outline-none focus:border-amber-500"
@@ -200,8 +201,9 @@ export default function LogbookTab({ allStudents, showToast }: LogbookTabProps) 
                             <div className="bg-[#1c1b14] border border-slate-800 rounded-xl p-4 mb-6 space-y-4">
                                 <div className="flex flex-col sm:flex-row gap-4">
                                     <div className="w-full sm:w-48">
-                                        <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Filter by Class</label>
+                                        <label htmlFor="logbook-tab-filter-by-class" className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Filter by Class</label>
                                         <select
+                                            id="logbook-tab-filter-by-class"
                                             value={logbookClassFilter}
                                             onChange={(e) => setLogbookClassFilter(e.target.value)}
                                             className="w-full bg-[#1a1811] border border-slate-800 rounded-lg py-2 px-3 text-sm text-slate-200 focus:outline-none focus:border-amber-500"
@@ -217,21 +219,21 @@ export default function LogbookTab({ allStudents, showToast }: LogbookTabProps) 
                                         >
                                             <Users className="w-3.5 h-3.5" /> Group by Class
                                         </button>
-                                        <button
+                                        <button aria-label="Show logbooks as cards"
                                             onClick={() => setLogbookViewMode('card')}
                                             className={`p-2 rounded-lg border transition-all ${logbookViewMode === 'card' ? 'bg-amber-500/20 text-amber-400 border-amber-500/50' : 'bg-[#1a1811] text-slate-400 border-slate-800 hover:border-slate-600'}`}
                                             title="Card View"
                                         >
                                             <LayoutGrid className="w-4 h-4" />
                                         </button>
-                                        <button
+                                        <button aria-label="Show logbooks as a list"
                                             onClick={() => setLogbookViewMode('list')}
                                             className={`p-2 rounded-lg border transition-all ${logbookViewMode === 'list' ? 'bg-amber-500/20 text-amber-400 border-amber-500/50' : 'bg-[#1a1811] text-slate-400 border-slate-800 hover:border-slate-600'}`}
                                             title="List View"
                                         >
                                             <List className="w-4 h-4" />
                                         </button>
-                                        <button
+                                        <button aria-label="Show logbook activity chart"
                                             onClick={() => setLogbookViewMode('analytics')}
                                             className={`p-2 rounded-lg border transition-all ${logbookViewMode === 'analytics' ? 'bg-amber-500/20 text-amber-400 border-amber-500/50' : 'bg-[#1a1811] text-slate-400 border-slate-800 hover:border-slate-600'}`}
                                             title="Analytics View"

@@ -364,10 +364,11 @@ export default function PeerAssessmentTab({
 
                             <div className="space-y-4 pt-4 border-t border-slate-800">
                                 <div>
-                                    <label className="block text-sm font-medium text-amber-400 mb-1">
+                                    <label htmlFor="peer-assessment-comment-good" className="block text-sm font-medium text-amber-400 mb-1">
                                         {isSelf ? "Write one thing I have done well:" : "Good things I noticed:"}
                                     </label>
                                     <textarea
+                                        id="peer-assessment-comment-good"
                                         rows={3}
                                         value={commentGood}
                                         disabled={isLocked}
@@ -378,10 +379,11 @@ export default function PeerAssessmentTab({
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-red-400 mb-1">
+                                    <label htmlFor="peer-assessment-comment-improve" className="block text-sm font-medium text-red-400 mb-1">
                                         {isSelf ? "Write one thing I need to improve:" : "Suggestions for improvement:"}
                                     </label>
                                     <textarea
+                                        id="peer-assessment-comment-improve"
                                         rows={3}
                                         value={commentImprove}
                                         disabled={isLocked}

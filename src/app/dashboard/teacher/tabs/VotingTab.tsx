@@ -139,8 +139,9 @@ export default function VotingTab({ recentProjects, myVotes, leaderboardData, te
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                        <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Search</label>
-                        <input 
+                        <label htmlFor="voting-tab-search" className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Search</label>
+                        <input
+                            id="voting-tab-search"
                             type="text" 
                             placeholder="Search by title, class, group..." 
                             value={votingSearchTerm}
@@ -149,8 +150,9 @@ export default function VotingTab({ recentProjects, myVotes, leaderboardData, te
                         />
                     </div>
                     <div>
-                        <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Grade Filter</label>
+                        <label htmlFor="voting-tab-grade-filter" className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase">Grade Filter</label>
                         <select
+                            id="voting-tab-grade-filter"
                             value={votingGradeFilter}
                             onChange={(e) => setVotingGradeFilter(e.target.value)}
                             className="w-full bg-[#1c1b14] border border-slate-800 rounded-lg py-2.5 px-3 text-sm text-slate-200 focus:outline-none focus:border-amber-500"

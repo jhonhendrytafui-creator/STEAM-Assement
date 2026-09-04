@@ -16,7 +16,7 @@ export default function PrecheckModal({ show, result, onClose, renderFormattedTe
     return (
         <div className="fixed inset-0 z-[60] flex items-center justify-center px-4 bg-black/60 backdrop-blur-sm">
             <div className="bg-[#1a1811] border border-indigo-500/30 rounded-2xl p-6 sm:p-8 w-full max-w-2xl shadow-2xl relative max-h-[90vh] overflow-y-auto">
-                <button
+                <button aria-label="Close AI Pre-Check results"
                     onClick={onClose}
                     className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors p-2"
                 >

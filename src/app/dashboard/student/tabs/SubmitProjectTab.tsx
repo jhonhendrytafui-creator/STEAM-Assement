@@ -417,8 +417,9 @@ export default function SubmitProjectTab({
 
                     {/* Title */}
                     <div>
-                        <label className="block text-sm font-semibold text-slate-300 mb-2">Project Title</label>
+                        <label htmlFor="submit-project-tab-project-title" className="block text-sm font-semibold text-slate-300 mb-2">Project Title</label>
                         <input
+                            id="submit-project-tab-project-title"
                             type="text"
                             required
                             value={title}
@@ -430,10 +431,11 @@ export default function SubmitProjectTab({
 
                     {/* Theme Dropdown */}
                     <div>
-                        <label className="block text-sm font-semibold text-slate-300 mb-2">Theme</label>
+                        <label htmlFor="submit-project-tab-theme" className="block text-sm font-semibold text-slate-300 mb-2">Theme</label>
                         {themesList.length > 0 ? (
                             <div className="relative">
                                 <select
+                                    id="submit-project-tab-theme"
                                     value={theme}
                                     onChange={(e) => setTheme(e.target.value)}
                                     className="w-full bg-[#1c1b14] border border-slate-800 rounded-xl py-3 px-4 pr-10 text-slate-200 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all appearance-none"
@@ -454,8 +456,9 @@ export default function SubmitProjectTab({
                     {/* Problem & Solution */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                            <label className="block text-sm font-semibold text-slate-300 mb-2">Problem</label>
+                            <label htmlFor="submit-project-tab-problem" className="block text-sm font-semibold text-slate-300 mb-2">Problem</label>
                             <textarea
+                                id="submit-project-tab-problem"
                                 required
                                 rows={4}
                                 value={problem}
@@ -465,8 +468,9 @@ export default function SubmitProjectTab({
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-semibold text-slate-300 mb-2">Solution</label>
+                            <label htmlFor="submit-project-tab-solution" className="block text-sm font-semibold text-slate-300 mb-2">Solution</label>
                             <textarea
+                                id="submit-project-tab-solution"
                                 required
                                 rows={4}
                                 value={solution}
@@ -480,7 +484,7 @@ export default function SubmitProjectTab({
                     {/* Key Concepts */}
                     <div className="pt-4 border-t border-slate-800/50">
                         <div className="flex justify-between items-center mb-4">
-                            <label className="block text-sm font-semibold text-slate-300">Key Concepts</label>
+                            <span className="block text-sm font-semibold text-slate-300">Key Concepts</span>
                             <button
                                 type="button"
                                 onClick={addConcept}
@@ -523,7 +527,7 @@ export default function SubmitProjectTab({
                                         placeholder="Describe the concept..."
                                     />
                                     {keyConcepts.length > 1 && (
-                                        <button
+                                        <button aria-label="Remove this key concept"
                                             type="button"
                                             onClick={() => removeConcept(index)}
                                             className="p-2.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"

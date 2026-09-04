@@ -270,7 +270,7 @@ export default function LogbookTab({
                         <h3 className="text-lg font-semibold text-amber-500 flex items-center gap-2">
                             <PenSquare className="w-5 h-5" /> New Log Entry
                         </h3>
-                        <button
+                        <button aria-label="Close the new entry form"
                             type="button"
                             onClick={clearForm}
                             className="text-slate-500 hover:text-red-400 transition-colors"
@@ -281,10 +281,11 @@ export default function LogbookTab({
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                            <label className="block text-sm font-medium text-slate-400 mb-1">Date</label>
+                            <label htmlFor="logbook-tab-date" className="block text-sm font-medium text-slate-400 mb-1">Date</label>
                             <div className="relative">
                                 <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                                 <select
+                                    id="logbook-tab-date"
                                     required
                                     value={newLogDate}
                                     onChange={(e) => setNewLogDate(e.target.value)}
@@ -299,7 +300,7 @@ export default function LogbookTab({
                         </div>
                         
                         <div>
-                            <label className="block text-sm font-medium text-slate-400 mb-1">Photo (Optional)</label>
+                            <span className="block text-sm font-medium text-slate-400 mb-1">Photo (Optional)</span>
                             <div className="flex items-center gap-3">
                                 <label className="cursor-pointer bg-[#110e08] hover:bg-slate-800 border border-slate-800 text-slate-300 px-4 py-2 rounded-lg transition-colors flex items-center gap-2 text-sm font-medium">
                                     <Camera className="w-4 h-4 text-amber-500" />
@@ -315,7 +316,7 @@ export default function LogbookTab({
                                 {photoPreview && (
                                     <div className="relative">
                                         <img src={photoPreview} alt="Preview" className="h-10 w-10 object-cover rounded-md border border-slate-700" />
-                                        <button 
+                                        <button aria-label="Remove the selected photo" 
                                             type="button"
                                             onClick={() => {
                                                 setNewLogPhoto(null);
@@ -333,8 +334,9 @@ export default function LogbookTab({
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium text-slate-400 mb-1">Task</label>
+                        <label htmlFor="logbook-tab-task" className="block text-sm font-medium text-slate-400 mb-1">Task</label>
                         <textarea
+                            id="logbook-tab-task"
                             required
                             rows={2}
                             value={newLogTask}
@@ -346,8 +348,9 @@ export default function LogbookTab({
 
                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
                         <div>
-                            <label className="block text-sm font-medium text-slate-400 mb-1">Result</label>
+                            <span className="block text-sm font-medium text-slate-400 mb-1">Result</span>
                             <RichTextEditor
+                                ariaLabel="Result"
                                 value={newLogResult}
                                 onChange={setNewLogResult}
                                 placeholder="What was the outcome of your task?"
@@ -355,8 +358,9 @@ export default function LogbookTab({
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-slate-400 mb-1">Feedback</label>
+                            <span className="block text-sm font-medium text-slate-400 mb-1">Feedback</span>
                             <RichTextEditor
+                                ariaLabel="Feedback"
                                 value={newLogFeedback}
                                 onChange={setNewLogFeedback}
                                 placeholder="Any feedback, reflections, or challenges?"
@@ -463,7 +467,7 @@ export default function LogbookTab({
                                     </td>
                                     <td className="py-5 px-2 text-sm align-top">
                                         {log.student_email === userEmail && (
-                                            <button
+                                            <button aria-label="Delete this logbook entry"
                                                 onClick={() => handleLogbookDelete(log.id)}
                                                 className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
                                                 title="Delete this entry"

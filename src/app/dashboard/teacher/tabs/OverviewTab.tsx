@@ -91,7 +91,7 @@ export default function OverviewTab({ recentProjects, allStudents, totalGroups }
                 </div>
                 <div className="bg-[#1a1811] border border-slate-800 rounded-2xl p-5 hover:border-amber-900/50 transition-colors">
                     <div className="flex items-center gap-2 mb-2 text-slate-400">
-                        <X className="w-4 h-4 text-red-400" />
+                        <X className="w-4 h-4 text-red-400" aria-hidden="true" />
                         <span className="text-xs font-semibold">Disapproved</span>
                     </div>
                     <div className="text-2xl font-bold text-red-400">{disapprovedCount}</div>

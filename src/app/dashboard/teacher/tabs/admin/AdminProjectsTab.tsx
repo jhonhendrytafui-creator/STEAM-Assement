@@ -320,7 +320,7 @@ export default function AdminProjectsTab({
                                                 <span className="text-xs text-slate-500">
                                                     {new Date(p.created_at).toLocaleDateString()}
                                                 </span>
-                                                <button
+                                                <button aria-label="Delete this project"
                                                     onClick={() => handleDeleteIteration(p)}
                                                     disabled={busy}
                                                     className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-50"
