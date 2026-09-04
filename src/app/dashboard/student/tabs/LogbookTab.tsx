@@ -6,6 +6,7 @@ import {
     Calendar, Save, X, AlertTriangle, Camera, Image as ImageIcon
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
+import { safeExternalUrl } from '@/lib/url';
 import { sanitizeRichText } from '@/lib/sanitize';
 import { ACADEMIC_YEAR } from '@/lib/constants';
 import type { ProjectData, StudentInfo, TeamMember, LogbookEntry, ToastType } from '@/lib/types';
@@ -454,9 +455,9 @@ export default function LogbookTab({
                                     </td>
                                     <td className="py-5 px-5 text-sm align-top">
                                         {log.photo_url ? (
-                                            <a href={log.photo_url} target="_blank" rel="noopener noreferrer" className="block relative group">
+                                            <a href={safeExternalUrl(log.photo_url) ?? undefined} target="_blank" rel="noopener noreferrer" className="block relative group">
                                                 <div className="w-16 h-16 rounded-lg overflow-hidden border border-slate-700 bg-slate-800 relative z-0">
-                                                    <img src={log.photo_url} alt="Log photo" className="w-full h-full object-cover transition-transform group-hover:scale-110" />
+                                                    <img src={safeExternalUrl(log.photo_url) ?? undefined} alt="Log photo" className="w-full h-full object-cover transition-transform group-hover:scale-110" />
                                                 </div>
                                             </a>
                                         ) : (

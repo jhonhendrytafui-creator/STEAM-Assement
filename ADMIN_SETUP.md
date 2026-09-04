@@ -25,6 +25,12 @@ Set it in Netlify alongside the existing keys. Without it the AI Pre-Check
 returns a 503 and tells students to contact their teacher; nothing else breaks.
 See `.env.example` for the full list.
 
+## Health check for Coolify
+
+`GET /api/health` returns 200 and a small JSON body. It is deliberately shallow —
+it does not touch Supabase or Gemini, so a blip in either cannot make Coolify
+restart a healthy container. Point Coolify's health check at that path.
+
 ## Run the security hardening too
 
 `sql/harden_security.sql` goes with this. It scopes student data access, makes

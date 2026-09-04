@@ -5,6 +5,7 @@ import {
     DatabaseZap, Trash2, RefreshCw, AlertTriangle, History, Search, RotateCcw,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
+import { fetchAll } from '@/lib/supabase/fetchAll';
 import { ACADEMIC_YEAR } from '@/lib/constants';
 import { logAdminAction, resetGroupData, groupLabel, gradeOf } from '@/lib/admin';
 import type { GroupResetScope } from '@/lib/admin';
@@ -55,13 +56,14 @@ export default function AdminProjectsTab({
     // The query is awaited before any setState, so mounting this tab does not
     // cascade renders. handleRefresh below adds the spinner for manual reloads.
     const fetchProjects = useCallback(async () => {
-        const { data, error } = await supabase
+        const { data, error } = await fetchAll((from, to) => supabase
             .from('projects')
             .select('*, themes(theme_name)')
             .eq('academic_year', ACADEMIC_YEAR)
             .order('class_name')
             .order('group_number')
-            .order('iteration', { ascending: false });
+            .order('iteration', { ascending: false })
+            .range(from, to));
         if (error) {
             showToast('Could not load projects: ' + error.message, 'error');
         } else {

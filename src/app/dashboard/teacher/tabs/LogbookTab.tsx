@@ -9,6 +9,8 @@ import {
     BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell
 } from 'recharts';
 import { supabase } from '@/lib/supabase/client';
+import { safeExternalUrl } from '@/lib/url';
+import { fetchAll } from '@/lib/supabase/fetchAll';
 import { sanitizeRichText } from '@/lib/sanitize';
 import { ACADEMIC_YEAR } from '@/lib/constants';
 import type { ToastType } from '@/lib/types';
@@ -45,12 +47,13 @@ export default function LogbookTab({ allStudents, showToast }: LogbookTabProps) 
             uniqueGroups.set(`${s.class_name}-${s.group_number}`, { class_name: s.class_name, group_number: s.group_number });
         });
 
-        const { data: logs } = await supabase
+        const { data: logs } = await fetchAll((from, to) => supabase
             .from('logbooks')
             .select('*')
             .eq('academic_year', ACADEMIC_YEAR)
             .ilike('class_name', `${logbookGrade}.%`)
-            .order('entry_date', { ascending: false });
+            .order('entry_date', { ascending: false })
+            .range(from, to));
 
         const listView: any[] = [];
         uniqueGroups.forEach((group) => {
@@ -509,9 +512,9 @@ export default function LogbookTab({ allStudents, showToast }: LogbookTabProps) 
                                                         </td>
                                                         <td className="p-4 align-top">
                                                             {log.photo_url ? (
-                                                                <a href={log.photo_url} target="_blank" rel="noopener noreferrer" className="block relative group">
+                                                                <a href={safeExternalUrl(log.photo_url) ?? undefined} target="_blank" rel="noopener noreferrer" className="block relative group">
                                                                     <div className="w-16 h-16 rounded-lg overflow-hidden border border-slate-700 bg-slate-800 relative z-0">
-                                                                        <img src={log.photo_url} alt="Log photo" className="w-full h-full object-cover transition-transform group-hover:scale-110" />
+                                                                        <img src={safeExternalUrl(log.photo_url) ?? undefined} alt="Log photo" className="w-full h-full object-cover transition-transform group-hover:scale-110" />
                                                                     </div>
                                                                 </a>
                                                             ) : (

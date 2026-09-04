@@ -6,6 +6,7 @@ import {
     ArrowRightLeft, RefreshCw, AlertTriangle,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
+import { fetchAll } from '@/lib/supabase/fetchAll';
 import { ACADEMIC_YEAR } from '@/lib/constants';
 import { logAdminAction, isValidSchoolEmail, ALLOWED_EMAIL_DOMAIN, gradeOf } from '@/lib/admin';
 import type { StudentRecord, ToastType } from '@/lib/types';
@@ -58,13 +59,14 @@ export default function AdminStudentsTab({
     // The query is awaited before any setState, so mounting this tab does not
     // cascade renders. handleRefresh below adds the spinner for manual reloads.
     const fetchStudents = useCallback(async () => {
-        const { data, error } = await supabase
+        const { data, error } = await fetchAll((from, to) => supabase
             .from('student_master')
             .select('*')
             .eq('academic_year', ACADEMIC_YEAR)
             .order('class_name')
             .order('group_number')
-            .order('full_name');
+            .order('full_name')
+            .range(from, to));
         if (error) {
             showToast('Could not load students: ' + error.message, 'error');
         } else {

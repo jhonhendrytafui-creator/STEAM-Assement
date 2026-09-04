@@ -6,6 +6,7 @@ import {
     AlertTriangle, CheckCircle2, Clock, Sparkles, X
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
+import { safeExternalUrl } from '@/lib/url';
 import { ACADEMIC_YEAR } from '@/lib/constants';
 import type { AssessmentCategory, RubricDimension, RubricIndicator, ProjectData, ToastType } from '@/lib/types';
 import { parseAbstract, subjectLabel } from '@/lib/abstract';
@@ -564,19 +565,19 @@ export default function AssessTab({
 
                                                     <div className="mt-4 space-y-3">
                                                         {assessProject.google_doc_url && (
-                                                            <a href={assessProject.google_doc_url} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 w-full bg-blue-500/10 text-blue-400 border border-blue-500/20 py-2.5 px-4 rounded-lg hover:bg-blue-500/20 transition-colors text-sm font-semibold">
+                                                            <a href={safeExternalUrl(assessProject.google_doc_url) ?? undefined} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 w-full bg-blue-500/10 text-blue-400 border border-blue-500/20 py-2.5 px-4 rounded-lg hover:bg-blue-500/20 transition-colors text-sm font-semibold">
                                                                 <LinkIcon className="w-4 h-4" /> Open Google Doc
                                                             </a>
                                                         )}
 
                                                         {assessProject.presentation_url && (
-                                                            <a href={assessProject.presentation_url} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 w-full bg-purple-500/10 text-purple-400 border border-purple-500/20 py-2.5 px-4 rounded-lg hover:bg-purple-500/20 transition-colors text-sm font-semibold">
+                                                            <a href={safeExternalUrl(assessProject.presentation_url) ?? undefined} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 w-full bg-purple-500/10 text-purple-400 border border-purple-500/20 py-2.5 px-4 rounded-lg hover:bg-purple-500/20 transition-colors text-sm font-semibold">
                                                                 <Star className="w-4 h-4" /> View Canva Presentation
                                                             </a>
                                                         )}
 
                                                         {assessProject.additional_documents && assessProject.additional_documents.map((doc: any, i: number) => (
-                                                            <a key={i} href={doc.url} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 w-full bg-amber-500/10 text-amber-500 border border-amber-500/20 py-2.5 px-4 rounded-lg hover:bg-amber-500/20 transition-colors text-sm font-semibold">
+                                                            <a key={i} href={safeExternalUrl(doc.url) ?? undefined} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 w-full bg-amber-500/10 text-amber-500 border border-amber-500/20 py-2.5 px-4 rounded-lg hover:bg-amber-500/20 transition-colors text-sm font-semibold">
                                                                 <LinkIcon className="w-4 h-4" /> View {doc.type}
                                                             </a>
                                                         ))}

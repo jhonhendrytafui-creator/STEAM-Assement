@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase/client';
+import { fetchAll } from '@/lib/supabase/fetchAll';
 import { ACADEMIC_YEAR } from '@/lib/constants';
 import type {
     ProjectData, AssessmentCategory, RubricDimension,
@@ -135,11 +136,12 @@ export default function TeacherDashboardPage() {
     // Re-read the roster after an admin edits students or groups, so every
     // other tab (assessment, scores, analytics) sees the change without a reload.
     const refreshStudents = useCallback(async () => {
-        const { data: students } = await supabase
+        const { data: students } = await fetchAll((from, to) => supabase
             .from('student_master')
             .select('full_name, class_name, group_number, email')
-            .eq('academic_year', ACADEMIC_YEAR);
-        if (students) {
+            .eq('academic_year', ACADEMIC_YEAR)
+            .range(from, to));
+        if (students.length) {
             setAllStudents(students);
             setTotalGroups(new Set(students.map(s => `${s.class_name}-${s.group_number}`)).size);
         }
@@ -147,12 +149,13 @@ export default function TeacherDashboardPage() {
 
     // Leaderboard refresh (used by VotingTab)
     const fetchLeaderboard = useCallback(async () => {
-        const { data: leaderboard } = await supabase
+        const { data: leaderboard } = await fetchAll((from, to) => supabase
             .from('project_leaderboard')
             .select('*')
             .eq('academic_year', ACADEMIC_YEAR)
-            .order('vote_count', { ascending: false });
-        if (leaderboard) setLeaderboardData(leaderboard);
+            .order('vote_count', { ascending: false })
+            .range(from, to));
+        if (leaderboard.length) setLeaderboardData(leaderboard);
     }, []);
 
     // Callback for AssessTab to sync scores with analytics
@@ -194,20 +197,22 @@ export default function TeacherDashboardPage() {
             if (votes) setMyVotes(votes.map(v => v.project_id));
 
             // Fetch leaderboard
-            const { data: leaderboard } = await supabase
+            const { data: leaderboard } = await fetchAll((from, to) => supabase
                 .from('project_leaderboard')
                 .select('*')
                 .eq('academic_year', ACADEMIC_YEAR)
-                .order('vote_count', { ascending: false });
-            if (leaderboard) setLeaderboardData(leaderboard);
+                .order('vote_count', { ascending: false })
+                .range(from, to));
+            if (leaderboard.length) setLeaderboardData(leaderboard);
 
             // Fetch all students
-            const { data: students } = await supabase
+            const { data: students } = await fetchAll((from, to) => supabase
                 .from('student_master')
                 .select('full_name, class_name, group_number, email')
-                .eq('academic_year', ACADEMIC_YEAR);
+                .eq('academic_year', ACADEMIC_YEAR)
+                .range(from, to));
 
-            if (students) {
+            if (students.length) {
                 setAllStudents(students);
                 const uniqueGroups = new Set(students.map(s => `${s.class_name}-${s.group_number}`));
                 setTotalGroups(uniqueGroups.size);
@@ -223,19 +228,22 @@ export default function TeacherDashboardPage() {
             const { data: inds } = await supabase.from('rubric_indicators').select('*').order('sort_order');
             if (inds) setRubricIndicators(inds);
 
-            // Fetch all assessment scores for analytics
-            const { data: allScores } = await supabase
+            // Fetch all assessment scores for analytics. This is the query that
+            // outgrows a single PostgREST page first: groups x rubric indicators.
+            const { data: allScores } = await fetchAll((from, to) => supabase
                 .from('assessment_scores')
                 .select('*')
-                .eq('academic_year', ACADEMIC_YEAR);
-            if (allScores) setAllAssessmentScores(allScores);
+                .eq('academic_year', ACADEMIC_YEAR)
+                .range(from, to));
+            if (allScores.length) setAllAssessmentScores(allScores);
 
             // Fetch submitted projects
-            const { data: projects } = await supabase
+            const { data: projects } = await fetchAll((from, to) => supabase
                 .from('projects')
                 .select('id, class_name, group_number, title, status, created_at, themes(theme_name)')
                 .eq('academic_year', ACADEMIC_YEAR)
-                .order('iteration', { ascending: false });
+                .order('iteration', { ascending: false })
+                .range(from, to));
 
             if (projects) {
                 // Filter to only the latest project iteration per group

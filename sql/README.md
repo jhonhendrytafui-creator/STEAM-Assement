@@ -19,16 +19,23 @@ noted, so re-running in this order is safe.
 | 9 | `add_admin_role.sql` | Admin flag, `is_admin()`, audit log — **edit Section 7 first** |
 | 10 | `harden_security.sql` | Audit fixes: scoped policies, `app_settings` |
 | 11 | `fix_silent_rls_failures.sql` | Missing peer-assessment UPDATE policy, C1 reset trigger, re-runnable storage policies |
+| 12 | `harden_links_and_storage.sql` | Rejects non-http(s) links at write time; scopes logbook photos to the owning group |
 
 ## Existing database
 
-Run **9**, **10**, then **11**. All three are safe to re-run.
+Run **9**, **10**, **11**, then **12**. All four are safe to re-run.
 
 **11 is not optional.** Without it, a student editing a peer assessment they
 already submitted sees "Assessment saved successfully" and nothing is written —
 PostgREST does not report an UPDATE that RLS refuses, it just matches no rows.
 Since individual marks are weighted by peer assessment, that silently feeds
 stale ratings into grades.
+
+**12 closes two holes the audit found.** Students can write the project document,
+presentation and additional-document links, and the logbook photo URL; the only
+check was `startsWith('http')` in the browser, which anyone can skip by calling
+Supabase directly. It also scopes the `logbook_photos` bucket, which previously
+let any signed-in user delete any group's photos.
 
 Before running 10, run its Section 0 pre-flight query and keep the output — it
 tells you which of the two conflicting policy sets was live, which is worth

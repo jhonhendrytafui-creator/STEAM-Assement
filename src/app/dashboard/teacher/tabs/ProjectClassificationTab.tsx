@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase/client';
+import { fetchAll } from '@/lib/supabase/fetchAll';
 import { ACADEMIC_YEAR } from '@/lib/constants';
 import type { ToastType, ProjectData, ProjectTeacherRecommendation } from '@/lib/types';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -33,12 +34,13 @@ export default function ProjectClassificationTab({ showToast }: ProjectClassific
     const fetchClassifications = async (silent = false) => {
         if (!silent) setIsLoading(true);
         try {
-            const { data: approvedProjects, error: projectError } = await supabase
+            const { data: approvedProjects, error: projectError } = await fetchAll((from, to) => supabase
                 .from('projects')
                 .select('*, themes(theme_name)')
                 .eq('academic_year', ACADEMIC_YEAR)
                 .eq('status', 'approved')
-                .order('created_at', { ascending: false });
+                .order('created_at', { ascending: false })
+                .range(from, to));
 
             if (projectError) throw projectError;
 

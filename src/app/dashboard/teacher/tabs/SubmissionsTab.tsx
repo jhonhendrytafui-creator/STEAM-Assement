@@ -6,6 +6,8 @@ import {
     LinkIcon, Star
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
+import { safeExternalUrl } from '@/lib/url';
+import { fetchAll } from '@/lib/supabase/fetchAll';
 import { ACADEMIC_YEAR } from '@/lib/constants';
 import type { ToastType } from '@/lib/types';
 import { parseAbstract, subjectLabel } from '@/lib/abstract';
@@ -44,12 +46,13 @@ export default function SubmissionsTab({ allStudents, showToast }: SubmissionsTa
         });
 
         // Get all submitted projects
-        const { data: projs } = await supabase
+        const { data: projs } = await fetchAll((from, to) => supabase
             .from('projects')
             .select(`*, themes(theme_name)`)
             .eq('academic_year', ACADEMIC_YEAR)
             .ilike('class_name', `${submissionGrade}.%`)
-            .order('iteration', { ascending: false });
+            .order('iteration', { ascending: false })
+            .range(from, to));
 
         const listView: any[] = [];
         uniqueGroups.forEach((group) => {
@@ -403,21 +406,21 @@ export default function SubmissionsTab({ allStudents, showToast }: SubmissionsTa
 
                                                     <div className="pt-2 flex flex-wrap gap-3">
                                                         {sub.google_doc_url && (
-                                                            <a href={sub.google_doc_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-blue-500/10 text-blue-400 border border-blue-500/20 py-2.5 px-5 rounded-lg hover:bg-blue-500/20 transition-colors text-sm font-semibold">
+                                                            <a href={safeExternalUrl(sub.google_doc_url) ?? undefined} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-blue-500/10 text-blue-400 border border-blue-500/20 py-2.5 px-5 rounded-lg hover:bg-blue-500/20 transition-colors text-sm font-semibold">
                                                                 <LinkIcon className="w-4 h-4" />
                                                                 Open Google Doc
                                                             </a>
                                                         )}
 
                                                         {sub.presentation_url && (
-                                                            <a href={sub.presentation_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-purple-500/10 text-purple-400 border border-purple-500/20 py-2.5 px-5 rounded-lg hover:bg-purple-500/20 transition-colors text-sm font-semibold">
+                                                            <a href={safeExternalUrl(sub.presentation_url) ?? undefined} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-purple-500/10 text-purple-400 border border-purple-500/20 py-2.5 px-5 rounded-lg hover:bg-purple-500/20 transition-colors text-sm font-semibold">
                                                                 <Star className="w-4 h-4" />
                                                                 View Canva Presentation
                                                             </a>
                                                         )}
 
                                                         {sub.additional_documents && sub.additional_documents.map((doc: any, i: number) => (
-                                                            <a key={i} href={doc.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-amber-500/10 text-amber-500 border border-amber-500/20 py-2.5 px-5 rounded-lg hover:bg-amber-500/20 transition-colors text-sm font-semibold">
+                                                            <a key={i} href={safeExternalUrl(doc.url) ?? undefined} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-amber-500/10 text-amber-500 border border-amber-500/20 py-2.5 px-5 rounded-lg hover:bg-amber-500/20 transition-colors text-sm font-semibold">
                                                                 <LinkIcon className="w-4 h-4" />
                                                                 {doc.type}
                                                             </a>

@@ -6,6 +6,7 @@ import {
     AlertTriangle, CheckCircle, Clock, ClipboardCheck
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
+import { safeExternalUrl } from '@/lib/url';
 import { ACADEMIC_YEAR } from '@/lib/constants';
 import type { ToastType, ProjectData } from '@/lib/types';
 import { parseAbstract } from '@/lib/abstract';
@@ -232,7 +233,7 @@ export default function PlagiarismTab({ allStudents, showToast }: PlagiarismTabP
 
                                     {project.google_doc_url && (
                                         <a
-                                            href={project.google_doc_url}
+                                            href={safeExternalUrl(project.google_doc_url) ?? undefined}
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             className="shrink-0 flex items-center gap-2 bg-[#1a1811] text-blue-400 border border-slate-800 py-2.5 px-4 rounded-lg hover:border-blue-500/30 hover:bg-blue-500/10 transition-colors text-sm font-semibold"
