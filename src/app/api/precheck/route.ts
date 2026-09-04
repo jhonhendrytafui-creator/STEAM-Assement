@@ -1,10 +1,16 @@
 import { NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createClient } from '@supabase/supabase-js';
 import { requireUser } from '@/lib/api-auth';
 import { ACADEMIC_YEAR } from '@/lib/constants';
+import { GeminiGenerationError, generateWithFallback } from '@/lib/gemini';
 
 export const maxDuration = 60;
+
+// Wall-clock cap on the Gemini walk, kept under maxDuration so the route
+// always returns JSON. If the host caps functions lower than this (Netlify's
+// synchronous default is well under 60s), lower it to match — a killed
+// function returns an HTML gateway error the browser cannot parse.
+const GENERATION_BUDGET_MS = 45_000;
 
 // Kept in sync with MAX_PRECHECKS in SubmitProjectTab. The limit is enforced
 // here, on the server, because the browser copy can be edited by the student.
@@ -59,6 +65,19 @@ export async function POST(req: Request) {
             return NextResponse.json(
                 { error: 'Missing required parameters: problem and solution are required.' },
                 { status: 400 }
+            );
+        }
+
+        // ── Configuration, checked before any quota is spent ──
+        // Both keys used to be read after the counter was already incremented,
+        // so a deployment missing one burned a group's allowance on every
+        // click without ever calling Gemini.
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (!apiKey) {
+            console.error('GEMINI_API_KEY is missing — cannot run the AI Pre-Check.');
+            return NextResponse.json(
+                { error: 'AI Pre-Check is not set up yet. Please tell your teacher.' },
+                { status: 503 }
             );
         }
 
@@ -139,17 +158,6 @@ export async function POST(req: Request) {
                 .match(quotaKey);
         };
 
-        const apiKey = process.env.GEMINI_API_KEY;
-        if (!apiKey) {
-            console.error('GEMINI_API_KEY is missing');
-            return NextResponse.json(
-                { error: 'AI Service is currently disabled. Please contact administrator.' },
-                { status: 503 }
-            );
-        }
-
-        const genAI = new GoogleGenerativeAI(apiKey);
-
         // Map key concepts to readable string
         const conceptsString = (keyConcepts || [])
             .map((c: any) => {
@@ -197,56 +205,27 @@ Review the key concepts the student listed above. For each concept, write about 
 Provide 1-2 clear, actionable next steps for them to take before submitting their final abstract.
         `;
 
-        let responseText = '';
-        const fallbackModels = [
-            'gemini-3.5-flash', 
-            'gemini-3.1-pro', 
-            'gemini-3.1-flash-lite', 
-            'gemini-3.0-flash', 
-            'gemini-2.5-pro', 
-            'gemini-2.5-flash', 
-            'gemini-2.5-flash-lite'
-        ];
-        const maxRetries = fallbackModels.length;
-
+        let responseText: string;
         try {
-        for (let attempt = 1; attempt <= maxRetries; attempt++) {
-            const currentModelName = fallbackModels[attempt - 1];
-            const model = genAI.getGenerativeModel({ model: currentModelName });
-
-            try {
-                console.log(`[Precheck] Attempt ${attempt}/${maxRetries} using model: ${currentModelName}`);
-                const result = await model.generateContent(prompt, {
-                    timeout: 30000 // 30-second timeout for pre-check
-                });
-                responseText = result.response.text();
-                break; // Success
-            } catch (e: any) {
-                const isTimeout = e?.name === 'AbortError' || e?.message?.includes('timeout') || e?.message?.includes('abort');
-                const is503 = e?.message?.includes('503');
-                
-                console.error(`Precheck attempt ${attempt}/${maxRetries} failed:`, e?.message?.slice(0, 200));
-
-                if (attempt === maxRetries) {
-                    if (isTimeout) throw new Error('Generation timed out. Please try again.');
-                    if (is503) throw new Error('Google AI is overloaded (503). Please try again later.');
-                    throw new Error(e?.message || 'Failed to generate pre-check review.');
-                }
-                
-                await new Promise(res => setTimeout(res, attempt * 2000));
-            }
-        }
+            const generated = await generateWithFallback({
+                apiKey,
+                prompt,
+                label: 'Precheck',
+                budgetMs: GENERATION_BUDGET_MS,
+            });
+            responseText = generated.text;
         } catch (generationError) {
+            // A failed check must not cost the group one of their five.
             await refundQuota();
-            throw generationError;
-        }
 
-        if (!responseText.trim()) {
-            await refundQuota();
-            return NextResponse.json(
-                { error: 'The AI returned an empty response. Please try again.' },
-                { status: 502 }
-            );
+            if (generationError instanceof GeminiGenerationError) {
+                const { failure } = generationError;
+                return NextResponse.json(
+                    { error: failure.message, reason: failure.kind, usageCount: usedSoFar },
+                    { status: failure.status }
+                );
+            }
+            throw generationError;
         }
 
         return NextResponse.json({ result: responseText, usageCount: usedSoFar + 1 });

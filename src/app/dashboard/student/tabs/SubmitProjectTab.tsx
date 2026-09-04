@@ -243,7 +243,20 @@ export default function SubmitProjectTab({
                 })
             });
 
-            const data = await res.json();
+            // Never assume the body is JSON. When the hosting platform kills
+            // the function for running too long it answers with an HTML
+            // gateway-error page, and parsing that blindly used to surface as
+            // "Unexpected token '<'" instead of something a student can act on.
+            let data: { result?: string; error?: string; usageCount?: number } = {};
+            try {
+                data = await res.json();
+            } catch {
+                throw new Error(
+                    res.status === 504 || res.status === 502
+                        ? 'The AI Pre-Check took too long to answer. Your draft is safe — please try again.'
+                        : 'The AI Pre-Check could not be completed. Your draft is safe — please try again.'
+                );
+            }
 
             if (typeof data.usageCount === 'number') {
                 setPrecheckUsage(data.usageCount);
@@ -251,6 +264,10 @@ export default function SubmitProjectTab({
 
             if (!res.ok) {
                 throw new Error(data.error || 'Failed to analyze project');
+            }
+
+            if (!data.result) {
+                throw new Error('The AI Pre-Check returned no feedback. Please try again.');
             }
 
             onEndPrecheck(data.result);

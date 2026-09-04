@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { google } from 'googleapis';
 import { requireAdmin } from '@/lib/api-auth';
+import { GEMINI_TEXT_MODELS, GeminiGenerationError, generateWithFallback } from '@/lib/gemini';
 
 /**
  * Diagnostic endpoint to check the status of all API quotas.
@@ -25,51 +25,28 @@ export async function GET(req: Request) {
         if (!apiKey) {
             results.checks.gemini = { status: 'FAIL', reason: 'GEMINI_API_KEY env var is missing' };
         } else {
-            const genAI = new GoogleGenerativeAI(apiKey);
-            const fallbackModels = [
-                'gemini-3.5-flash', 
-                'gemini-3.1-pro', 
-                'gemini-3.1-flash-lite', 
-                'gemini-3.0-flash', 
-                'gemini-2.5-pro', 
-                'gemini-2.5-flash', 
-                'gemini-2.5-flash-lite'
-            ];
-            const maxRetries = fallbackModels.length;
-
-            for (let attempt = 1; attempt <= maxRetries; attempt++) {
-                const currentModelName = fallbackModels[attempt - 1];
-                const model = genAI.getGenerativeModel({ model: currentModelName });
-
-                try {
-                    // Smallest possible request to test quota
-                    const result = await model.generateContent('Reply with only the word "ok".');
-                    const text = result.response.text();
-                    results.checks.gemini = {
-                        status: 'OK',
-                        response: text.slice(0, 100),
-                        model: currentModelName,
-                    };
-                    break;
-                } catch (e: any) {
-                    if (attempt === maxRetries) {
-                        throw e; // Let the outer catch handle it
-                    }
-                    const is503 = e?.message?.includes('503');
-                    const isQuota = e?.message?.includes('429') || e?.message?.includes('RESOURCE_EXHAUSTED') || e?.message?.toLowerCase()?.includes('quota');
-                    
-                    if (!is503 && !isQuota && !e?.name?.includes('AbortError') && !e?.message?.includes('timeout') && !e?.message?.includes('abort')) {
-                         throw e; // Fast fail if it's not a temporary error
-                    }
-                    await new Promise(res => setTimeout(res, 1000));
-                }
-            }
+            // Same model list and the same walk the student-facing routes use,
+            // so this check reflects what they will actually experience. It
+            // used to carry its own copy of the list, which drifted.
+            const { text, model } = await generateWithFallback({
+                apiKey,
+                prompt: 'Reply with only the word "ok".',
+                label: 'DebugQuota',
+                budgetMs: 20_000,
+                perAttemptTimeoutMs: 8_000,
+            });
+            results.checks.gemini = {
+                status: 'OK',
+                response: text.slice(0, 100),
+                model,
+                modelsTried: GEMINI_TEXT_MODELS,
+            };
         }
     } catch (e: any) {
-        const errorDetails = parseGeminiError(e);
         results.checks.gemini = {
             status: 'FAIL',
-            ...errorDetails,
+            modelsTried: GEMINI_TEXT_MODELS,
+            ...parseGeminiError(e),
         };
     }
 
@@ -196,9 +173,19 @@ export async function GET(req: Request) {
 }
 
 function parseGeminiError(e: any) {
+    // generateWithFallback has already classified the failure; keep its verdict
+    // and add the operator-facing hints below.
+    const failure = e instanceof GeminiGenerationError ? e.failure : null;
     const result: Record<string, any> = {
-        errorMessage: e.message || 'Unknown error',
+        errorMessage: failure?.detail || e.message || 'Unknown error',
+        errorKind: failure?.kind,
     };
+
+    if (failure?.kind === 'unknown_model') {
+        result.errorType = 'MODEL_NOT_FOUND';
+        result.hint = 'None of the model ids in GEMINI_TEXT_MODELS (src/lib/gemini.ts) is served to this API key. Update the list.';
+        return result;
+    }
 
     // Parse specific error types
     if (e.message?.includes('429') || e.message?.includes('RESOURCE_EXHAUSTED') || e.message?.toLowerCase()?.includes('quota')) {
