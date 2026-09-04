@@ -295,7 +295,7 @@ export default function StudentDashboardPage() {
 
             {/* Main Layout */}
             {studentInfo && (
-                <main className="w-full px-3 sm:px-6 lg:px-8 py-4 sm:py-6 flex flex-col md:flex-row gap-4 md:gap-6 lg:gap-8 h-[calc(100vh-65px)] overflow-hidden">
+                <main className="w-full px-3 sm:px-6 lg:px-8 py-4 sm:py-6 flex flex-col md:flex-row gap-4 md:gap-6 lg:gap-8 md:h-[calc(100dvh-65px)] md:overflow-hidden">
                     <Sidebar
                         tabs={STUDENT_TABS}
                         activeTab={activeTab}
@@ -303,7 +303,7 @@ export default function StudentDashboardPage() {
                         headerContent={sidebarHeader}
                     />
 
-                    <div className="flex-1 min-h-0 overflow-y-auto">
+                    <div className="flex-1 min-h-0 md:overflow-y-auto">
                         {activeTab === 'data' && (
                             <ProjectDataTab
                                 projectData={projectData}

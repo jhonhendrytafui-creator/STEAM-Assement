@@ -1,7 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
-import { Users, Save, CheckCircle2, AlertTriangle, FileText } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Users, Save, CheckCircle2, Pencil } from 'lucide-react';
+import { supabase } from '@/lib/supabase/client';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
+
+// Drafts are kept per assessor + person being assessed, so switching tabs
+// mid-form no longer throws away six ratings and two written comments.
+const DRAFT_KEY_PREFIX = 'steam:peer-draft';
 
 interface PeerAssessmentTabProps {
     userEmail: string;
@@ -39,11 +43,6 @@ export default function PeerAssessmentTab({
     academicYear,
     showToast
 }: PeerAssessmentTabProps) {
-    const supabase = createBrowserClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
-
     const [assessments, setAssessments] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedMemberEmail, setSelectedMemberEmail] = useState<string | null>(null);
@@ -54,13 +53,16 @@ export default function PeerAssessmentTab({
     const [commentImprove, setCommentImprove] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [showConfirm, setShowConfirm] = useState(false);
+    const [isEditing, setIsEditing] = useState(false);
+    // Suppresses the draft save while handleSelectMember is populating the form
+    // from a saved record, so switching members never writes a bogus draft.
+    const loadingFormRef = useRef(false);
 
-    useEffect(() => {
-        fetchAssessments();
-    }, [userEmail]);
+    const draftKey = selectedMemberEmail
+        ? `${DRAFT_KEY_PREFIX}:${academicYear}:${userEmail}:${selectedMemberEmail}`
+        : null;
 
-    const fetchAssessments = async () => {
-        setLoading(true);
+    const fetchAssessments = useCallback(async () => {
         const { data, error } = await supabase
             .from('peer_assessments')
             .select('*')
@@ -72,14 +74,21 @@ export default function PeerAssessmentTab({
         }
         
         // Auto-select first member
-        if (teamMembers.length > 0 && !selectedMemberEmail) {
-            setSelectedMemberEmail(teamMembers[0].email);
+        if (teamMembers.length > 0) {
+            setSelectedMemberEmail(prev => prev ?? teamMembers[0].email);
         }
         setLoading(false);
-    };
+    }, [userEmail, academicYear, teamMembers]);
+
+    useEffect(() => {
+        fetchAssessments();
+    }, [fetchAssessments]);
 
     const handleSelectMember = (email: string) => {
+        loadingFormRef.current = true;
         setSelectedMemberEmail(email);
+        setIsEditing(false);
+
         const existing = assessments.find(a => a.assessed_email === email);
         if (existing) {
             setQScores([
@@ -88,11 +97,27 @@ export default function PeerAssessmentTab({
             ]);
             setCommentGood(existing.comment_good);
             setCommentImprove(existing.comment_improve);
-        } else {
-            setQScores([0, 0, 0, 0, 0, 0]);
-            setCommentGood('');
-            setCommentImprove('');
+            return;
         }
+
+        // Nothing saved yet — bring back whatever they had typed last time.
+        const key = `${DRAFT_KEY_PREFIX}:${academicYear}:${userEmail}:${email}`;
+        try {
+            const raw = window.localStorage.getItem(key);
+            if (raw) {
+                const d = JSON.parse(raw);
+                setQScores(Array.isArray(d.qScores) && d.qScores.length === 6 ? d.qScores : [0, 0, 0, 0, 0, 0]);
+                setCommentGood(typeof d.commentGood === 'string' ? d.commentGood : '');
+                setCommentImprove(typeof d.commentImprove === 'string' ? d.commentImprove : '');
+                return;
+            }
+        } catch {
+            // Unreadable draft — fall through to a blank form
+        }
+
+        setQScores([0, 0, 0, 0, 0, 0]);
+        setCommentGood('');
+        setCommentImprove('');
     };
 
     // Auto update form when selected member changes or assessments load
@@ -101,6 +126,29 @@ export default function PeerAssessmentTab({
             handleSelectMember(selectedMemberEmail);
         }
     }, [selectedMemberEmail, assessments]);
+
+    // Release the load guard once the populated values have rendered.
+    useEffect(() => {
+        loadingFormRef.current = false;
+    }, [qScores, commentGood, commentImprove]);
+
+    // Persist the in-progress form. Only for members with nothing saved yet —
+    // once an assessment exists the saved record is the source of truth.
+    useEffect(() => {
+        if (!draftKey || loadingFormRef.current) return;
+        if (assessments.some(a => a.assessed_email === selectedMemberEmail)) return;
+
+        const isBlank = qScores.every(v => v === 0) && !commentGood.trim() && !commentImprove.trim();
+        try {
+            if (isBlank) {
+                window.localStorage.removeItem(draftKey);
+            } else {
+                window.localStorage.setItem(draftKey, JSON.stringify({ qScores, commentGood, commentImprove }));
+            }
+        } catch {
+            // Storage unavailable — the form still works, it just won't persist
+        }
+    }, [draftKey, selectedMemberEmail, assessments, qScores, commentGood, commentImprove]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -165,6 +213,10 @@ export default function PeerAssessmentTab({
             showToast('Failed to save assessment.', 'error');
         } else {
             showToast('Assessment saved successfully.', 'success');
+            if (draftKey) {
+                try { window.localStorage.removeItem(draftKey); } catch { /* ignore */ }
+            }
+            setIsEditing(false);
             await fetchAssessments();
         }
     };
@@ -175,13 +227,17 @@ export default function PeerAssessmentTab({
     const isSelf = selectedMemberEmail === userEmail;
     const indicators = isSelf ? SELF_INDICATORS : PEER_INDICATORS;
     const existingAssess = assessments.find(a => a.assessed_email === selectedMemberEmail);
+    // Submitted assessments are read-only until the student chooses to correct
+    // them. Marking a teammate is easy to misclick and there was previously no
+    // way back.
+    const isLocked = Boolean(existingAssess) && !isEditing;
 
     return (
         <div className="bg-[#1a1811] border border-amber-900/20 rounded-2xl p-6 sm:p-8 shadow-2xl">
             <ConfirmDialog
                 open={showConfirm}
                 title="Submit Assessment?"
-                message="Are you sure you want to submit this assessment? This action cannot be undone and you will not be able to change the grading after submission."
+                message="Submit this assessment? Your teacher will see it straight away. You can still come back and correct it later if you need to."
                 confirmLabel="Yes, Submit"
                 onConfirm={handleConfirmSubmit}
                 onCancel={() => setShowConfirm(false)}
@@ -234,15 +290,31 @@ export default function PeerAssessmentTab({
                 <div className="w-full md:w-2/3 bg-[#1c1b14] border border-slate-800 rounded-xl p-5 sm:p-6">
                     {selectedMember ? (
                         <form onSubmit={handleSubmit} className="space-y-6">
-                            <div className="mb-4 pb-4 border-b border-slate-800">
-                                <h3 className="text-lg font-bold text-slate-200">
-                                    Assessing: <span className="text-amber-400">{selectedMember.full_name}</span>
-                                    {isSelf ? " (Self Assessment)" : " (Peer Assessment)"}
-                                </h3>
-                                {existingAssess && (
-                                    <span className="text-xs text-emerald-500 mt-1 flex items-center gap-1">
-                                        <CheckCircle2 className="w-3 h-3"/> You have completed this assessment
-                                    </span>
+                            <div className="mb-4 pb-4 border-b border-slate-800 flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                    <h3 className="text-lg font-bold text-slate-200">
+                                        Assessing: <span className="text-amber-400">{selectedMember.full_name}</span>
+                                        {isSelf ? " (Self Assessment)" : " (Peer Assessment)"}
+                                    </h3>
+                                    {existingAssess && !isEditing && (
+                                        <span className="text-xs text-emerald-500 mt-1 flex items-center gap-1">
+                                            <CheckCircle2 className="w-3 h-3"/> You have completed this assessment
+                                        </span>
+                                    )}
+                                    {isEditing && (
+                                        <span className="text-xs text-amber-400 mt-1 flex items-center gap-1">
+                                            <Pencil className="w-3 h-3"/> Editing — save to keep your changes
+                                        </span>
+                                    )}
+                                </div>
+                                {existingAssess && !isEditing && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsEditing(true)}
+                                        className="text-xs px-3 py-1.5 rounded-lg border border-amber-900/40 text-slate-300 hover:text-amber-400 hover:bg-amber-500/10 transition-colors flex items-center gap-1.5 shrink-0"
+                                    >
+                                        <Pencil className="w-3.5 h-3.5" /> Correct my answers
+                                    </button>
                                 )}
                             </div>
 
@@ -255,12 +327,13 @@ export default function PeerAssessmentTab({
                                                 <button
                                                     type="button"
                                                     key={score}
+                                                    disabled={isLocked}
                                                     onClick={() => {
                                                         const newQScores = [...qScores];
                                                         newQScores[idx] = score;
                                                         setQScores(newQScores);
                                                     }}
-                                                    className={`py-2 text-xs font-medium rounded-lg border transition-all ${
+                                                    className={`py-2 text-xs font-medium rounded-lg border transition-all disabled:opacity-60 disabled:cursor-not-allowed ${
                                                         qScores[idx] === score
                                                         ? 'bg-amber-500/20 border-amber-500/50 text-amber-400'
                                                         : 'bg-[#1c1b14] border-slate-700 text-slate-400 hover:bg-slate-800/50'
@@ -285,6 +358,7 @@ export default function PeerAssessmentTab({
                                     <textarea
                                         rows={3}
                                         value={commentGood}
+                                        disabled={isLocked}
                                         onChange={(e) => setCommentGood(e.target.value)}
                                         placeholder="Detailed feedback goes here..."
                                         className="w-full bg-[#110e08] border border-slate-700 rounded-lg py-2 px-3 text-slate-200 focus:outline-none focus:border-amber-500 text-sm resize-y"
@@ -298,6 +372,7 @@ export default function PeerAssessmentTab({
                                     <textarea
                                         rows={3}
                                         value={commentImprove}
+                                        disabled={isLocked}
                                         onChange={(e) => setCommentImprove(e.target.value)}
                                         placeholder="Constructive feedback goes here..."
                                         className="w-full bg-[#110e08] border border-slate-700 rounded-lg py-2 px-3 text-slate-200 focus:outline-none focus:border-red-500 text-sm resize-y"
@@ -307,17 +382,26 @@ export default function PeerAssessmentTab({
                             </div>
 
                             <div className="flex justify-end pt-2">
+                                {isEditing && (
+                                    <button
+                                        type="button"
+                                        onClick={() => handleSelectMember(selectedMemberEmail!)}
+                                        className="mr-3 px-4 py-2.5 text-sm text-slate-400 hover:text-white transition-colors"
+                                    >
+                                        Cancel
+                                    </button>
+                                )}
                                 <button
                                     type="submit"
-                                    disabled={isSubmitting || !!existingAssess}
-                                    className={`font-bold py-2.5 px-6 rounded-xl transition-all flex items-center gap-2 text-sm disabled:opacity-50 ${existingAssess ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-amber-500 hover:bg-amber-400 text-[#1a160d]'}`}
+                                    disabled={isSubmitting || isLocked}
+                                    className={`font-bold py-2.5 px-6 rounded-xl transition-all flex items-center gap-2 text-sm disabled:opacity-50 ${isLocked ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-amber-500 hover:bg-amber-400 text-[#1a160d]'}`}
                                 >
                                     {isSubmitting ? (
                                         <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
                                     ) : (
                                         <Save className="w-4 h-4" />
                                     )}
-                                    {existingAssess ? 'Assessment Submitted' : 'Save Assessment'}
+                                    {isLocked ? 'Assessment Submitted' : isEditing ? 'Save Changes' : 'Save Assessment'}
                                 </button>
                             </div>
                         </form>

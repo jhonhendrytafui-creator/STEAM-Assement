@@ -3,6 +3,17 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  /* ── Brand palette ─────────────────────────────────────────
+     Single source of truth for the amber-on-warm-brown identity used
+     across the dashboards. The login page used to run its own orange
+     (#f97316), so the first screen did not match the app behind it. */
+  --brand-amber: #f59e0b;      /* amber-500 — primary accent */
+  --brand-amber-soft: #fbbf24; /* amber-400 — hover */
+  --brand-ground: #1c1b14;     /* page background */
+  --brand-surface: #1a1811;    /* cards and panels */
+  --brand-surface-2: #1c1b14;  /* inset fields */
+  --brand-ink: #d4d4d4;        /* body text on dark */
 }
 
 @theme inline {

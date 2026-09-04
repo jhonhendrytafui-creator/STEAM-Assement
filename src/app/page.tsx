@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
+import { supabase } from '@/lib/supabase/client';
 import LoginCanvas from '@/components/LoginCanvas';
 
 export default function LoginPage() {
@@ -9,17 +9,26 @@ export default function LoginPage() {
   const [isAuthenticating, setIsAuthenticating] = useState(false);
 
   useEffect(() => {
-    // Read error from URL if redirected back from callback with an error
+    // The auth callback can redirect back with any of these. Previously only
+    // unauthorized_email was handled, so the other three bounced the user to a
+    // blank login screen with no explanation.
     const params = new URLSearchParams(window.location.search);
-    if (params.get('error') === 'unauthorized_email') {
-      setAuthError('Access Denied. Please use your @sekolah.pahoa.sch.id email account.');
-    }
-  }, []);
+    const code = params.get('error');
+    if (!code) return;
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
+    const messages: Record<string, string> = {
+      unauthorized_email:
+        'Please sign in with your @sekolah.pahoa.sch.id school account. Personal Google accounts cannot be used.',
+      user_not_found:
+        'We could not find your account. If you are a student, ask your teacher to add you to a group for this school year.',
+      auth_failed:
+        'Sign-in did not complete. Please try again — if it keeps happening, tell your teacher.',
+      missing_code:
+        'That sign-in link is incomplete or has expired. Please start again from this page.',
+    };
+
+    setAuthError(messages[code] ?? 'Sign-in failed. Please try again.');
+  }, []);
 
   const handleGoogleLogin = async () => {
     setIsAuthenticating(true);
@@ -35,7 +44,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="h-screen w-screen relative overflow-hidden bg-black text-[#e6edf3] font-sans">
+    <div className="h-[100dvh] w-full relative overflow-hidden bg-[#100e09] text-[#e6edf3] font-sans">
       
       {/* Full Screen Background Animation */}
       <div className="absolute inset-0 z-0 pointer-events-none">
@@ -52,11 +61,12 @@ export default function LoginPage() {
           <div className="w-full lg:w-[45%] h-full flex flex-col items-center justify-center p-6 lg:p-12 pointer-events-auto relative">
               
               {/* Premium separation: Rounded left edge with a subtle neon glow and heavy shadow */}
-              <div className="absolute inset-0 lg:rounded-l-[3rem] bg-[#181715] shadow-[-30px_0_60px_rgba(0,0,0,0.8)] overflow-hidden z-0">
-                  <div className="absolute left-0 top-[10%] bottom-[10%] w-[1px] bg-gradient-to-b from-transparent via-[#f97316] to-transparent opacity-30 shadow-[0_0_20px_#f97316]"></div>
+              <div className="absolute inset-0 lg:rounded-l-[3rem] bg-[#1a1811] shadow-[-30px_0_60px_rgba(0,0,0,0.8)] overflow-hidden z-0">
+                  <div className="absolute left-0 top-[10%] bottom-[10%] w-[1px] bg-gradient-to-b from-transparent via-[var(--brand-amber)] to-transparent opacity-30 shadow-[0_0_20px_var(--brand-amber)]"></div>
               </div>
               
               <div 
+                data-login-card
                 className="max-w-[420px] w-full flex flex-col relative z-20" 
                 style={{ 
                   animation: 'fadeIn 0.8s ease-out forwards',
@@ -70,10 +80,17 @@ export default function LoginPage() {
                         from { opacity: 0; transform: translateY(20px); }
                         to { opacity: 1; transform: translateY(0); }
                     }
+                    @media (prefers-reduced-motion: reduce) {
+                        [data-login-card] {
+                            animation: none !important;
+                            opacity: 1 !important;
+                            transform: none !important;
+                        }
+                    }
                   `}</style>
 
                   <div className="flex flex-col items-center text-center mb-8">
-                      <div className="w-14 h-14 rounded-full flex items-center justify-center mb-6" style={{ background: 'transparent', border: '1px solid #f97316', color: '#f97316', boxShadow: 'inset 0 0 10px rgba(249, 115, 22, 0.1), 0 0 15px rgba(249, 115, 22, 0.2)' }}>
+                      <div className="w-14 h-14 rounded-full flex items-center justify-center mb-6" style={{ background: 'transparent', border: '1px solid var(--brand-amber)', color: 'var(--brand-amber)', boxShadow: 'inset 0 0 10px rgba(245, 158, 11, 0.1), 0 0 15px rgba(245, 158, 11, 0.2)' }}>
                           <svg className="w-7 h-7" fill="currentColor" viewBox="0 0 24 24">
                               <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
                           </svg>
@@ -87,7 +104,7 @@ export default function LoginPage() {
                           Log in to access your STEAM project dashboard.
                       </p>
 
-                      <p className="text-[#f97316] text-[12px] font-semibold px-2 leading-relaxed">
+                      <p className="text-[var(--brand-amber)] text-[12px] font-semibold px-2 leading-relaxed">
                           Note: Only @sekolah.pahoa.sch.id email accounts are permitted.
                       </p>
                   </div>
@@ -102,10 +119,10 @@ export default function LoginPage() {
                       <button 
                         onClick={handleGoogleLogin} 
                         className="w-full flex items-center justify-center gap-3 py-3 px-6 rounded-lg font-medium text-[13px] transition-all duration-200"
-                        style={{ background: 'transparent', color: '#f97316', border: '1px solid #f97316' }}
+                        style={{ background: 'transparent', color: 'var(--brand-amber)', border: '1px solid var(--brand-amber)' }}
                         onMouseEnter={(e) => {
-                          e.currentTarget.style.background = 'rgba(249, 115, 22, 0.08)';
-                          e.currentTarget.style.boxShadow = '0 0 15px rgba(249, 115, 22, 0.15)';
+                          e.currentTarget.style.background = 'rgba(245, 158, 11, 0.08)';
+                          e.currentTarget.style.boxShadow = '0 0 15px rgba(245, 158, 11, 0.15)';
                           e.currentTarget.style.transform = 'translateY(-1px)';
                         }}
                         onMouseLeave={(e) => {
@@ -124,7 +141,7 @@ export default function LoginPage() {
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
                           </svg>
-                          Secure quantum encryption active
+                          Signed in with your school Google account
                       </div>
                   </div>
               </div>
@@ -142,7 +159,7 @@ export default function LoginPage() {
       {/* Feedback Modal */}
       {isAuthenticating && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 pointer-events-auto">
-            <div className="bg-[#181715] p-10 rounded-2xl border border-white/10 max-w-sm w-full mx-4 text-center shadow-2xl">
+            <div className="bg-[#1a1811] p-10 rounded-2xl border border-white/10 max-w-sm w-full mx-4 text-center shadow-2xl">
                 <div className="w-16 h-16 bg-orange-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
                     <div className="w-3 h-3 bg-orange-500 rounded-full animate-ping"></div>
                 </div>

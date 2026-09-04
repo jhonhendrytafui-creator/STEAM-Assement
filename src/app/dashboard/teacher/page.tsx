@@ -254,14 +254,14 @@ export default function TeacherDashboardPage() {
 
             <Navbar portalName={isAdmin ? 'Teacher Portal · Admin' : 'Teacher Portal'} userEmail={teacherProfile?.email} />
 
-            <main className="w-full px-3 sm:px-6 lg:px-8 py-4 sm:py-6 flex flex-col md:flex-row gap-4 md:gap-6 lg:gap-8 h-[calc(100vh-65px)] overflow-hidden">
+            <main className="w-full px-3 sm:px-6 lg:px-8 py-4 sm:py-6 flex flex-col md:flex-row gap-4 md:gap-6 lg:gap-8 md:h-[calc(100dvh-65px)] md:overflow-hidden">
                 <Sidebar
                     tabs={isAdmin ? [...TEACHER_TABS, ...ADMIN_TABS] : TEACHER_TABS}
                     activeTab={activeTab}
                     onTabChange={setActiveTab}
                 />
 
-                <div className="flex-1 w-full min-w-0 overflow-y-auto">
+                <div className="flex-1 w-full min-w-0 md:overflow-y-auto">
                     {activeTab === 'overview' && (
                         <OverviewTab
                             recentProjects={recentProjects}
