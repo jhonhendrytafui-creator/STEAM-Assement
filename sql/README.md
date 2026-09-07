@@ -20,10 +20,11 @@ noted, so re-running in this order is safe.
 | 10 | `harden_security.sql` | Audit fixes: scoped policies, `app_settings` |
 | 11 | `fix_silent_rls_failures.sql` | Missing peer-assessment UPDATE policy, C1 reset trigger, re-runnable storage policies |
 | 12 | `harden_links_and_storage.sql` | Rejects non-http(s) links at write time; scopes logbook photos to the owning group |
+| 13 | `teacher_expertise_and_assignments.sql` | Admin-editable teacher subjects, `project_assignments`, teacher-only recommendation policies |
 
 ## Existing database
 
-Run **9**, **10**, **11**, then **12**. All four are safe to re-run.
+Run **9**, **10**, **11**, **12**, then **13**. All five are safe to re-run.
 
 **11 is not optional.** Without it, a student editing a peer assessment they
 already submitted sees "Assessment saved successfully" and nothing is written —
@@ -36,6 +37,14 @@ presentation and additional-document links, and the logbook photo URL; the only
 check was `startsWith('http')` in the browser, which anyone can skip by calling
 Supabase directly. It also scopes the `logbook_photos` bucket, which previously
 let any signed-in user delete any group's photos.
+
+**13 is what unblocks project classification.** Teacher expertise had no screen
+that wrote to it, and lived on `profiles`, which does not exist until a teacher
+first signs in — so "No teachers have their subject expertise configured" could
+not be fixed from inside the app. Expertise moves to `teacher_emails`, where
+Admin → Teacher Access can edit it before anyone logs in, and becomes a list of
+subject ids rather than free text. It also closes a hole: every student could
+insert and delete rows in `project_teacher_recommendations`.
 
 Before running 10, run its Section 0 pre-flight query and keep the output — it
 tells you which of the two conflicting policy sets was live, which is worth

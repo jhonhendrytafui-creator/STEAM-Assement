@@ -6,17 +6,63 @@ import { fetchAll } from '@/lib/supabase/fetchAll';
 import { ACADEMIC_YEAR } from '@/lib/constants';
 import type { ToastType, ProjectData, ProjectTeacherRecommendation } from '@/lib/types';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BrainCircuit, Info, X, Users, AlertCircle, RefreshCw, Wand2, Zap, Search, LayoutGrid, List } from 'lucide-react';
+import { BrainCircuit, Info, X, Users, AlertCircle, RefreshCw, Wand2, Zap, Search, LayoutGrid, List, UserCheck, Tag, Scale } from 'lucide-react';
+import { subjectLabel } from '@/lib/subjects';
 
 interface ProjectClassificationTabProps {
     showToast: (message: string, type: ToastType) => void;
 }
 
+interface ProjectAssignment {
+    project_id: string;
+    mode: 'teacher' | 'subject';
+    teacher_email: string | null;
+    teacher_name: string | null;
+    subject_id: string | null;
+    relevance: number;
+    basis: string | null;
+    reason: string | null;
+}
+
 interface ProjectWithRecommendations extends ProjectData {
     recommendations: ProjectTeacherRecommendation[];
+    assignment?: ProjectAssignment;
 }
 
 type ViewMode = 'grid' | 'list';
+
+/**
+ * What the classifier is being asked to decide.
+ *
+ * 'teacher' hands each group to one person and keeps every teacher's load
+ * within one project of every other. 'subject' just files the project under
+ * the STEAM subject it draws on most, ignoring who teaches what.
+ */
+type ClassifyMode = 'teacher' | 'subject';
+
+/** Shape of the /api/classify-batch reply, success or failure. */
+interface BatchResponse {
+    error?: string;
+    assigned?: number;
+    total?: number;
+    skipped?: number;
+    partial?: boolean;
+    summary?: {
+        perTeacher?: Record<string, number>;
+        perSubject?: Record<string, number>;
+        spread?: number;
+    };
+}
+
+interface RunSummary {
+    mode: ClassifyMode;
+    assigned: number;
+    skipped: number;
+    partial: boolean;
+    perTeacher?: Record<string, number>;
+    perSubject?: Record<string, number>;
+    spread?: number;
+}
 
 export default function ProjectClassificationTab({ showToast }: ProjectClassificationTabProps) {
     const [projects, setProjects] = useState<ProjectWithRecommendations[]>([]);
@@ -26,6 +72,8 @@ export default function ProjectClassificationTab({ showToast }: ProjectClassific
     const [viewMode, setViewMode] = useState<ViewMode>('grid');
     const [classifyingProjectIds, setClassifyingProjectIds] = useState<Set<string>>(new Set());
     const [isClassifyingAll, setIsClassifyingAll] = useState(false);
+    const [mode, setMode] = useState<ClassifyMode>('teacher');
+    const [runSummary, setRunSummary] = useState<RunSummary | null>(null);
 
     // Modal state
     const [selectedProject, setSelectedProject] = useState<ProjectWithRecommendations | null>(null);
@@ -57,9 +105,16 @@ export default function ProjectClassificationTab({ showToast }: ProjectClassific
 
             const safeRecs = recsError ? [] : (recs || []);
 
+            const { data: assigns } = await supabase
+                .from('project_assignments')
+                .select('*')
+                .in('project_id', projectIds);
+            const byProject = new Map((assigns ?? []).map(a => [a.project_id, a as ProjectAssignment]));
+
             const merged = approvedProjects.map(p => ({
                 ...p,
-                recommendations: safeRecs.filter(r => r.project_id === p.id)
+                recommendations: safeRecs.filter(r => r.project_id === p.id),
+                assignment: byProject.get(p.id),
             }));
 
             setProjects(merged);
@@ -134,17 +189,79 @@ export default function ProjectClassificationTab({ showToast }: ProjectClassific
         }
     };
 
-    const handleClassifyAllPending = async () => {
-        const pending = displayedProjects.filter(p => !p.recommendations || p.recommendations.length === 0);
-        if (pending.length === 0) {
-            showToast('All visible projects already have recommendations.', 'info');
-            return;
-        }
+    const handleClassifyAll = async () => {
         setIsClassifyingAll(true);
-        for (const project of pending) {
-            await handleClassifyProject(project.id);
+        setRunSummary(null);
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            const res = await fetch('/api/classify-batch', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+                },
+                body: JSON.stringify({ mode, grade: selectedGrade }),
+            });
+
+            let data: BatchResponse = {};
+            try {
+                data = await res.json();
+            } catch {
+                throw new Error('The classifier took too long to answer. Please try again.');
+            }
+            if (!res.ok) throw new Error(data.error || 'Classification failed');
+
+            setRunSummary({
+                mode,
+                assigned: data.assigned ?? 0,
+                skipped: data.skipped ?? 0,
+                partial: Boolean(data.partial),
+                perTeacher: data.summary?.perTeacher,
+                perSubject: data.summary?.perSubject,
+                spread: data.summary?.spread,
+            });
+            showToast(
+                data.partial
+                    ? `Assigned ${data.assigned} of ${data.total}. Run again to finish the rest.`
+                    : `Assigned ${data.assigned} project(s).`,
+                data.partial ? 'warning' : 'success',
+            );
+            await fetchClassifications(true);
+        } catch (err) {
+            showToast((err as Error)?.message || 'Classification failed.', 'error');
+        } finally {
+            setIsClassifyingAll(false);
         }
-        setIsClassifyingAll(false);
+    };
+
+    /** What this project was finally assigned to, in either mode. */
+    const assignmentBadge = (a: ProjectAssignment | undefined) => {
+        if (!a) return null;
+        const isTeacher = a.mode === 'teacher';
+        const label = isTeacher
+            ? (a.teacher_name || a.teacher_email || 'Unassigned')
+            : (a.subject_id ? subjectLabel(a.subject_id) : 'No subject');
+        // 'balance' means nobody matched the subject and this teacher was
+        // simply the least busy — worth showing honestly rather than dressing
+        // it up as a subject match.
+        const weak = a.basis === 'balance';
+        return (
+            <span
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold ${
+                    weak
+                        ? 'bg-slate-500/10 text-slate-400 border-slate-600/40'
+                        : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'}`}
+                title={weak
+                    ? 'Assigned to even out workload — no subject overlap'
+                    : `${a.relevance}% match on ${a.subject_id ? subjectLabel(a.subject_id) : 'subject'}`}
+            >
+                {isTeacher
+                    ? <UserCheck className="w-3.5 h-3.5" aria-hidden="true" />
+                    : <Tag className="w-3.5 h-3.5" aria-hidden="true" />}
+                {label}
+                {!weak && <span className="opacity-70 tabular-nums">{a.relevance}%</span>}
+            </span>
+        );
     };
 
     const getRankColor = (rank: string) => {
@@ -172,19 +289,47 @@ export default function ProjectClassificationTab({ showToast }: ProjectClassific
                         Project Classification
                     </h2>
                     <p className="text-sm text-slate-400 mt-1">
-                        AI-powered guide teacher recommendations for approved projects.
+                        {mode === 'teacher'
+                            ? 'Share approved projects out between guide teachers, evenly.'
+                            : 'File each approved project under the STEAM subject it depends on most.'}
                     </p>
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
-                    <button
-                        onClick={handleClassifyAllPending}
-                        disabled={isClassifyingAll || isLoading || displayedProjects.every(p => p.recommendations && p.recommendations.length > 0)}
-                        className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-40 disabled:cursor-not-allowed text-[#1a1811] font-bold rounded-xl border border-amber-500/50 transition-colors text-sm"
-                        title="Run AI classification for all pending projects"
+                    <div
+                        role="group"
+                        aria-label="What to classify by"
+                        className="flex bg-[#1a1811] border border-amber-900/30 rounded-xl p-1 gap-1"
                     >
-                        <Zap className={`w-4 h-4 ${isClassifyingAll ? 'animate-pulse' : ''}`} />
-                        {isClassifyingAll ? 'Classifying...' : 'Classify Pending'}
+                        <button
+                            onClick={() => { setMode('teacher'); setRunSummary(null); }}
+                            aria-pressed={mode === 'teacher'}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                                mode === 'teacher' ? 'bg-[#292314] text-amber-400' : 'text-slate-500 hover:text-slate-300'}`}
+                        >
+                            <UserCheck className="w-3.5 h-3.5" aria-hidden="true" /> To teacher
+                        </button>
+                        <button
+                            onClick={() => { setMode('subject'); setRunSummary(null); }}
+                            aria-pressed={mode === 'subject'}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                                mode === 'subject' ? 'bg-[#292314] text-amber-400' : 'text-slate-500 hover:text-slate-300'}`}
+                        >
+                            <Tag className="w-3.5 h-3.5" aria-hidden="true" /> To subject
+                        </button>
+                    </div>
+                    <button
+                        onClick={handleClassifyAll}
+                        disabled={isClassifyingAll || isLoading || displayedProjects.length === 0}
+                        className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-40 disabled:cursor-not-allowed text-[#1a1811] font-bold rounded-xl border border-amber-500/50 transition-colors text-sm"
+                        title={mode === 'teacher'
+                            ? 'Assign every approved project to a guide teacher, evenly'
+                            : 'Label every approved project with its main STEAM subject'}
+                    >
+                        <Zap className={`w-4 h-4 ${isClassifyingAll ? 'animate-pulse' : ''}`} aria-hidden="true" />
+                        {isClassifyingAll
+                            ? 'Working...'
+                            : mode === 'teacher' ? 'Assign to teachers' : 'Label by subject'}
                     </button>
                     <button aria-label="Refresh classifications"
                         onClick={() => fetchClassifications()}
@@ -195,6 +340,50 @@ export default function ProjectClassificationTab({ showToast }: ProjectClassific
                     </button>
                 </div>
             </div>
+
+            {runSummary && (
+                <div className="bg-[#1a1811] border border-amber-900/30 rounded-2xl p-5">
+                    <div className="flex items-start gap-3 mb-4">
+                        <Scale className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" aria-hidden="true" />
+                        <div>
+                            <h3 className="text-sm font-bold text-white">
+                                {runSummary.mode === 'teacher' ? 'Workload after assigning' : 'Projects per subject'}
+                            </h3>
+                            <p className="text-xs text-slate-400 mt-0.5">
+                                {runSummary.assigned} project(s) assigned
+                                {runSummary.skipped > 0 && `, ${runSummary.skipped} skipped`}
+                                {runSummary.mode === 'teacher' && typeof runSummary.spread === 'number' && (
+                                    runSummary.spread <= 1
+                                        ? ' — every teacher is within one project of every other.'
+                                        : ` — loads differ by ${runSummary.spread}.`
+                                )}
+                            </p>
+                        </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                        {Object.entries(runSummary.perTeacher ?? runSummary.perSubject ?? {})
+                            .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+                            .map(([name, count]) => (
+                                <span
+                                    key={name}
+                                    className={`text-xs px-3 py-1.5 rounded-lg border ${
+                                        count === 0
+                                            ? 'bg-[#1c1b14] text-slate-600 border-slate-800'
+                                            : 'bg-[#292314] text-amber-200 border-amber-900/40'}`}
+                                >
+                                    {name}
+                                    <span className="ml-2 font-bold tabular-nums">{count}</span>
+                                </span>
+                            ))}
+                    </div>
+                    {runSummary.partial && (
+                        <p className="text-xs text-amber-400/90 mt-3">
+                            The run hit its time limit before finishing. Press the button again to
+                            continue where it stopped.
+                        </p>
+                    )}
+                </div>
+            )}
 
             {/* ── Controls row: grade filter + search + view toggle ── */}
             <div className="flex flex-col sm:flex-row gap-3">
@@ -310,6 +499,9 @@ export default function ProjectClassificationTab({ showToast }: ProjectClassific
                                     <h3 className="text-lg font-bold text-slate-200 group-hover:text-amber-400 transition-colors leading-snug line-clamp-2">
                                         {project.title}
                                     </h3>
+                                    {project.assignment && (
+                                        <div className="mt-3">{assignmentBadge(project.assignment)}</div>
+                                    )}
                                 </div>
 
                                 {/* Recommendations */}
@@ -432,6 +624,9 @@ export default function ProjectClassificationTab({ showToast }: ProjectClassific
                                             </span>
                                         </div>
                                         <p className="text-sm font-semibold text-slate-200 leading-snug line-clamp-2">{project.title}</p>
+                                        {project.assignment && (
+                                            <div className="mt-2">{assignmentBadge(project.assignment)}</div>
+                                        )}
                                     </div>
 
                                     {/* Subject pills */}

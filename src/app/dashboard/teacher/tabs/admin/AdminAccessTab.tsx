@@ -2,10 +2,12 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-    ShieldCheck, Plus, Trash2, RefreshCw, KeyRound, UserCheck, AlertTriangle,
+    ShieldCheck, Plus, Trash2, RefreshCw, KeyRound, UserCheck, AlertTriangle, BookOpen,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { logAdminAction, isValidSchoolEmail, ALLOWED_EMAIL_DOMAIN } from '@/lib/admin';
+import { subjectLabel } from '@/lib/subjects';
+import SubjectPicker from '@/components/ui/SubjectPicker';
 import type { TeacherEmailRecord, ToastType } from '@/lib/types';
 
 interface AdminAccessTabProps {
@@ -21,6 +23,10 @@ export default function AdminAccessTab({ adminEmail, showToast, showConfirm }: A
 
     const [newEmail, setNewEmail] = useState('');
     const [newIsAdmin, setNewIsAdmin] = useState(false);
+
+    // Which teacher's subjects are open for editing, if any.
+    const [editingSubjectsFor, setEditingSubjectsFor] = useState<TeacherEmailRecord | null>(null);
+    const [savingSubjects, setSavingSubjects] = useState(false);
 
     // The query is awaited before any setState, so mounting this tab does not
     // cascade renders. handleRefresh below adds the spinner for manual reloads.
@@ -57,6 +63,47 @@ export default function AdminAccessTab({ adminEmail, showToast, showConfirm }: A
     };
 
     const adminCount = teachers.filter(t => t.is_admin).length;
+
+    // Project classification skips a teacher with no subjects, so an empty list
+    // here is the reason "no teacher has subjects set" appears on that screen.
+    const missingSubjects = teachers.filter(
+        t => !t.expertise_subjects || t.expertise_subjects.length === 0,
+    );
+
+    const handleSaveSubjects = async (subjects: string[]) => {
+        const teacher = editingSubjectsFor;
+        if (!teacher) return;
+
+        setSavingSubjects(true);
+        const { data, error } = await supabase
+            .from('teacher_emails')
+            .update({ expertise_subjects: subjects })
+            .eq('id', teacher.id)
+            .select('id');
+        setSavingSubjects(false);
+
+        if (error) {
+            showToast('Could not save subjects: ' + error.message, 'error');
+            return;
+        }
+        // An update RLS refuses matches no rows and reports no error, so a
+        // non-admin would otherwise see "Saved" and nothing would change.
+        if (!data || data.length === 0) {
+            showToast('Subjects were not saved. Only an admin can change teacher subjects.', 'error');
+            return;
+        }
+
+        setTeachers(prev => prev.map(t =>
+            t.id === teacher.id ? { ...t, expertise_subjects: subjects } : t));
+        setEditingSubjectsFor(null);
+        showToast(
+            subjects.length === 0
+                ? `Cleared subjects for ${teacher.email}.`
+                : `Saved ${subjects.length} subject(s) for ${teacher.email}.`,
+            'success',
+        );
+        logAdminAction(adminEmail, 'update_teacher_subjects', teacher.email, { subjects });
+    };
 
     const handleAdd = async () => {
         const email = newEmail.trim().toLowerCase();
@@ -187,6 +234,22 @@ export default function AdminAccessTab({ adminEmail, showToast, showConfirm }: A
                 </button>
             </div>
 
+            {!loading && missingSubjects.length > 0 && (
+                <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 mb-6 flex items-start gap-3">
+                    <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" aria-hidden="true" />
+                    <div className="text-sm text-amber-200">
+                        <p className="font-semibold mb-1">
+                            {missingSubjects.length} teacher(s) have no subjects set
+                        </p>
+                        <p className="text-amber-200/80 text-xs leading-relaxed">
+                            Project classification can only assign work to teachers whose subjects are
+                            known. Set them below — {missingSubjects.slice(0, 4).map(t => t.email).join(', ')}
+                            {missingSubjects.length > 4 ? `, and ${missingSubjects.length - 4} more` : ''}.
+                        </p>
+                    </div>
+                </div>
+            )}
+
             {/* Add teacher */}
             <div className="bg-[#1c1b14] border border-amber-500/20 rounded-xl p-4 mb-6">
                 <h3 className="text-sm font-semibold text-white mb-1">Give a teacher access</h3>
@@ -233,6 +296,7 @@ export default function AdminAccessTab({ adminEmail, showToast, showConfirm }: A
                         <thead>
                             <tr className="text-left text-xs uppercase tracking-wider text-slate-500 border-b border-slate-800">
                                 <th className="py-2 pr-4">Email</th>
+                                <th className="py-2 pr-4">Subjects</th>
                                 <th className="py-2 pr-4">Status</th>
                                 <th className="py-2 pr-4">Role</th>
                                 <th className="py-2 text-right">Actions</th>
@@ -245,6 +309,24 @@ export default function AdminAccessTab({ adminEmail, showToast, showConfirm }: A
                                         {t.email}
                                         {t.email === adminEmail?.toLowerCase() && (
                                             <span className="ml-2 text-xs text-amber-500/70">(you)</span>
+                                        )}
+                                    </td>
+                                    <td className="py-3 pr-4 max-w-[260px]">
+                                        {t.expertise_subjects && t.expertise_subjects.length > 0 ? (
+                                            <span className="flex flex-wrap gap-1">
+                                                {t.expertise_subjects.map(id => (
+                                                    <span
+                                                        key={id}
+                                                        className="text-[11px] bg-[#292314] text-amber-300/90 border border-amber-900/40 px-2 py-0.5 rounded-full"
+                                                    >
+                                                        {subjectLabel(id)}
+                                                    </span>
+                                                ))}
+                                            </span>
+                                        ) : (
+                                            <span className="inline-flex items-center gap-1.5 text-xs text-amber-500/80">
+                                                <AlertTriangle className="w-3.5 h-3.5" aria-hidden="true" /> Not set
+                                            </span>
                                         )}
                                     </td>
                                     <td className="py-3 pr-4">
@@ -269,6 +351,12 @@ export default function AdminAccessTab({ adminEmail, showToast, showConfirm }: A
                                     </td>
                                     <td className="py-3 text-right whitespace-nowrap">
                                         <button
+                                            onClick={() => setEditingSubjectsFor(t)}
+                                            className="text-xs px-3 py-1.5 mr-1 rounded-lg border border-amber-900/40 text-slate-300 hover:text-amber-400 hover:bg-amber-500/10 transition-colors inline-flex items-center gap-1.5"
+                                        >
+                                            <BookOpen className="w-3.5 h-3.5" aria-hidden="true" /> Subjects
+                                        </button>
+                                        <button
                                             onClick={() => handleToggleAdmin(t)}
                                             className="text-xs px-3 py-1.5 rounded-lg border border-amber-900/40 text-slate-300 hover:text-amber-400 hover:bg-amber-500/10 transition-colors"
                                         >
@@ -287,6 +375,16 @@ export default function AdminAccessTab({ adminEmail, showToast, showConfirm }: A
                         </tbody>
                     </table>
                 </div>
+            )}
+
+            {editingSubjectsFor && (
+                <SubjectPicker
+                    title={`Subjects for ${editingSubjectsFor.email}`}
+                    value={editingSubjectsFor.expertise_subjects ?? []}
+                    saving={savingSubjects}
+                    onSave={handleSaveSubjects}
+                    onCancel={() => setEditingSubjectsFor(null)}
+                />
             )}
         </div>
     );

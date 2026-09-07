@@ -136,6 +136,9 @@ export interface TeacherEmailRecord {
     email: string;
     is_admin: boolean;
     created_at?: string;
+    full_name?: string | null;
+    /** Subject ids from src/lib/subjects.ts. Empty means classification skips them. */
+    expertise_subjects?: string[];
     /** Filled in from profiles — null when the teacher has never logged in. */
     has_logged_in?: boolean;
 }
