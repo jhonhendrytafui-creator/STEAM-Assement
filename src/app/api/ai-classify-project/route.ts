@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI, SchemaType, type GenerationConfig, type Schema } from '@google/generative-ai';
 import { createClient } from '@supabase/supabase-js';
 import { requireTeacher } from '@/lib/api-auth';
+import { parseAbstract, subjectLabel } from '@/lib/abstract';
+import { isKnownSubject, subjectLabel as steamSubjectLabel } from '@/lib/subjects';
 
 export const maxDuration = 60;
 
@@ -50,12 +52,12 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: 'Project not found' }, { status: 404 });
         }
 
-        // 2. Fetch all teachers and their expertise
-        // Use select('*') so the query doesn't fail if the expertise column is missing from profiles.
+        // 2. Fetch the teacher directory.
+        // teacher_emails is the list admins manage, so a teacher who has not
+        // signed in yet still counts — profiles only gains a row at first login.
         const { data: teachersRaw, error: teacherError } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('role', 'teacher');
+            .from('teacher_emails')
+            .select('email, full_name, expertise_subjects');
 
         if (teacherError) {
             console.error("Failed to fetch teachers:", teacherError);
@@ -63,41 +65,45 @@ export async function POST(req: Request) {
         }
 
         if (!teachersRaw || teachersRaw.length === 0) {
-            return NextResponse.json({ error: 'No teacher profiles found in the system. Make sure teacher accounts exist with role="teacher".' }, { status: 400 });
+            return NextResponse.json({ error: 'No teachers exist yet. Add them under Admin \u2192 Teacher Access first.' }, { status: 400 });
         }
 
-        // Normalize the teacher list — support expertise OR subject column names
-        const teachers = teachersRaw.map((t: any) => ({
-            email: t.email || '',
-            full_name: t.full_name || t.name || t.email || 'Unknown',
-            expertise: t.expertise || t.subject || t.subjects || ''
-        }));
+        // expertise_subjects holds ids from src/lib/subjects.ts; render them as
+        // readable names for the prompt and drop anything unrecognised.
+        const teachers = teachersRaw.map((t: any) => {
+            const ids: string[] = Array.isArray(t.expertise_subjects) ? t.expertise_subjects : [];
+            const known = ids.filter(isKnownSubject);
+            return {
+                email: t.email || '',
+                full_name: t.full_name || t.email || 'Unknown',
+                expertise: known.map(steamSubjectLabel).join(', '),
+            };
+        });
 
         const teachersWithExpertise = teachers.filter(t => t.expertise && t.expertise.trim().length > 0);
 
         if (teachersWithExpertise.length === 0) {
             return NextResponse.json({
-                error: 'No teachers have their subject expertise configured. Please update teacher profiles with their STEAM subject (e.g. Biology, Mathematics, Music) in the "expertise" field.'
+                error: 'No teacher has subjects set yet. Open Admin \u2192 Teacher Access and choose each teacher\u2019s STEAM subjects, then run this again.',
+                reason: 'no_teacher_expertise',
             }, { status: 400 });
         }
 
-        // 3. Prepare data for Gemini
-        let problemDesc = project.problem_description || '';
-        let solutionDesc = project.solution_description || '';
-        let keyConcepts: Record<string, string> = {};
-        if (project.abstract) {
-            try {
-                const parsedAbstract = typeof project.abstract === 'string' ? JSON.parse(project.abstract) : project.abstract;
-                if (parsedAbstract.problem) problemDesc = parsedAbstract.problem;
-                if (parsedAbstract.solution) solutionDesc = parsedAbstract.solution;
-                if (parsedAbstract.keyConcepts) keyConcepts = parsedAbstract.keyConcepts;
-            } catch (e) {
-                problemDesc = project.abstract;
-            }
-        }
+        // 3. Prepare data for Gemini.
+        //
+        // keyConcepts is an ARRAY of { subject, concept } — that is the shape
+        // SubmitProjectTab saves. This code read it as an object and ran
+        // Object.entries over it, so the prompt received
+        //     0: [object Object]
+        //     1: [object Object]
+        // and the AI never saw a single one of the STEAM subjects the students
+        // chose. parseAbstract is the shared, tested reader for this column.
+        const parsed = parseAbstract(project.abstract);
+        const problemDesc = parsed.problem || project.problem_description || '';
+        const solutionDesc = parsed.solution || project.solution_description || '';
 
-        const keyConceptsText = Object.entries(keyConcepts).length > 0
-            ? Object.entries(keyConcepts).map(([subject, concept]) => `  ${subject}: ${concept}`).join('\n')
+        const keyConceptsText = parsed.keyConcepts.length > 0
+            ? parsed.keyConcepts.map(c => `  ${subjectLabel(c.subject)}: ${c.concept}`).join('\n')
             : '  (not specified)';
 
         const prompt = `You are an expert STEAM Education Coordinator. Your task is to recommend the 3 most suitable Guide Teachers for a student STEAM project based on the project's content and each teacher's subject expertise.
