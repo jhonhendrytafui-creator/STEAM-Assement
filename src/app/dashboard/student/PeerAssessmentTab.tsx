@@ -62,23 +62,48 @@ export default function PeerAssessmentTab({
         ? `${DRAFT_KEY_PREFIX}:${academicYear}:${userEmail}:${selectedMemberEmail}`
         : null;
 
+    // A peer assessment belongs to a group, not just to a pair of students. A
+    // student moved between groups mid-year keeps the rows they wrote in the
+    // group they left, so scoping this query by assessor and year alone pulled
+    // those in and the form treated them as this group's work: teammates showed
+    // a false completion tick, and submitting took the UPDATE branch below and
+    // rewrote the old row with the new class and group — relocating the old
+    // group's record instead of adding one here.
+    const className = studentInfo.class_name;
+    const groupNumber = studentInfo.group_number;
+
     const fetchAssessments = useCallback(async () => {
         const { data, error } = await supabase
             .from('peer_assessments')
             .select('*')
             .eq('assessor_email', userEmail)
-            .eq('academic_year', academicYear);
-            
+            .eq('academic_year', academicYear)
+            .eq('class_name', className)
+            .eq('group_number', groupNumber);
+
         if (!error && data) {
             setAssessments(data);
         }
-        
+
         // Auto-select first member
         if (teamMembers.length > 0) {
             setSelectedMemberEmail(prev => prev ?? teamMembers[0].email);
         }
         setLoading(false);
-    }, [userEmail, academicYear, teamMembers]);
+    }, [userEmail, academicYear, className, groupNumber, teamMembers]);
+
+    // The query already scopes rows to this group, but a group change leaves the
+    // previous rows on screen until the refetch lands. Re-checking the group
+    // here stops that window from reading or writing a row from another group.
+    const findAssessment = useCallback(
+        (email: string | null) =>
+            assessments.find(
+                a => a.assessed_email === email
+                    && a.class_name === className
+                    && a.group_number === groupNumber,
+            ),
+        [assessments, className, groupNumber],
+    );
 
     useEffect(() => {
         fetchAssessments();
@@ -89,7 +114,7 @@ export default function PeerAssessmentTab({
         setSelectedMemberEmail(email);
         setIsEditing(false);
 
-        const existing = assessments.find(a => a.assessed_email === email);
+        const existing = findAssessment(email);
         if (existing) {
             setQScores([
                 existing.q1_score, existing.q2_score, existing.q3_score,
@@ -125,7 +150,7 @@ export default function PeerAssessmentTab({
         if (selectedMemberEmail) {
             handleSelectMember(selectedMemberEmail);
         }
-    }, [selectedMemberEmail, assessments]);
+    }, [selectedMemberEmail, findAssessment]);
 
     // Release the load guard once the populated values have rendered.
     useEffect(() => {
@@ -136,7 +161,7 @@ export default function PeerAssessmentTab({
     // once an assessment exists the saved record is the source of truth.
     useEffect(() => {
         if (!draftKey || loadingFormRef.current) return;
-        if (assessments.some(a => a.assessed_email === selectedMemberEmail)) return;
+        if (findAssessment(selectedMemberEmail)) return;
 
         const isBlank = qScores.every(v => v === 0) && !commentGood.trim() && !commentImprove.trim();
         try {
@@ -148,7 +173,7 @@ export default function PeerAssessmentTab({
         } catch {
             // Storage unavailable — the form still works, it just won't persist
         }
-    }, [draftKey, selectedMemberEmail, assessments, qScores, commentGood, commentImprove]);
+    }, [draftKey, selectedMemberEmail, findAssessment, qScores, commentGood, commentImprove]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -172,11 +197,11 @@ export default function PeerAssessmentTab({
         
         // Upsert logic (need an id if updating, but since we have a unique constraint, we can use upset/insert correctly)
         // Check if exists
-        const existing = assessments.find(a => a.assessed_email === selectedMemberEmail);
-        
+        const existing = findAssessment(selectedMemberEmail);
+
         const payload = {
-            class_name: studentInfo.class_name,
-            group_number: studentInfo.group_number,
+            class_name: className,
+            group_number: groupNumber,
             academic_year: academicYear,
             assessor_email: userEmail,
             assessed_email: selectedMemberEmail,
@@ -238,7 +263,7 @@ export default function PeerAssessmentTab({
     const selectedMember = teamMembers.find(m => m.email === selectedMemberEmail);
     const isSelf = selectedMemberEmail === userEmail;
     const indicators = isSelf ? SELF_INDICATORS : PEER_INDICATORS;
-    const existingAssess = assessments.find(a => a.assessed_email === selectedMemberEmail);
+    const existingAssess = findAssessment(selectedMemberEmail);
     // Submitted assessments are read-only until the student chooses to correct
     // them. Marking a teammate is easy to misclick and there was previously no
     // way back.
@@ -270,7 +295,7 @@ export default function PeerAssessmentTab({
                     <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-2">Team Members</h3>
                     {teamMembers.map(member => {
                         const isSelected = selectedMemberEmail === member.email;
-                        const isCompleted = assessments.some(a => a.assessed_email === member.email);
+                        const isCompleted = Boolean(findAssessment(member.email));
                         const self = member.email === userEmail;
                         
                         return (
