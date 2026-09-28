@@ -22,8 +22,8 @@ import type { ToastType } from '@/lib/types';
 // grades 7-9 were silently blocked when the year last moved.
 //
 // So this screen will not let the year be changed without first showing what is
-// actually in the target year, and it can copy themes across, because there is
-// no other screen in the app that can create them.
+// actually in the target year. It can also copy a whole year's themes across in
+// one go, which Admin -> Project Themes, being one theme at a time, cannot.
 // ─────────────────────────────────────────────────────────────
 
 interface AdminAcademicYearTabProps {
@@ -359,8 +359,8 @@ export default function AdminAcademicYearTab({
                                 <p className="text-sm text-amber-100">
                                     Grade {missingThemeGrades.map(g => g.grade).join(', ')} would not be
                                     able to submit a project in {readiness.year}: submission requires a
-                                    theme, and there are none. Copy last year&apos;s across and edit them
-                                    after, or add them in SQL.
+                                    theme, and there are none. Copy last year&apos;s across below, or add
+                                    them one at a time in Admin &rarr; Project Themes.
                                 </p>
                             </div>
                             <div className="flex flex-col sm:flex-row gap-3 sm:items-center">

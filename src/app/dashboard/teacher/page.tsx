@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
     LayoutDashboard, FolderOpen, BookOpen, ClipboardCheck,
     Users, BarChart2, Star, TrendingUp, HelpCircle, Search, BrainCircuit,
-    ShieldCheck, DatabaseZap, ScrollText, UserCog, CalendarClock
+    ShieldCheck, DatabaseZap, ScrollText, UserCog, CalendarClock, Palette
 } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase/client';
@@ -41,6 +41,7 @@ import AdminAccessTab from './tabs/admin/AdminAccessTab';
 import AdminProjectsTab from './tabs/admin/AdminProjectsTab';
 import AdminAuditTab from './tabs/admin/AdminAuditTab';
 import AdminAcademicYearTab from './tabs/admin/AdminAcademicYearTab';
+import AdminThemesTab from './tabs/admin/AdminThemesTab';
 import TeacherProfileForm from './TeacherProfileForm';
 
 // Sidebar sections. Eleven teacher tabs plus four admin ones is too long for a
@@ -89,6 +90,7 @@ const ADMIN_SECTION: SidebarSection = {
         { id: 'admin-students', label: 'Students & Groups', icon: Users },
         { id: 'admin-access', label: 'Teacher Access', icon: ShieldCheck },
         { id: 'admin-projects', label: 'Project Data', icon: DatabaseZap },
+        { id: 'admin-themes', label: 'Project Themes', icon: Palette },
         { id: 'admin-year', label: 'Academic Year', icon: CalendarClock },
         { id: 'admin-audit', label: 'Activity Log', icon: ScrollText },
     ],
@@ -464,6 +466,14 @@ export default function TeacherDashboardPage() {
                         <AdminProjectsTab
                             adminEmail={teacherProfile?.email ?? null}
                             allStudents={allStudents}
+                            showToast={showToast}
+                            showConfirm={showConfirm}
+                        />
+                    )}
+
+                    {isAdmin && activeTab === 'admin-themes' && (
+                        <AdminThemesTab
+                            adminEmail={teacherProfile?.email ?? null}
                             showToast={showToast}
                             showConfirm={showConfirm}
                         />
