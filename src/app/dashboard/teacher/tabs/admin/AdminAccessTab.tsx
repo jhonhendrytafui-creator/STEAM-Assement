@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     ShieldCheck, Plus, Trash2, RefreshCw, KeyRound, UserCheck, AlertTriangle, BookOpen, MessageCircle,
+    GraduationCap, Briefcase,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { logAdminAction, isValidSchoolEmail, ALLOWED_EMAIL_DOMAIN } from '@/lib/admin';
@@ -67,8 +68,11 @@ export default function AdminAccessTab({ adminEmail, showToast, showConfirm }: A
 
     // Project classification skips a teacher with no subjects, so an empty list
     // here is the reason "no teacher has subjects set" appears on that screen.
+    // Non-teaching staff are supposed to have none, so they are not a problem to
+    // report -- counting them would make this warning permanent and ignorable.
     const missingSubjects = teachers.filter(
-        t => !t.expertise_subjects || t.expertise_subjects.length === 0,
+        t => t.teaching_role !== 'non_teaching'
+            && (!t.expertise_subjects || t.expertise_subjects.length === 0),
     );
 
     const handleSaveSubjects = async (subjects: string[]) => {
@@ -297,6 +301,7 @@ export default function AdminAccessTab({ adminEmail, showToast, showConfirm }: A
                         <thead>
                             <tr className="text-left text-xs uppercase tracking-wider text-slate-500 border-b border-slate-800">
                                 <th className="py-2 pr-4">Email</th>
+                                <th className="py-2 pr-4">Teaches</th>
                                 <th className="py-2 pr-4">Subjects</th>
                                 <th className="py-2 pr-4">Grades</th>
                                 <th className="py-2 pr-4">WhatsApp</th>
@@ -314,6 +319,17 @@ export default function AdminAccessTab({ adminEmail, showToast, showConfirm }: A
                                             <span className="ml-2 text-xs text-amber-500/70">(you)</span>
                                         )}
                                     </td>
+                                    <td className="py-3 pr-4 whitespace-nowrap">
+                                        {t.teaching_role === 'non_teaching' ? (
+                                            <span className="inline-flex items-center gap-1.5 text-xs bg-slate-800/60 text-slate-400 border border-slate-700 px-2 py-0.5 rounded-full">
+                                                <Briefcase className="w-3 h-3" /> Non-teaching
+                                            </span>
+                                        ) : (
+                                            <span className="inline-flex items-center gap-1.5 text-xs text-slate-400">
+                                                <GraduationCap className="w-3.5 h-3.5" /> Teaches
+                                            </span>
+                                        )}
+                                    </td>
                                     <td className="py-3 pr-4 max-w-[260px]">
                                         {t.expertise_subjects && t.expertise_subjects.length > 0 ? (
                                             <span className="flex flex-wrap gap-1">
@@ -326,6 +342,8 @@ export default function AdminAccessTab({ adminEmail, showToast, showConfirm }: A
                                                     </span>
                                                 ))}
                                             </span>
+                                        ) : t.teaching_role === 'non_teaching' ? (
+                                            <span className="text-xs text-slate-600">Not applicable</span>
                                         ) : (
                                             <span className="inline-flex items-center gap-1.5 text-xs text-amber-500/80">
                                                 <AlertTriangle className="w-3.5 h-3.5" aria-hidden="true" /> Not set
@@ -338,7 +356,9 @@ export default function AdminAccessTab({ adminEmail, showToast, showConfirm }: A
                                                 {t.grade_levels.join(', ')}
                                             </span>
                                         ) : (
-                                            <span className="text-xs text-slate-600">—</span>
+                                            <span className="text-xs text-slate-600">
+                                                {t.teaching_role === 'non_teaching' ? 'n/a' : '—'}
+                                            </span>
                                         )}
                                     </td>
                                     <td className="py-3 pr-4 whitespace-nowrap">

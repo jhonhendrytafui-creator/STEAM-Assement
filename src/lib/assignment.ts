@@ -21,6 +21,8 @@ export interface TeacherCandidate {
     name: string;
     /** Subject ids this teacher can guide, from SUBJECT_DEFS. */
     subjects: string[];
+    /** Grades they teach, as bare numerals: ['7', '8']. */
+    grades: string[];
 }
 
 export interface SubjectScore {
@@ -31,6 +33,8 @@ export interface SubjectScore {
 
 export interface ProjectNeed {
     projectId: string;
+    /** The grade this project's group is in, as a bare numeral. */
+    grade: string;
     /** Subject relevance for this project, best first. */
     subjects: SubjectScore[];
 }
@@ -55,6 +59,14 @@ export interface BalancedResult {
     load: Record<string, number>;
     /** Projects that could not be placed — only when there are no teachers. */
     unassigned: string[];
+}
+
+export interface GradeAwareResult extends BalancedResult {
+    /**
+     * Grades that had projects but nobody who teaches them. Their projects are
+     * in `unassigned` rather than handed to a teacher from another grade.
+     */
+    gradesWithoutTeacher: string[];
 }
 
 /**
@@ -229,4 +241,78 @@ export function bestSubject(need: ProjectNeed): SubjectScore | null {
     if (need.subjects.length === 0) return null;
     return [...need.subjects].sort((a, b) =>
         b.relevance - a.relevance || a.subjectId.localeCompare(b.subjectId))[0];
+}
+
+/**
+ * Assign every project to a teacher who teaches that project's grade.
+ *
+ * The school runs grades 7 to 12 and a teacher declares which of them they
+ * teach, so a grade 7 project belonging to a grade 12 teacher is simply wrong —
+ * however good the subject match. balancedAssign on its own cannot express that:
+ * its load-levelling passes will hand a project to whoever is carrying least,
+ * and a subject filter inside scorePair would not stop them, because those
+ * passes assign on load alone with no score at all.
+ *
+ * So the projects are partitioned by grade and each grade is assigned among
+ * only the teachers who teach it. That makes the grade a hard constraint rather
+ * than a preference, and it is also the right unit for balancing: a grade 7
+ * teacher's load is worth comparing against other grade 7 teachers, not against
+ * the grade 12 team.
+ *
+ * A grade with no eligible teacher yields no assignments. Its projects come
+ * back in `unassigned` and the grade in `gradesWithoutTeacher`, so the caller
+ * can say which grade needs a teacher instead of quietly misfiling the work.
+ *
+ * Note on teachers who cover several grades: each grade is balanced on its own,
+ * so someone teaching 7 and 8 takes a share of both and their total is higher
+ * than a single-grade colleague's. That reflects being available for more, and
+ * `load` reports the total.
+ */
+export function assignByGrade(
+    needs: ProjectNeed[],
+    teachers: TeacherCandidate[],
+): GradeAwareResult {
+    const byGrade = new Map<string, ProjectNeed[]>();
+    for (const need of needs) {
+        const list = byGrade.get(need.grade);
+        if (list) list.push(need);
+        else byGrade.set(need.grade, [need]);
+    }
+
+    const assignments: Assignment[] = [];
+    const load: Record<string, number> = {};
+    for (const t of teachers) load[t.email] = 0;
+    const unassigned: string[] = [];
+    const gradesWithoutTeacher: string[] = [];
+
+    // Numeric where the grade is a numeral, so 7 comes before 10 rather than
+    // after it, and the order stays stable across runs either way.
+    const grades = [...byGrade.keys()].sort(
+        (a, b) => (Number(a) || 0) - (Number(b) || 0) || a.localeCompare(b),
+    );
+
+    for (const grade of grades) {
+        const gradeNeeds = byGrade.get(grade)!;
+        const eligible = teachers.filter(t => t.grades.includes(grade));
+
+        if (eligible.length === 0) {
+            gradesWithoutTeacher.push(grade);
+            unassigned.push(...gradeNeeds.map(n => n.projectId).sort());
+            continue;
+        }
+
+        const result = balancedAssign(gradeNeeds, eligible);
+        assignments.push(...result.assignments);
+        for (const [email, count] of Object.entries(result.load)) {
+            load[email] = (load[email] ?? 0) + count;
+        }
+        unassigned.push(...result.unassigned);
+    }
+
+    return {
+        assignments: assignments.sort((a, b) => a.projectId.localeCompare(b.projectId)),
+        load,
+        unassigned,
+        gradesWithoutTeacher,
+    };
 }

@@ -23,11 +23,25 @@ noted, so re-running in this order is safe.
 | 13 | `teacher_expertise_and_assignments.sql` | Admin-editable teacher subjects, `project_assignments`, teacher-only recommendation policies |
 | 14 | `fix_missing_themes_2026_2027.sql` | Themes for the **current** academic year — without this no grade can submit a project |
 | 15 | `teacher_profile_1_columns.sql` -> `_2_triggers` -> `_3_save_rpc` -> `_4_policy_check` | Teacher self-service profile (subjects, grades, WhatsApp) + the assessor's name on every mark. **Four files, run in order.** |
+| 16 | `teacher_role_1_column.sql` -> `_2_save_rpc` -> `_3_check` | A teaching / non-teaching flag, so staff who do not teach are not asked for subjects or grade levels. **Three files, run in order.** |
 
 ## Existing database
 
-Run **9**, **10**, **11**, **12**, **13**, **14**, then **15**'s four parts in
-order. All are safe to re-run.
+Run **9**, **10**, **11**, **12**, **13**, **14**, **15**'s four parts, then
+**16**'s three parts, in order. All are safe to re-run.
+
+**16 makes subjects and grades conditional.** Not everyone with portal access
+teaches: office staff, a librarian, a counsellor, a head who only reads the
+dashboards. The onboarding form demanded subjects and grade levels from
+everybody, which those people could not satisfy. `teaching_role` on
+`teacher_emails` and `profiles` is `'teaching'` or `'non_teaching'`, and
+`save_teacher_profile()` requires subjects and grades only for the former --
+for the latter it stores both empty, so a non-teaching account cannot carry
+subjects that contradict it. Every existing row defaults to `'teaching'`, so
+nobody already set up is re-prompted. Part 2 drops the 4-argument
+`save_teacher_profile` and replaces it with a 5-argument one whose new argument
+defaults to `'teaching'`, so a browser still running the previous deployment
+keeps working while the new one rolls out.
 
 **Why 15 is split into four files.** It began as one 368-line script and would
 not apply: the Supabase SQL Editor truncated the paste at exactly line 150 --

@@ -116,6 +116,13 @@ export interface ConfirmDialogState {
     onConfirm: () => void;
 }
 
+/**
+ * Whether someone with portal access actually teaches. Office staff, a
+ * librarian or a head needs the dashboards but has no subject expertise and no
+ * grade level, so the onboarding form asks them for neither.
+ */
+export type TeachingRole = 'teaching' | 'non_teaching';
+
 export interface TeacherProfile {
     id: string;
     email: string;
@@ -123,9 +130,11 @@ export interface TeacherProfile {
     full_name?: string | null;
     expertise?: string | null;
     is_admin?: boolean;
-    /** Subject ids from src/lib/subjects.ts. */
+    /** 'teaching' (teaches and assesses) or 'non_teaching' (neither). */
+    teaching_role?: TeachingRole | null;
+    /** Subject ids from src/lib/subjects.ts. Empty for non-teaching staff. */
     expertise_subjects?: string[] | null;
-    /** Grades taught, as bare numerals: ['7', '8']. */
+    /** Grades taught, as bare numerals: ['7', '8']. Empty for non-teaching staff. */
     grade_levels?: string[] | null;
     /** WhatsApp number, digits only with country code: '6285712345678'. */
     phone_e164?: string | null;
@@ -153,6 +162,8 @@ export interface TeacherEmailRecord {
     expertise_subjects?: string[];
     /** Grades taught, as bare numerals: ['7', '8']. */
     grade_levels?: string[];
+    /** 'teaching' or 'non_teaching'. */
+    teaching_role?: TeachingRole;
     /** WhatsApp number, digits only with country code: '6285712345678'. */
     phone_e164?: string | null;
     /** NULL until the teacher has completed their own profile. */
