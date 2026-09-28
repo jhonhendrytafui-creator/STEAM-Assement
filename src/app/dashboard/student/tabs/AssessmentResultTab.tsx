@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState } from 'react';
-import { FileCheck, TrendingUp, CheckCircle2, X } from 'lucide-react';
+import { FileCheck, TrendingUp, CheckCircle2, X, UserCheck } from 'lucide-react';
 import type { AssessmentCategory, RubricDimension, RubricIndicator, AssessmentScoreEntry } from '@/lib/types';
+import { summarizeAssessors } from '@/lib/assessor';
 
 interface AssessmentResultTabProps {
     assessmentCategories: AssessmentCategory[];
@@ -112,6 +113,9 @@ export default function AssessmentResultTab({
                 const allSameComment = catScores.length > 0 && catScores.every(s => s.teacher_comment === catScores[0].teacher_comment);
                 const teacherComment = allSameComment ? catScores[0]?.teacher_comment : null;
 
+                // Teachers mark in a team, so this can name more than one.
+                const assessor = summarizeAssessors(catScores);
+
                 return (
                     <div className="space-y-6">
                         {/* Overall Summary Card */}
@@ -131,6 +135,26 @@ export default function AssessmentResultTab({
                             </div>
                             <div className="w-full bg-slate-800 rounded-full h-2 mt-3">
                                 <div className={`${overallBg} h-2 rounded-full transition-all duration-700`} style={{ width: `${overallPct}%` }}></div>
+                            </div>
+
+                            <div className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                                <span className="inline-flex items-center gap-1.5 text-slate-500">
+                                    <UserCheck className="w-3.5 h-3.5" />
+                                    Assessed by
+                                </span>
+                                <span className={assessor.unknown ? 'text-slate-500 italic' : 'text-slate-300 font-medium'}>
+                                    {assessor.label}
+                                </span>
+                                {assessor.lastAssessedAt && (
+                                    <span className="text-slate-500">
+                                        on {new Date(assessor.lastAssessedAt).toLocaleDateString()}
+                                    </span>
+                                )}
+                                {assessor.partial && (
+                                    <span className="text-slate-600">
+                                        (some rows were marked before this was recorded)
+                                    </span>
+                                )}
                             </div>
 
                             {teacherComment && (

@@ -2,11 +2,12 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-    ShieldCheck, Plus, Trash2, RefreshCw, KeyRound, UserCheck, AlertTriangle, BookOpen,
+    ShieldCheck, Plus, Trash2, RefreshCw, KeyRound, UserCheck, AlertTriangle, BookOpen, MessageCircle,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { logAdminAction, isValidSchoolEmail, ALLOWED_EMAIL_DOMAIN } from '@/lib/admin';
 import { subjectLabel } from '@/lib/subjects';
+import { waMeLink, formatIdPhone } from '@/lib/phone';
 import SubjectPicker from '@/components/ui/SubjectPicker';
 import type { TeacherEmailRecord, ToastType } from '@/lib/types';
 
@@ -297,6 +298,8 @@ export default function AdminAccessTab({ adminEmail, showToast, showConfirm }: A
                             <tr className="text-left text-xs uppercase tracking-wider text-slate-500 border-b border-slate-800">
                                 <th className="py-2 pr-4">Email</th>
                                 <th className="py-2 pr-4">Subjects</th>
+                                <th className="py-2 pr-4">Grades</th>
+                                <th className="py-2 pr-4">WhatsApp</th>
                                 <th className="py-2 pr-4">Status</th>
                                 <th className="py-2 pr-4">Role</th>
                                 <th className="py-2 text-right">Actions</th>
@@ -327,6 +330,32 @@ export default function AdminAccessTab({ adminEmail, showToast, showConfirm }: A
                                             <span className="inline-flex items-center gap-1.5 text-xs text-amber-500/80">
                                                 <AlertTriangle className="w-3.5 h-3.5" aria-hidden="true" /> Not set
                                             </span>
+                                        )}
+                                    </td>
+                                    <td className="py-3 pr-4 whitespace-nowrap">
+                                        {t.grade_levels && t.grade_levels.length > 0 ? (
+                                            <span className="text-xs text-slate-300">
+                                                {t.grade_levels.join(', ')}
+                                            </span>
+                                        ) : (
+                                            <span className="text-xs text-slate-600">—</span>
+                                        )}
+                                    </td>
+                                    <td className="py-3 pr-4 whitespace-nowrap">
+                                        {/* wa.me opens WhatsApp for the number the teacher saved. */}
+                                        {waMeLink(t.phone_e164) ? (
+                                            <a
+                                                href={waMeLink(t.phone_e164)!}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                title={`Message ${t.full_name || t.email} on WhatsApp (${formatIdPhone(t.phone_e164)})`}
+                                                className="inline-flex items-center gap-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors"
+                                            >
+                                                <MessageCircle className="w-3.5 h-3.5" />
+                                                WhatsApp
+                                            </a>
+                                        ) : (
+                                            <span className="text-xs text-slate-600">—</span>
                                         )}
                                     </td>
                                     <td className="py-3 pr-4">

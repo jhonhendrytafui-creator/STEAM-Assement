@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
     LayoutDashboard, FolderOpen, BookOpen, ClipboardCheck,
     Users, BarChart2, Star, TrendingUp, HelpCircle, Search, BrainCircuit,
-    ShieldCheck, DatabaseZap, ScrollText
+    ShieldCheck, DatabaseZap, ScrollText, UserCog
 } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase/client';
@@ -39,6 +39,7 @@ import AdminStudentsTab from './tabs/admin/AdminStudentsTab';
 import AdminAccessTab from './tabs/admin/AdminAccessTab';
 import AdminProjectsTab from './tabs/admin/AdminProjectsTab';
 import AdminAuditTab from './tabs/admin/AdminAuditTab';
+import TeacherProfileForm from './TeacherProfileForm';
 
 // Sidebar sections. Eleven teacher tabs plus four admin ones is too long for a
 // flat list — grouping gives the menu a shape and lets the admin items drop the
@@ -71,7 +72,10 @@ const TEACHER_SECTIONS: SidebarSection[] = [
     },
     {
         label: '',
-        tabs: [{ id: 'help', label: 'Help Center', icon: HelpCircle }],
+        tabs: [
+            { id: 'profile', label: 'My Profile', icon: UserCog },
+            { id: 'help', label: 'Help Center', icon: HelpCircle },
+        ],
     },
 ];
 
@@ -164,6 +168,22 @@ export default function TeacherDashboardPage() {
             const filtered = prev.filter(s => !(s.class_name === assessClass && s.group_number === assessGroup && s.category_id === assessCategory));
             return [...filtered, ...scores];
         });
+    }, []);
+
+    // Re-read just the profile. Saving the onboarding form has to re-check the
+    // gate, and re-running the whole dashboard load to learn one column would
+    // refetch every score and project for the year.
+    const reloadProfile = useCallback(async () => {
+        const { data: authData } = await supabase.auth.getUser();
+        if (!authData.user) return;
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', authData.user.id)
+            .single();
+        if (profile) {
+            setTeacherProfile({ ...profile, email: authData.user.email } as TeacherProfile);
+        }
     }, []);
 
     // Main data loading
@@ -269,6 +289,26 @@ export default function TeacherDashboardPage() {
     }, []);
 
     if (loading) return <LoadingScreen message="Loading Teacher Portal..." />;
+
+    // The portal renders nothing else until the teacher has filled in their own
+    // details. Expertise and grade level were missing for most teachers, and
+    // project classification cannot recommend anybody without expertise. Note
+    // this gates admins too — they fill the same form, and since it is
+    // self-service that cannot lock anyone out.
+    if (teacherProfile && !teacherProfile.profile_completed_at) {
+        return (
+            <div className="min-h-screen bg-[#1c1b14] text-[#d4d4d4] font-sans">
+                <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+                <Navbar portalName="Teacher Portal" userEmail={teacherProfile.email} />
+                <TeacherProfileForm
+                    profile={teacherProfile}
+                    mode="onboarding"
+                    onSaved={reloadProfile}
+                    showToast={showToast}
+                />
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-[#1c1b14] text-[#d4d4d4] font-sans">
@@ -378,6 +418,15 @@ export default function TeacherDashboardPage() {
 
                     {activeTab === 'classification' && (
                         <ProjectClassificationTab showToast={showToast} />
+                    )}
+
+                    {activeTab === 'profile' && teacherProfile && (
+                        <TeacherProfileForm
+                            profile={teacherProfile}
+                            mode="edit"
+                            onSaved={reloadProfile}
+                            showToast={showToast}
+                        />
                     )}
 
                     {activeTab === 'help' && (

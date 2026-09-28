@@ -11,6 +11,7 @@ import {
     WEIGHTING_DEFAULTS, type WeightingConfig, type PeerAssessmentRow,
 } from '@/lib/contribution';
 import type { AssessmentCategory, RubricDimension, RubricIndicator } from '@/lib/types';
+import { summarizeAssessors } from '@/lib/assessor';
 
 interface ScoreTabProps {
     allStudents: any[];
@@ -98,6 +99,9 @@ export default function ScoreTab({ allStudents, assessmentCategories, rubricDime
                     percentage: totalMax > 0 ? Math.round((totalScore / totalMax) * 100) : 0,
                     isAssessed: groupCatScores.length > 0,
                     adjusted: totalScore !== groupScore,
+                    // Who marked it. Teachers mark in a team, so a category can
+                    // carry more than one name.
+                    assessor: groupCatScores.length > 0 ? summarizeAssessors(groupCatScores) : null,
                 };
             });
 
@@ -392,6 +396,21 @@ export default function ScoreTab({ allStudents, assessmentCategories, rubricDime
                                                                     </span>
                                                                 )}
                                                             </span>
+                                                            {/* Who marked it. Truncated to keep the table
+                                                                readable; the full value is in the tooltip. */}
+                                                            {assessment.assessor && (
+                                                                <span
+                                                                    title={`Assessed by ${assessment.assessor.label}`}
+                                                                    className={
+                                                                        'text-[10px] mt-0.5 max-w-[100px] truncate block '
+                                                                        + (assessment.assessor.unknown
+                                                                            ? 'text-slate-600 italic'
+                                                                            : 'text-slate-500')
+                                                                    }
+                                                                >
+                                                                    {assessment.assessor.label}
+                                                                </span>
+                                                            )}
                                                         </div>
                                                     ) : (
                                                         <span className="text-slate-600">—</span>

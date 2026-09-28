@@ -92,6 +92,10 @@ export interface AssessmentScoreEntry {
     score: number;
     assessed_at: string;
     teacher_comment?: string;
+    /** Who gave this mark. NULL on marks taken before this was recorded. */
+    assessed_by?: string | null;
+    /** Their name, captured at save time. NULL shows as "Not Recorded". */
+    assessed_by_name?: string | null;
     class_name?: string;
     group_number?: number;
     category_id?: string;
@@ -119,6 +123,14 @@ export interface TeacherProfile {
     full_name?: string | null;
     expertise?: string | null;
     is_admin?: boolean;
+    /** Subject ids from src/lib/subjects.ts. */
+    expertise_subjects?: string[] | null;
+    /** Grades taught, as bare numerals: ['7', '8']. */
+    grade_levels?: string[] | null;
+    /** WhatsApp number, digits only with country code: '6285712345678'. */
+    phone_e164?: string | null;
+    /** NULL until the teacher has completed their own profile; gates the portal. */
+    profile_completed_at?: string | null;
 }
 
 export interface StudentRecord {
@@ -139,6 +151,12 @@ export interface TeacherEmailRecord {
     full_name?: string | null;
     /** Subject ids from src/lib/subjects.ts. Empty means classification skips them. */
     expertise_subjects?: string[];
+    /** Grades taught, as bare numerals: ['7', '8']. */
+    grade_levels?: string[];
+    /** WhatsApp number, digits only with country code: '6285712345678'. */
+    phone_e164?: string | null;
+    /** NULL until the teacher has completed their own profile. */
+    profile_completed_at?: string | null;
     /** Filled in from profiles — null when the teacher has never logged in. */
     has_logged_in?: boolean;
 }
