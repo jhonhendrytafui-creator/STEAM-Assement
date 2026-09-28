@@ -5,7 +5,8 @@ import {
     BarChart2
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
-import { ACADEMIC_YEAR } from '@/lib/constants';
+import { academicYear } from '@/lib/academic-year';
+
 import {
     contributionMultiplier, applyMultiplier,
     WEIGHTING_DEFAULTS, type WeightingConfig, type PeerAssessmentRow,
@@ -47,7 +48,7 @@ export default function ScoreTab({ allStudents, assessmentCategories, rubricDime
             .from('projects')
             .select('group_number, title')
             .eq('class_name', scoreClass)
-            .eq('academic_year', ACADEMIC_YEAR)
+            .eq('academic_year', academicYear())
             .order('iteration', { ascending: false });
 
         const { data: scoresData } = await supabase
@@ -55,14 +56,14 @@ export default function ScoreTab({ allStudents, assessmentCategories, rubricDime
             .select('*')
             .eq('class_name', scoreClass)
             .in('category_id', scoreCategories)
-            .eq('academic_year', ACADEMIC_YEAR);
+            .eq('academic_year', academicYear());
 
         // Peer assessments drive the per-student contribution multiplier.
         const { data: peerData } = await supabase
             .from('peer_assessments')
             .select('assessor_email, assessed_email, q1_score, q2_score, q3_score, q4_score, q5_score, q6_score')
             .eq('class_name', scoreClass)
-            .eq('academic_year', ACADEMIC_YEAR);
+            .eq('academic_year', academicYear());
 
         const peerRows = (peerData ?? []) as PeerAssessmentRow[];
 

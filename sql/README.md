@@ -96,6 +96,19 @@ Admin → Teacher Access can edit it before anyone logs in, and becomes a list o
 subject ids rather than free text. It also closes a hole: every student could
 insert and delete rows in `project_teacher_recommendations`.
 
+**No new script is needed for the admin academic-year switch.** `app_settings`,
+its policies and its `academic_year` row all come from script **10**, which is
+already in the list above. The app now reads that row instead of the constant
+that used to live in `src/lib/constants.ts`, and Admin -> Academic Year writes
+it. If the row is somehow absent the app falls back to `FALLBACK_ACADEMIC_YEAR`
+in `src/lib/academic-year.ts` -- the value the constant held -- so behaviour is
+unchanged until an admin sets it, and the first switch creates the row. To check
+what is stored:
+
+```sql
+SELECT key, value, updated_at, updated_by FROM app_settings WHERE key = 'academic_year';
+```
+
 Before running 10, run its Section 0 pre-flight query and keep the output — it
 tells you which of the two conflicting policy sets was live, which is worth
 knowing if you ever need to explain the gap.

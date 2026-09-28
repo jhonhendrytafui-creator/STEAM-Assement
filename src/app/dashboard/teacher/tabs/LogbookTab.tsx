@@ -9,10 +9,11 @@ import {
     BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell
 } from 'recharts';
 import { supabase } from '@/lib/supabase/client';
+import { academicYear } from '@/lib/academic-year';
 import { safeExternalUrl } from '@/lib/url';
 import { fetchAll } from '@/lib/supabase/fetchAll';
 import { sanitizeRichText } from '@/lib/sanitize';
-import { ACADEMIC_YEAR } from '@/lib/constants';
+
 import type { ToastType } from '@/lib/types';
 
 interface LogbookTabProps {
@@ -50,7 +51,7 @@ export default function LogbookTab({ allStudents, showToast }: LogbookTabProps) 
         const { data: logs } = await fetchAll((from, to) => supabase
             .from('logbooks')
             .select('*')
-            .eq('academic_year', ACADEMIC_YEAR)
+            .eq('academic_year', academicYear())
             .ilike('class_name', `${logbookGrade}.%`)
             .order('entry_date', { ascending: false })
             .range(from, to));

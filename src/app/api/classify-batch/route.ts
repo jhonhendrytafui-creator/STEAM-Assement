@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { SchemaType, type Schema } from '@google/generative-ai';
 import { createClient } from '@supabase/supabase-js';
 import { requireTeacher } from '@/lib/api-auth';
-import { ACADEMIC_YEAR } from '@/lib/constants';
+import { getAcademicYearServer } from '@/lib/academic-year-server';
 import { GeminiGenerationError, generateWithFallback } from '@/lib/gemini';
 import { parseAbstract, subjectLabel as abstractSubjectLabel } from '@/lib/abstract';
 import { SUBJECT_DEFS, isKnownSubject, subjectLabel } from '@/lib/subjects';
@@ -150,11 +150,15 @@ export async function POST(req: Request) {
         }
         const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceKey);
 
+        // Read per request rather than from a constant, so a rollover from the
+        // admin screen takes effect here without a redeploy.
+        const academicYear = await getAcademicYearServer(admin);
+
         // ── The projects to sort ──────────────────────────────────────────
         let query = admin
             .from('projects')
             .select('id, title, abstract, class_name, group_number')
-            .eq('academic_year', ACADEMIC_YEAR)
+            .eq('academic_year', academicYear)
             .eq('status', 'approved');
         if (grade && grade !== 'All') query = query.ilike('class_name', `${grade}.%`);
 

@@ -2,8 +2,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase/client';
+import { academicYear } from '@/lib/academic-year';
 import { fetchAll } from '@/lib/supabase/fetchAll';
-import { ACADEMIC_YEAR } from '@/lib/constants';
+
 import type { ToastType, ProjectData, ProjectTeacherRecommendation } from '@/lib/types';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BrainCircuit, Info, X, Users, AlertCircle, RefreshCw, Wand2, Zap, Search, LayoutGrid, List, UserCheck, Tag, Scale } from 'lucide-react';
@@ -85,7 +86,7 @@ export default function ProjectClassificationTab({ showToast }: ProjectClassific
             const { data: approvedProjects, error: projectError } = await fetchAll((from, to) => supabase
                 .from('projects')
                 .select('*, themes(theme_name)')
-                .eq('academic_year', ACADEMIC_YEAR)
+                .eq('academic_year', academicYear())
                 .eq('status', 'approved')
                 .order('created_at', { ascending: false })
                 .range(from, to));

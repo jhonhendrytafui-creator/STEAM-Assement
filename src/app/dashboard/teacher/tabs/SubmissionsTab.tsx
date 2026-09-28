@@ -6,9 +6,10 @@ import {
     LinkIcon, Star
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
+import { academicYear } from '@/lib/academic-year';
 import { safeExternalUrl } from '@/lib/url';
 import { fetchAll } from '@/lib/supabase/fetchAll';
-import { ACADEMIC_YEAR } from '@/lib/constants';
+
 import type { ToastType } from '@/lib/types';
 import { parseAbstract, subjectLabel } from '@/lib/abstract';
 
@@ -49,7 +50,7 @@ export default function SubmissionsTab({ allStudents, showToast }: SubmissionsTa
         const { data: projs } = await fetchAll((from, to) => supabase
             .from('projects')
             .select(`*, themes(theme_name)`)
-            .eq('academic_year', ACADEMIC_YEAR)
+            .eq('academic_year', academicYear())
             .ilike('class_name', `${submissionGrade}.%`)
             .order('iteration', { ascending: false })
             .range(from, to));

@@ -5,8 +5,11 @@ import {
 } from 'lucide-react';
 import { SUBJECT_DEFS } from '@/lib/subjects';
 
-// Current academic year — single source of truth
-export const ACADEMIC_YEAR = '2026/2027';
+// The academic year is no longer a constant: it lives in app_settings so an
+// admin can roll the school over without a redeploy. Read it with
+// academicYear() from '@/lib/academic-year' (or getAcademicYearServer() in an
+// API route), and make sure loadAcademicYear() has been awaited first.
+// FALLBACK_ACADEMIC_YEAR there is the value this constant used to hold.
 
 // STEAM subject definitions used across student and teacher dashboards.
 // The ids, labels and groups live in src/lib/subjects.ts, which carries no

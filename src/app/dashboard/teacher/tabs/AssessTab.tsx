@@ -6,8 +6,9 @@ import {
     AlertTriangle, CheckCircle2, Clock, Sparkles, X, UserCheck
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
+import { academicYear } from '@/lib/academic-year';
 import { safeExternalUrl } from '@/lib/url';
-import { ACADEMIC_YEAR } from '@/lib/constants';
+
 import type { AssessmentCategory, RubricDimension, RubricIndicator, ProjectData, ToastType } from '@/lib/types';
 import { parseAbstract, subjectLabel } from '@/lib/abstract';
 import { summarizeAssessors, type AssessorSummary } from '@/lib/assessor';
@@ -83,7 +84,7 @@ export default function AssessTab({
                 .select('group_number')
                 .eq('class_name', assessClass)
                 .eq('category_id', assessCategory)
-                .eq('academic_year', ACADEMIC_YEAR);
+                .eq('academic_year', academicYear());
 
             const map: Record<number, boolean> = {};
             const currentCat = assessmentCategories.find(c => c.id === assessCategory);
@@ -94,7 +95,7 @@ export default function AssessTab({
                     .from('projects')
                     .select('group_number, status')
                     .eq('class_name', assessClass)
-                    .eq('academic_year', ACADEMIC_YEAR)
+                    .eq('academic_year', academicYear())
                     .order('iteration', { ascending: false });
 
                 const latestProjs = new Map();
@@ -146,7 +147,7 @@ export default function AssessTab({
                 .select('*')
                 .eq('class_name', assessClass)
                 .eq('group_number', parseInt(assessGroup))
-                .eq('academic_year', ACADEMIC_YEAR)
+                .eq('academic_year', academicYear())
                 .order('iteration', { ascending: false })
                 .limit(1);
             const proj = projs && projs.length > 0 ? projs[0] : null;
@@ -158,14 +159,14 @@ export default function AssessTab({
                 .eq('class_name', assessClass)
                 .eq('group_number', parseInt(assessGroup))
                 .eq('category_id', assessCategory)
-                .eq('academic_year', ACADEMIC_YEAR);
+                .eq('academic_year', academicYear());
 
             const { data: allGroupScores } = await supabase
                 .from('assessment_scores')
                 .select('category_id')
                 .eq('class_name', assessClass)
                 .eq('group_number', parseInt(assessGroup))
-                .eq('academic_year', ACADEMIC_YEAR);
+                .eq('academic_year', academicYear());
 
             if (allGroupScores) {
                 setGroupCompletedCategories(new Set(allGroupScores.map(s => s.category_id)));
@@ -211,7 +212,7 @@ export default function AssessTab({
                     .select('*')
                     .eq('class_name', assessClass)
                     .eq('group_number', parseInt(assessGroup))
-                    .eq('academic_year', ACADEMIC_YEAR)
+                    .eq('academic_year', academicYear())
                     .order('entry_date', { ascending: true });
                 if (logs) {
                     setAssessLogbooks(logs);
@@ -325,7 +326,7 @@ export default function AssessTab({
         const scoreEntries = Object.entries(currentScores).map(([indicatorId, score]) => ({
             class_name: assessClass,
             group_number: groupNum,
-            academic_year: ACADEMIC_YEAR,
+            academic_year: academicYear(),
             category_id: assessCategory,
             indicator_id: indicatorId,
             score: score,
@@ -369,7 +370,7 @@ export default function AssessTab({
                     .eq('class_name', assessClass)
                     .eq('group_number', groupNum)
                     .eq('category_id', assessCategory)
-                    .eq('academic_year', ACADEMIC_YEAR)
+                    .eq('academic_year', academicYear())
                     .not('indicator_id', 'in', `(${savedIndicatorIds.join(',')})`);
 
                 showToast('Assessment saved successfully!', 'success');

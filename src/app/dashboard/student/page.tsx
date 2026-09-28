@@ -7,7 +7,8 @@ import {
 } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase/client';
-import { ACADEMIC_YEAR } from '@/lib/constants';
+import { academicYear, loadAcademicYear } from '@/lib/academic-year';
+
 import { gradeOf } from '@/lib/grade';
 import type {
     ProjectData, StudentInfo, TeamMember, Theme,
@@ -122,11 +123,16 @@ export default function StudentDashboardPage() {
 
         setUserEmail(user.email);
 
+        // First, before anything scoped by it. Every query below filters on the
+        // academic year, and a wrong value returns another year's rows or none
+        // at all rather than failing, so this cannot be raced.
+        await loadAcademicYear();
+
         const { data: myInfo } = await supabase
             .from('student_master')
             .select('full_name, class_name, group_number, email')
             .eq('email', user.email)
-            .eq('academic_year', ACADEMIC_YEAR)
+            .eq('academic_year', academicYear())
             .single();
 
         if (!myInfo) {
@@ -145,7 +151,7 @@ export default function StudentDashboardPage() {
             .select('full_name, email')
             .eq('class_name', myInfo.class_name)
             .eq('group_number', myInfo.group_number)
-            .eq('academic_year', ACADEMIC_YEAR);
+            .eq('academic_year', academicYear());
         if (members) setTeamMembers(members);
 
         // Ordered by created_at so the list — and therefore the theme selected
@@ -155,7 +161,7 @@ export default function StudentDashboardPage() {
             .from('themes')
             .select('id, theme_name')
             .eq('grade', grade)
-            .eq('academic_year', ACADEMIC_YEAR)
+            .eq('academic_year', academicYear())
             .order('created_at');
         if (themesErr) {
             // Discarding this used to render the same "no themes" message
@@ -174,7 +180,7 @@ export default function StudentDashboardPage() {
             .select('*')
             .eq('class_name', myInfo.class_name)
             .eq('group_number', myInfo.group_number)
-            .eq('academic_year', ACADEMIC_YEAR)
+            .eq('academic_year', academicYear())
             .order('iteration', { ascending: false });
         if (fetchedProjects && fetchedProjects.length > 0) {
             setProjectHistory(fetchedProjects);
@@ -186,7 +192,7 @@ export default function StudentDashboardPage() {
             .select('*')
             .eq('class_name', myInfo.class_name)
             .eq('group_number', myInfo.group_number)
-            .eq('academic_year', ACADEMIC_YEAR)
+            .eq('academic_year', academicYear())
             .order('entry_date', { ascending: false })
             .order('created_at', { ascending: false });
         if (fetchedLogs) setLogbooks(fetchedLogs);
@@ -205,13 +211,13 @@ export default function StudentDashboardPage() {
             .select('id, indicator_id, score, assessed_at, teacher_comment, assessed_by_name')
             .eq('class_name', myInfo.class_name)
             .eq('group_number', myInfo.group_number)
-            .eq('academic_year', ACADEMIC_YEAR);
+            .eq('academic_year', academicYear());
         if (scrs) setAssessmentScores(scrs);
 
         const { data: lb } = await supabase
             .from('project_leaderboard')
             .select('*')
-            .eq('academic_year', ACADEMIC_YEAR)
+            .eq('academic_year', academicYear())
             .order('vote_count', { ascending: false });
         if (lb) setLeaderboardData(lb);
 
@@ -268,7 +274,7 @@ export default function StudentDashboardPage() {
             <span className="text-amber-400 font-bold text-lg">
                 {studentInfo.class_name} — Group {studentInfo.group_number}
             </span>
-            <span className="text-xs text-slate-500 mt-0.5">{ACADEMIC_YEAR}</span>
+            <span className="text-xs text-slate-500 mt-0.5">{academicYear()}</span>
         </div>
     ) : null;
 
@@ -305,7 +311,7 @@ export default function StudentDashboardPage() {
                         <Users className="w-12 h-12 text-amber-500 mx-auto mb-4" />
                         <h2 className="text-xl font-bold text-white mb-2">Not Registered in Any Group</h2>
                         <p className="text-slate-400 max-w-md mx-auto">
-                            Your email ({userEmail}) is not found in the student database for the academic year {ACADEMIC_YEAR}. Please contact your teacher to be added to a group.
+                            Your email ({userEmail}) is not found in the student database for the academic year {academicYear()}. Please contact your teacher to be added to a group.
                         </p>
                     </div>
                 </div>
@@ -381,7 +387,7 @@ export default function StudentDashboardPage() {
                                 userEmail={userEmail!}
                                 studentInfo={studentInfo}
                                 teamMembers={teamMembers}
-                                academicYear={ACADEMIC_YEAR}
+                                academicYear={academicYear()}
                                 showToast={showToast}
                             />
                         )}

@@ -4,12 +4,13 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
     LayoutDashboard, FolderOpen, BookOpen, ClipboardCheck,
     Users, BarChart2, Star, TrendingUp, HelpCircle, Search, BrainCircuit,
-    ShieldCheck, DatabaseZap, ScrollText, UserCog
+    ShieldCheck, DatabaseZap, ScrollText, UserCog, CalendarClock
 } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase/client';
+import { academicYear, loadAcademicYear } from '@/lib/academic-year';
 import { fetchAll } from '@/lib/supabase/fetchAll';
-import { ACADEMIC_YEAR } from '@/lib/constants';
+
 import type {
     ProjectData, AssessmentCategory, RubricDimension,
     RubricIndicator, TeacherProfile, ConfirmDialogState,
@@ -39,6 +40,7 @@ import AdminStudentsTab from './tabs/admin/AdminStudentsTab';
 import AdminAccessTab from './tabs/admin/AdminAccessTab';
 import AdminProjectsTab from './tabs/admin/AdminProjectsTab';
 import AdminAuditTab from './tabs/admin/AdminAuditTab';
+import AdminAcademicYearTab from './tabs/admin/AdminAcademicYearTab';
 import TeacherProfileForm from './TeacherProfileForm';
 
 // Sidebar sections. Eleven teacher tabs plus four admin ones is too long for a
@@ -87,6 +89,7 @@ const ADMIN_SECTION: SidebarSection = {
         { id: 'admin-students', label: 'Students & Groups', icon: Users },
         { id: 'admin-access', label: 'Teacher Access', icon: ShieldCheck },
         { id: 'admin-projects', label: 'Project Data', icon: DatabaseZap },
+        { id: 'admin-year', label: 'Academic Year', icon: CalendarClock },
         { id: 'admin-audit', label: 'Activity Log', icon: ScrollText },
     ],
 };
@@ -143,7 +146,7 @@ export default function TeacherDashboardPage() {
         const { data: students } = await fetchAll((from, to) => supabase
             .from('student_master')
             .select('full_name, class_name, group_number, email')
-            .eq('academic_year', ACADEMIC_YEAR)
+            .eq('academic_year', academicYear())
             .range(from, to));
         if (students.length) {
             setAllStudents(students);
@@ -156,7 +159,7 @@ export default function TeacherDashboardPage() {
         const { data: leaderboard } = await fetchAll((from, to) => supabase
             .from('project_leaderboard')
             .select('*')
-            .eq('academic_year', ACADEMIC_YEAR)
+            .eq('academic_year', academicYear())
             .order('vote_count', { ascending: false })
             .range(from, to));
         if (leaderboard.length) setLeaderboardData(leaderboard);
@@ -190,6 +193,11 @@ export default function TeacherDashboardPage() {
     useEffect(() => {
         const initData = async () => {
             setLoading(true);
+
+            // Before any year-scoped read below. A wrong year here returns
+            // another year's rows, or none, without erroring.
+            await loadAcademicYear();
+
             const { data: authData } = await supabase.auth.getUser();
             if (!authData.user) {
                 window.location.href = '/';
@@ -220,7 +228,7 @@ export default function TeacherDashboardPage() {
             const { data: leaderboard } = await fetchAll((from, to) => supabase
                 .from('project_leaderboard')
                 .select('*')
-                .eq('academic_year', ACADEMIC_YEAR)
+                .eq('academic_year', academicYear())
                 .order('vote_count', { ascending: false })
                 .range(from, to));
             if (leaderboard.length) setLeaderboardData(leaderboard);
@@ -229,7 +237,7 @@ export default function TeacherDashboardPage() {
             const { data: students } = await fetchAll((from, to) => supabase
                 .from('student_master')
                 .select('full_name, class_name, group_number, email')
-                .eq('academic_year', ACADEMIC_YEAR)
+                .eq('academic_year', academicYear())
                 .range(from, to));
 
             if (students.length) {
@@ -253,7 +261,7 @@ export default function TeacherDashboardPage() {
             const { data: allScores } = await fetchAll((from, to) => supabase
                 .from('assessment_scores')
                 .select('*')
-                .eq('academic_year', ACADEMIC_YEAR)
+                .eq('academic_year', academicYear())
                 .range(from, to));
             if (allScores.length) setAllAssessmentScores(allScores);
 
@@ -261,7 +269,7 @@ export default function TeacherDashboardPage() {
             const { data: projects } = await fetchAll((from, to) => supabase
                 .from('projects')
                 .select('id, class_name, group_number, title, status, created_at, themes(theme_name)')
-                .eq('academic_year', ACADEMIC_YEAR)
+                .eq('academic_year', academicYear())
                 .order('iteration', { ascending: false })
                 .range(from, to));
 
@@ -378,7 +386,7 @@ export default function TeacherDashboardPage() {
                         <div className="p-4 sm:p-0">
                             <PeerAssessmentResultsTab
                                 allStudents={allStudents}
-                                academicYear={ACADEMIC_YEAR}
+                                academicYear={academicYear()}
                                 showToast={showToast}
                             />
                         </div>
@@ -456,6 +464,14 @@ export default function TeacherDashboardPage() {
                         <AdminProjectsTab
                             adminEmail={teacherProfile?.email ?? null}
                             allStudents={allStudents}
+                            showToast={showToast}
+                            showConfirm={showConfirm}
+                        />
+                    )}
+
+                    {isAdmin && activeTab === 'admin-year' && (
+                        <AdminAcademicYearTab
+                            adminEmail={teacherProfile?.email ?? null}
                             showToast={showToast}
                             showConfirm={showConfirm}
                         />

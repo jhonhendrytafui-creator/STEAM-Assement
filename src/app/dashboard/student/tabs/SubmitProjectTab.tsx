@@ -6,7 +6,8 @@ import {
     ChevronDown, AlertTriangle, Award, Sparkles, Calculator, Save, RotateCcw
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
-import { SUBJECTS, ACADEMIC_YEAR } from '@/lib/constants';
+import { SUBJECTS } from '@/lib/constants';
+import { academicYear } from '@/lib/academic-year';
 import type { ProjectData, StudentInfo, Theme, ToastType } from '@/lib/types';
 
 // Maximum AI pre-checks allowed per group per academic year
@@ -83,7 +84,7 @@ export default function SubmitProjectTab({
     const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
 
     const draftKey = studentInfo
-        ? `${DRAFT_KEY_PREFIX}:${ACADEMIC_YEAR}:${studentInfo.class_name}:${studentInfo.group_number}`
+        ? `${DRAFT_KEY_PREFIX}:${academicYear()}:${studentInfo.class_name}:${studentInfo.group_number}`
         : null;
 
     // ─── Draft: restore on mount ───────────────────────
@@ -184,7 +185,7 @@ export default function SubmitProjectTab({
                 .select('usage_count')
                 .eq('class_name', studentInfo.class_name)
                 .eq('group_number', studentInfo.group_number)
-                .eq('academic_year', ACADEMIC_YEAR)
+                .eq('academic_year', academicYear())
                 // maybeSingle, not single: a group that has never run a
                 // pre-check has no row at all, and single() treats that as an
                 // error (PGRST116). The error was discarded, so the count was
@@ -332,7 +333,7 @@ export default function SubmitProjectTab({
             {
                 class_name: studentInfo.class_name,
                 group_number: studentInfo.group_number,
-                academic_year: ACADEMIC_YEAR,
+                academic_year: academicYear(),
                 theme_id: theme || null,
                 title: toTitleCase(title),
                 abstract: combinedAbstract,
@@ -470,7 +471,7 @@ export default function SubmitProjectTab({
                                 <p className="text-slate-400">
                                     {themesError
                                         ? 'Something went wrong while reading the theme list. Please reload the page, and tell your teacher if it keeps happening.'
-                                        : `Your teacher needs to add the ${ACADEMIC_YEAR} themes for Grade ${grade} before your group can submit. Please show them this message.`}
+                                        : `Your teacher needs to add the ${academicYear()} themes for Grade ${grade} before your group can submit. Please show them this message.`}
                                 </p>
                             </div>
                         )}

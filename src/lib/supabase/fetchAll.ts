@@ -37,7 +37,7 @@ export interface PagedResult<T> {
  *     const { data } = await fetchAll<Score>((from, to) =>
  *         supabase.from('assessment_scores')
  *             .select('*')
- *             .eq('academic_year', ACADEMIC_YEAR)
+ *             .eq('academic_year', academicYear())
  *             .range(from, to)
  *     );
  *
