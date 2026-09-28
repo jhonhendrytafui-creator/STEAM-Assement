@@ -7,9 +7,10 @@ import { GeminiGenerationError, generateWithFallback } from '@/lib/gemini';
 import { parseAbstract, subjectLabel as abstractSubjectLabel } from '@/lib/abstract';
 import { SUBJECT_DEFS, isKnownSubject, subjectLabel } from '@/lib/subjects';
 import {
-    balancedAssign, bestSubject,
+    assignByGrade, bestSubject,
     type ProjectNeed, type TeacherCandidate,
 } from '@/lib/assignment';
+import { gradeOf } from '@/lib/grade';
 
 export const maxDuration = 60;
 
@@ -182,7 +183,7 @@ export async function POST(req: Request) {
         if (mode === 'teacher') {
             const { data: roster, error: rosterError } = await admin
                 .from('teacher_emails')
-                .select('email, full_name, expertise_subjects');
+                .select('email, full_name, expertise_subjects, grade_levels');
 
             if (rosterError) {
                 console.error('[Classify] teacher read failed:', rosterError.message);
@@ -194,14 +195,20 @@ export async function POST(req: Request) {
                     email: t.email as string,
                     name: (t.full_name as string) || (t.email as string).split('@')[0],
                     subjects: ((t.expertise_subjects as string[]) ?? []).filter(isKnownSubject),
+                    grades: ((t.grade_levels as string[]) ?? []).map(gradeOf).filter(Boolean),
                 }))
-                .filter(t => t.subjects.length > 0);
+                // Both are needed to place anybody: subjects decide the fit,
+                // grades decide eligibility. Non-teaching staff have neither and
+                // drop out here, which is the intended outcome — they do not
+                // guide projects.
+                .filter(t => t.subjects.length > 0 && t.grades.length > 0);
 
             if (teachers.length === 0) {
                 return NextResponse.json({
                     error:
-                        'No teacher has subjects set yet. Open Admin → Teacher Access and choose each ' +
-                        'teacher’s STEAM subjects, then run this again.',
+                        'No teacher has both subjects and grade levels set yet. Each teacher sets these ' +
+                        'on their own profile (My Profile), or an admin can set subjects in ' +
+                        'Admin → Teacher Access. Then run this again.',
                     reason: 'no_teacher_expertise',
                 }, { status: 400 });
             }
@@ -271,7 +278,11 @@ export async function POST(req: Request) {
                     title: project.title,
                     class_name: project.class_name,
                     group_number: project.group_number,
-                    need: { projectId: project.id, subjects },
+                    need: {
+                        projectId: project.id,
+                        grade: gradeOf(project.class_name),
+                        subjects,
+                    },
                     reason: result?.subjects?.[0]?.reason ?? '',
                 });
             }
@@ -313,7 +324,10 @@ export async function POST(req: Request) {
             }
             summary = { perSubject };
         } else {
-            const result = balancedAssign(scored.map(p => p.need), teachers);
+            // Grade-aware: a project is only ever given to a teacher who
+            // teaches that grade, and each grade is balanced among its own
+            // teachers. See assignByGrade in src/lib/assignment.ts.
+            const result = assignByGrade(scored.map(p => p.need), teachers);
             const reasonOf = new Map(scored.map(p => [p.id, p.reason]));
 
             rows = result.assignments.map(a => ({
@@ -335,6 +349,10 @@ export async function POST(req: Request) {
             summary = {
                 perTeacher,
                 spread: counts.length ? Math.max(...counts) - Math.min(...counts) : 0,
+                // Named so the caller can say which grade needs a teacher,
+                // rather than leaving its projects quietly unfiled.
+                gradesWithoutTeacher: result.gradesWithoutTeacher,
+                unassignedCount: result.unassigned.length,
             };
         }
 

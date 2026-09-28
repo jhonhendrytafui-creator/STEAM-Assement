@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import { requireTeacher } from '@/lib/api-auth';
 import { parseAbstract, subjectLabel } from '@/lib/abstract';
 import { isKnownSubject, subjectLabel as steamSubjectLabel } from '@/lib/subjects';
+import { gradeOf } from '@/lib/grade';
 
 export const maxDuration = 60;
 
@@ -57,7 +58,7 @@ export async function POST(req: Request) {
         // signed in yet still counts — profiles only gains a row at first login.
         const { data: teachersRaw, error: teacherError } = await supabase
             .from('teacher_emails')
-            .select('email, full_name, expertise_subjects');
+            .select('email, full_name, expertise_subjects, grade_levels');
 
         if (teacherError) {
             console.error("Failed to fetch teachers:", teacherError);
@@ -73,18 +74,34 @@ export async function POST(req: Request) {
         const teachers = teachersRaw.map((t: any) => {
             const ids: string[] = Array.isArray(t.expertise_subjects) ? t.expertise_subjects : [];
             const known = ids.filter(isKnownSubject);
+            const grades: string[] = Array.isArray(t.grade_levels)
+                ? t.grade_levels.map(gradeOf).filter(Boolean)
+                : [];
             return {
                 email: t.email || '',
                 full_name: t.full_name || t.email || 'Unknown',
                 expertise: known.map(steamSubjectLabel).join(', '),
+                grades,
             };
         });
 
-        const teachersWithExpertise = teachers.filter(t => t.expertise && t.expertise.trim().length > 0);
+        // Only teachers who teach this project's grade are candidates. The school
+        // runs grades 7 to 12, so recommending a grade 12 teacher for a grade 7
+        // project is wrong however well the subjects line up. Filtering here
+        // rather than asking the AI to respect it keeps it a hard rule.
+        const projectGrade = gradeOf(project.class_name);
+        const teachersWithExpertise = teachers.filter(
+            t => t.expertise && t.expertise.trim().length > 0 && t.grades.includes(projectGrade),
+        );
 
         if (teachersWithExpertise.length === 0) {
+            const anyWithExpertise = teachers.some(t => t.expertise && t.expertise.trim().length > 0);
             return NextResponse.json({
-                error: 'No teacher has subjects set yet. Open Admin \u2192 Teacher Access and choose each teacher\u2019s STEAM subjects, then run this again.',
+                error: anyWithExpertise
+                    ? `No teacher who teaches Grade ${projectGrade} has subjects set. Each teacher sets their `
+                        + 'subjects and grade levels on their own profile (My Profile), or an admin can set '
+                        + 'subjects in Admin \u2192 Teacher Access.'
+                    : 'No teacher has subjects set yet. Open Admin \u2192 Teacher Access and choose each teacher\u2019s STEAM subjects, then run this again.',
                 reason: 'no_teacher_expertise',
             }, { status: 400 });
         }

@@ -7,7 +7,7 @@ import { fetchAll } from '@/lib/supabase/fetchAll';
 
 import type { ToastType, ProjectData, ProjectTeacherRecommendation } from '@/lib/types';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BrainCircuit, Info, X, Users, AlertCircle, RefreshCw, Wand2, Zap, Search, LayoutGrid, List, UserCheck, Tag, Scale } from 'lucide-react';
+import { BrainCircuit, Info, X, Users, AlertCircle, RefreshCw, Wand2, Zap, Search, LayoutGrid, List, UserCheck, Tag, Scale, AlertTriangle } from 'lucide-react';
 import { subjectLabel } from '@/lib/subjects';
 
 interface ProjectClassificationTabProps {
@@ -52,6 +52,9 @@ interface BatchResponse {
         perTeacher?: Record<string, number>;
         perSubject?: Record<string, number>;
         spread?: number;
+        /** Grades with projects but nobody who teaches them. */
+        gradesWithoutTeacher?: string[];
+        unassignedCount?: number;
     };
 }
 
@@ -63,6 +66,8 @@ interface RunSummary {
     perTeacher?: Record<string, number>;
     perSubject?: Record<string, number>;
     spread?: number;
+    gradesWithoutTeacher?: string[];
+    unassignedCount?: number;
 }
 
 export default function ProjectClassificationTab({ showToast }: ProjectClassificationTabProps) {
@@ -220,6 +225,8 @@ export default function ProjectClassificationTab({ showToast }: ProjectClassific
                 perTeacher: data.summary?.perTeacher,
                 perSubject: data.summary?.perSubject,
                 spread: data.summary?.spread,
+                gradesWithoutTeacher: data.summary?.gradesWithoutTeacher,
+                unassignedCount: data.summary?.unassignedCount,
             });
             showToast(
                 data.partial
@@ -359,8 +366,30 @@ export default function ProjectClassificationTab({ showToast }: ProjectClassific
                                         : ` — loads differ by ${runSummary.spread}.`
                                 )}
                             </p>
+                            {runSummary.mode === 'teacher' && (
+                                <p className="text-xs text-slate-500 mt-1">
+                                    Each project goes to a teacher who teaches that grade, and each
+                                    grade is balanced among its own teachers.
+                                </p>
+                            )}
                         </div>
                     </div>
+
+                    {(runSummary.gradesWithoutTeacher?.length ?? 0) > 0 && (
+                        <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 mb-4 flex items-start gap-3">
+                            <AlertTriangle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" aria-hidden="true" />
+                            <p className="text-sm text-red-200">
+                                <strong>
+                                    Grade {runSummary.gradesWithoutTeacher!.join(', ')} could not be assigned.
+                                </strong>{' '}
+                                No teacher has {runSummary.gradesWithoutTeacher!.length === 1 ? 'that grade' : 'those grades'}{' '}
+                                set on their profile, so{' '}
+                                {runSummary.unassignedCount ?? 0} project(s) were left unassigned rather than
+                                given to a teacher from another grade. Ask those teachers to add their grade
+                                levels in My Profile, then run this again.
+                            </p>
+                        </div>
+                    )}
                     <div className="flex flex-wrap gap-2">
                         {Object.entries(runSummary.perTeacher ?? runSummary.perSubject ?? {})
                             .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
