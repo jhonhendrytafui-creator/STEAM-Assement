@@ -21,10 +21,24 @@ noted, so re-running in this order is safe.
 | 11 | `fix_silent_rls_failures.sql` | Missing peer-assessment UPDATE policy, C1 reset trigger, re-runnable storage policies |
 | 12 | `harden_links_and_storage.sql` | Rejects non-http(s) links at write time; scopes logbook photos to the owning group |
 | 13 | `teacher_expertise_and_assignments.sql` | Admin-editable teacher subjects, `project_assignments`, teacher-only recommendation policies |
+| 14 | `fix_missing_themes_2026_2027.sql` | Themes for the **current** academic year — without this no grade can submit a project |
 
 ## Existing database
 
-Run **9**, **10**, **11**, **12**, then **13**. All five are safe to re-run.
+Run **9**, **10**, **11**, **12**, **13**, then **14**. All six are safe to re-run.
+
+**14 is not optional, and it is the one that was missing.** `full_schema.sql`
+seeds themes for `2025/2026` only, but `ACADEMIC_YEAR` in `src/lib/constants.ts`
+is `2026/2027`. The current year's themes came from two scripts that were never
+listed here — `seed_themes_2026_2027.sql` (grades 7-12) and
+`override_themes_grade_10_11_12.sql` (grades 10-12 only) — so running the
+override without the base seed left grades 7, 8 and 9 with no themes at all.
+A grade with no themes has an empty theme dropdown, and submission refuses a
+project with no theme, so that whole grade could not submit. This is what a
+grade 7 student hit. Script 14 fills in any grade that has none and leaves
+grades that already have themes untouched, so it is safe on a live database and
+safe to re-run. It also adds the unique index on
+`(theme_name, grade, academic_year)` that the theme seeds never had.
 
 **11 is not optional.** Without it, a student editing a peer assessment they
 already submitted sees "Assessment saved successfully" and nothing is written —

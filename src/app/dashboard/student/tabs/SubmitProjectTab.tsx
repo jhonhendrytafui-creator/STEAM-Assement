@@ -38,6 +38,10 @@ interface SubmitProjectTabProps {
     studentInfo: StudentInfo;
     userEmail: string | null;
     themesList: Theme[];
+    /** True when the themes read failed, as opposed to returning nothing. */
+    themesError: boolean;
+    /** The student's grade, for naming what is missing in the empty state. */
+    grade: string;
     projectHistory: ProjectData[];
     showToast: (message: string, type: ToastType) => void;
     onSubmitSuccess: (newProject: ProjectData) => void;
@@ -53,6 +57,8 @@ export default function SubmitProjectTab({
     studentInfo,
     userEmail,
     themesList,
+    themesError,
+    grade,
     projectHistory,
     showToast,
     onSubmitSuccess,
@@ -179,7 +185,11 @@ export default function SubmitProjectTab({
                 .eq('class_name', studentInfo.class_name)
                 .eq('group_number', studentInfo.group_number)
                 .eq('academic_year', ACADEMIC_YEAR)
-                .single();
+                // maybeSingle, not single: a group that has never run a
+                // pre-check has no row at all, and single() treats that as an
+                // error (PGRST116). The error was discarded, so the count was
+                // still right, but every such group logged a spurious failure.
+                .maybeSingle();
             if (data) {
                 setPrecheckUsage(data.usage_count);
             }
@@ -447,8 +457,21 @@ export default function SubmitProjectTab({
                                 <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 pointer-events-none" />
                             </div>
                         ) : (
-                            <div className="bg-[#1c1b14] border border-slate-800 rounded-xl py-3 px-4 text-slate-500 text-sm">
-                                No themes available for your grade. Please contact your teacher.
+                            // Without a theme the submit below cannot go through
+                            // at all, so this has to name the actual problem and
+                            // who can fix it. "Please contact your teacher" left
+                            // a whole grade stuck with nothing to act on.
+                            <div className="bg-[#1c1b14] border border-amber-500/30 rounded-xl py-4 px-4 text-sm">
+                                <p className="font-semibold text-amber-300 mb-1">
+                                    {themesError
+                                        ? 'Themes could not be loaded'
+                                        : `No themes set up for Grade ${grade} yet`}
+                                </p>
+                                <p className="text-slate-400">
+                                    {themesError
+                                        ? 'Something went wrong while reading the theme list. Please reload the page, and tell your teacher if it keeps happening.'
+                                        : `Your teacher needs to add the ${ACADEMIC_YEAR} themes for Grade ${grade} before your group can submit. Please show them this message.`}
+                                </p>
                             </div>
                         )}
                     </div>
@@ -580,7 +603,8 @@ export default function SubmitProjectTab({
 
                         <button
                             type="submit"
-                            disabled={isSubmitting || isPrechecking}
+                            disabled={isSubmitting || isPrechecking || themesList.length === 0}
+                            title={themesList.length === 0 ? 'A theme is required, and none are set up for your grade yet.' : undefined}
                             className="w-full sm:w-1/2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-[#1a160d] font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-amber-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {isSubmitting ? (
@@ -588,7 +612,11 @@ export default function SubmitProjectTab({
                             ) : (
                                 <PenSquare className="w-5 h-5" />
                             )}
-                            {isSubmitting ? 'Submitting...' : 'Submit Project Review'}
+                            {isSubmitting
+                                ? 'Submitting...'
+                                : themesList.length === 0
+                                    ? 'Waiting for themes'
+                                    : 'Submit Project Review'}
                         </button>
                     </div>
                 </form>
