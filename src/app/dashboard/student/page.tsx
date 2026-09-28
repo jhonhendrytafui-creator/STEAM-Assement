@@ -8,6 +8,7 @@ import {
 
 import { supabase } from '@/lib/supabase/client';
 import { ACADEMIC_YEAR } from '@/lib/constants';
+import { gradeOf } from '@/lib/grade';
 import type {
     ProjectData, StudentInfo, TeamMember, Theme,
     LogbookEntry, AssessmentCategory, RubricDimension,
@@ -73,6 +74,8 @@ export default function StudentDashboardPage() {
 
     // Themes
     const [themesList, setThemesList] = useState<Theme[]>([]);
+    const [themesError, setThemesError] = useState(false);
+    const [studentGrade, setStudentGrade] = useState('');
 
     // Logbook
     const [logbooks, setLogbooks] = useState<LogbookEntry[]>([]);
@@ -132,7 +135,10 @@ export default function StudentDashboardPage() {
         }
 
         setStudentInfo(myInfo);
-        const grade = myInfo.class_name.split('.')[0];
+        // gradeOf, not a bare split: the value is matched against themes.grade,
+        // which is seeded as a bare numeral. See src/lib/grade.ts.
+        const grade = gradeOf(myInfo.class_name);
+        setStudentGrade(grade);
 
         const { data: members } = await supabase
             .from('student_master')
@@ -142,13 +148,25 @@ export default function StudentDashboardPage() {
             .eq('academic_year', ACADEMIC_YEAR);
         if (members) setTeamMembers(members);
 
-        const { data: fetchedThemes } = await supabase
+        // Ordered by created_at so the list — and therefore the theme selected
+        // by default — is the same on every load. Unordered, PostgREST is free
+        // to return these in any order, and seed order is curriculum order.
+        const { data: fetchedThemes, error: themesErr } = await supabase
             .from('themes')
             .select('id, theme_name')
             .eq('grade', grade)
-            .eq('academic_year', ACADEMIC_YEAR);
-        if (fetchedThemes && fetchedThemes.length > 0) {
-            setThemesList(fetchedThemes);
+            .eq('academic_year', ACADEMIC_YEAR)
+            .order('created_at');
+        if (themesErr) {
+            // Discarding this used to render the same "no themes" message
+            // whether the grade genuinely had none configured or the read had
+            // failed — the difference between a teacher knowing what to fix and
+            // nobody knowing where to look.
+            console.error(`Could not load themes for grade ${grade}:`, themesErr);
+            setThemesError(true);
+        } else {
+            setThemesError(false);
+            setThemesList(fetchedThemes ?? []);
         }
 
         const { data: fetchedProjects } = await supabase
@@ -323,6 +341,8 @@ export default function StudentDashboardPage() {
                                 studentInfo={studentInfo}
                                 userEmail={userEmail}
                                 themesList={themesList}
+                                themesError={themesError}
+                                grade={studentGrade}
                                 projectHistory={projectHistory}
                                 showToast={showToast}
                                 onSubmitSuccess={handleSubmitSuccess}

@@ -86,7 +86,7 @@ export async function resetGroupData(
 }
 
 /** Grade number from a class name, e.g. "10.2" -> "10". */
-export const gradeOf = (className: string) => String(className).split('.')[0];
+export { gradeOf } from '@/lib/grade';
 
 /** Basic sanity check for the only email domain the login flow accepts. */
 export const ALLOWED_EMAIL_DOMAIN = '@sekolah.pahoa.sch.id';
