@@ -1,7 +1,8 @@
 'use client';
 
 import { supabase } from '@/lib/supabase/client';
-import { ACADEMIC_YEAR } from '@/lib/constants';
+import { academicYear } from '@/lib/academic-year';
+
 
 // Tables that hold data belonging to a single group for one academic year.
 // Used when an admin resets a group so they can start fresh.
@@ -37,7 +38,7 @@ export async function logAdminAction(
             action,
             target,
             details,
-            academic_year: ACADEMIC_YEAR,
+            academic_year: academicYear(),
         });
     } catch (e) {
         console.warn('admin_audit_log write failed:', e);
@@ -61,7 +62,7 @@ export async function resetGroupData(
             .delete()
             .eq('class_name', group.class_name)
             .eq('group_number', group.group_number)
-            .eq('academic_year', ACADEMIC_YEAR);
+            .eq('academic_year', academicYear());
         if (error) failed.push({ scope, message: error.message });
     };
 
@@ -78,7 +79,7 @@ export async function resetGroupData(
             .update({ usage_count: 0 })
             .eq('class_name', group.class_name)
             .eq('group_number', group.group_number)
-            .eq('academic_year', ACADEMIC_YEAR);
+            .eq('academic_year', academicYear());
         if (error) failed.push({ scope: 'precheck_quota', message: error.message });
     }
 

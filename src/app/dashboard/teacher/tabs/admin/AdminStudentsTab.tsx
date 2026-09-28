@@ -6,8 +6,9 @@ import {
     ArrowRightLeft, RefreshCw, AlertTriangle,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
+import { academicYear } from '@/lib/academic-year';
 import { fetchAll } from '@/lib/supabase/fetchAll';
-import { ACADEMIC_YEAR } from '@/lib/constants';
+
 import { logAdminAction, isValidSchoolEmail, ALLOWED_EMAIL_DOMAIN, gradeOf } from '@/lib/admin';
 import type { StudentRecord, ToastType } from '@/lib/types';
 
@@ -62,7 +63,7 @@ export default function AdminStudentsTab({
         const { data, error } = await fetchAll((from, to) => supabase
             .from('student_master')
             .select('*')
-            .eq('academic_year', ACADEMIC_YEAR)
+            .eq('academic_year', academicYear())
             .order('class_name')
             .order('group_number')
             .order('full_name')
@@ -126,7 +127,7 @@ export default function AdminStudentsTab({
             full_name: newStudent.full_name.trim(),
             class_name: newStudent.class_name.trim(),
             group_number: Number(newStudent.group_number),
-            academic_year: ACADEMIC_YEAR,
+            academic_year: academicYear(),
         };
         const { error } = await supabase.from('student_master').insert(payload);
         setSaving(false);
@@ -134,7 +135,7 @@ export default function AdminStudentsTab({
         if (error) {
             showToast(
                 error.code === '23505'
-                    ? `${payload.email} is already registered for ${ACADEMIC_YEAR}.`
+                    ? `${payload.email} is already registered for ${academicYear()}.`
                     : 'Could not add student: ' + error.message,
                 'error',
             );
@@ -190,7 +191,7 @@ export default function AdminStudentsTab({
     const handleDelete = (s: StudentRecord) => {
         showConfirm(
             'Remove student',
-            `Remove ${s.full_name} (${s.email}) from ${ACADEMIC_YEAR}? Their group's project and logbook entries are kept — only this roster entry is removed, so they will lose access to the student dashboard.`,
+            `Remove ${s.full_name} (${s.email}) from ${academicYear()}? Their group's project and logbook entries are kept — only this roster entry is removed, so they will lose access to the student dashboard.`,
             async () => {
                 const { error } = await supabase.from('student_master').delete().eq('id', s.id);
                 if (error) {
@@ -236,7 +237,7 @@ export default function AdminStudentsTab({
                 email: email.trim().toLowerCase(),
                 class_name: class_name.trim(),
                 group_number: Number(group_number),
-                academic_year: ACADEMIC_YEAR,
+                academic_year: academicYear(),
             });
         });
 
@@ -318,7 +319,7 @@ export default function AdminStudentsTab({
                         Students &amp; Groups
                     </h2>
                     <p className="text-slate-400 text-sm mt-1">
-                        Roster for {ACADEMIC_YEAR} — {students.length} student(s) across {classes.length} class(es).
+                        Roster for {academicYear()} — {students.length} student(s) across {classes.length} class(es).
                     </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -375,7 +376,7 @@ export default function AdminStudentsTab({
                     <p className="text-xs text-slate-400 mb-3">
                         One student per line: <code className="text-indigo-400">Full Name, email{ALLOWED_EMAIL_DOMAIN}, class, group</code>.
                         Commas, tabs or semicolons all work, so you can paste straight from a spreadsheet.
-                        An email that already exists for {ACADEMIC_YEAR} is updated rather than duplicated.
+                        An email that already exists for {academicYear()} is updated rather than duplicated.
                     </p>
                     <textarea
                         rows={6}
@@ -437,7 +438,7 @@ export default function AdminStudentsTab({
                 <div className="text-center py-12 text-slate-500 text-sm flex flex-col items-center gap-2">
                     <AlertTriangle className="w-6 h-6 text-slate-600" />
                     {students.length === 0
-                        ? `No students registered for ${ACADEMIC_YEAR} yet.`
+                        ? `No students registered for ${academicYear()} yet.`
                         : 'No students match this filter.'}
                 </div>
             ) : (

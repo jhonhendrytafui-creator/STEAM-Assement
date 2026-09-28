@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { requireUser } from '@/lib/api-auth';
-import { ACADEMIC_YEAR } from '@/lib/constants';
+import { getAcademicYearServer } from '@/lib/academic-year-server';
 import { GeminiGenerationError, generateWithFallback } from '@/lib/gemini';
 import { subjectLabel } from '@/lib/subjects';
 
@@ -60,16 +60,20 @@ export async function POST(req: Request) {
 
         const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceKey);
 
+        // Read per request rather than from a constant, so a rollover from the
+        // admin screen takes effect here without a redeploy.
+        const academicYear = await getAcademicYearServer(admin);
+
         const { data: roster } = await admin
             .from('student_master')
             .select('class_name, group_number')
             .eq('email', auth.user.email)
-            .eq('academic_year', ACADEMIC_YEAR)
+            .eq('academic_year', academicYear)
             .single();
 
         if (!roster) {
             return NextResponse.json(
-                { error: `You are not registered in a group for ${ACADEMIC_YEAR}. Please contact your teacher.` },
+                { error: `You are not registered in a group for ${academicYear}. Please contact your teacher.` },
                 { status: 403 }
             );
         }
@@ -77,7 +81,7 @@ export async function POST(req: Request) {
         const quotaKey = {
             class_name: roster.class_name,
             group_number: roster.group_number,
-            academic_year: ACADEMIC_YEAR,
+            academic_year: academicYear,
         };
 
         const { data: quotaRow } = await admin

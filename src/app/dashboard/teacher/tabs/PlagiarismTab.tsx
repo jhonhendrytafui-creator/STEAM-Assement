@@ -6,8 +6,9 @@ import {
     AlertTriangle, CheckCircle, Clock, ClipboardCheck
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
+import { academicYear } from '@/lib/academic-year';
 import { safeExternalUrl } from '@/lib/url';
-import { ACADEMIC_YEAR } from '@/lib/constants';
+
 import type { ToastType, ProjectData } from '@/lib/types';
 import { parseAbstract } from '@/lib/abstract';
 
@@ -47,7 +48,7 @@ export default function PlagiarismTab({ allStudents, showToast }: PlagiarismTabP
                 .from('projects')
                 .select('group_number, ai_plagiarism_score, iteration')
                 .eq('class_name', selectedClass)
-                .eq('academic_year', ACADEMIC_YEAR)
+                .eq('academic_year', academicYear())
                 .order('iteration', { ascending: false });
 
             // For each group_number keep only the latest iteration
@@ -79,7 +80,7 @@ export default function PlagiarismTab({ allStudents, showToast }: PlagiarismTabP
                 .select('*')
                 .eq('class_name', selectedClass)
                 .eq('group_number', parseInt(selectedGroup))
-                .eq('academic_year', ACADEMIC_YEAR)
+                .eq('academic_year', academicYear())
                 .order('iteration', { ascending: false })
                 .limit(1);
 

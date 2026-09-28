@@ -6,9 +6,10 @@ import {
     Calendar, Save, X, AlertTriangle, Camera, Image as ImageIcon
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
+import { academicYear } from '@/lib/academic-year';
 import { safeExternalUrl } from '@/lib/url';
 import { sanitizeRichText } from '@/lib/sanitize';
-import { ACADEMIC_YEAR } from '@/lib/constants';
+
 import type { ProjectData, StudentInfo, TeamMember, LogbookEntry, ToastType } from '@/lib/types';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import RichTextEditor from '@/components/ui/RichTextEditor';
@@ -134,7 +135,7 @@ export default function LogbookTab({
                 const nameParts = newLogPhoto.name.split('.');
                 const fileExt = (nameParts.length > 1 ? nameParts.pop() : '')?.toLowerCase() || 'jpg';
                 const safeClassName = studentInfo.class_name.replace(/\s+/g, '_');
-                const safeAcademicYear = ACADEMIC_YEAR.replace(/\//g, '-'); // Replace / with - to prevent splitting into two folders
+                const safeAcademicYear = academicYear().replace(/\//g, '-'); // Replace / with - to prevent splitting into two folders
                 const stamp = new Date().toISOString().slice(0, 10);
                 const unique = (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`).slice(0, 8);
                 const fileName = `${safeAcademicYear}_${safeClassName}_Group${studentInfo.group_number}_${stamp}_${unique}.${fileExt}`;
@@ -160,7 +161,7 @@ export default function LogbookTab({
                 {
                     class_name: studentInfo.class_name,
                     group_number: studentInfo.group_number,
-                    academic_year: ACADEMIC_YEAR,
+                    academic_year: academicYear(),
                     student_email: userEmail,
                     entry_date: newLogDate,
                     task: newLogTask,

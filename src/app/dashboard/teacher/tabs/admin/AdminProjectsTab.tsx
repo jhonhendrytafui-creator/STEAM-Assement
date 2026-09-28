@@ -5,8 +5,9 @@ import {
     DatabaseZap, Trash2, RefreshCw, AlertTriangle, History, Search, RotateCcw,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
+import { academicYear } from '@/lib/academic-year';
 import { fetchAll } from '@/lib/supabase/fetchAll';
-import { ACADEMIC_YEAR } from '@/lib/constants';
+
 import { logAdminAction, resetGroupData, groupLabel, gradeOf } from '@/lib/admin';
 import type { GroupResetScope } from '@/lib/admin';
 import type { ProjectData, ToastType } from '@/lib/types';
@@ -59,7 +60,7 @@ export default function AdminProjectsTab({
         const { data, error } = await fetchAll((from, to) => supabase
             .from('projects')
             .select('*, themes(theme_name)')
-            .eq('academic_year', ACADEMIC_YEAR)
+            .eq('academic_year', academicYear())
             .order('class_name')
             .order('group_number')
             .order('iteration', { ascending: false })
@@ -157,7 +158,7 @@ export default function AdminProjectsTab({
         const chosen = RESET_OPTIONS.filter(o => resetScopes.includes(o.scope)).map(o => o.label);
         showConfirm(
             `Reset ${groupLabel(group)}`,
-            `This permanently deletes the following for ${ACADEMIC_YEAR}: ${chosen.join(', ')}. The group starts fresh and can submit a new project as iteration 1. This cannot be undone.`,
+            `This permanently deletes the following for ${academicYear()}: ${chosen.join(', ')}. The group starts fresh and can submit a new project as iteration 1. This cannot be undone.`,
             async () => {
                 setBusy(true);
                 const { failed } = await resetGroupData(group, resetScopes);
