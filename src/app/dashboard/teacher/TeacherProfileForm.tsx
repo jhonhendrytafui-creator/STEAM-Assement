@@ -1,13 +1,15 @@
 'use client';
 
 import React, { useState } from 'react';
-import { UserCog, Check, Pencil, AlertTriangle, MessageCircle } from 'lucide-react';
+import {
+    UserCog, Check, Pencil, AlertTriangle, MessageCircle, GraduationCap, Briefcase,
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { subjectLabel } from '@/lib/subjects';
 import { GRADE_LEVELS } from '@/lib/grade';
 import { PHONE_PREFIX, normalizeIdPhone, localPartOf, formatIdPhone } from '@/lib/phone';
 import SubjectPicker from '@/components/ui/SubjectPicker';
-import type { TeacherProfile, ToastType } from '@/lib/types';
+import type { TeacherProfile, TeachingRole, ToastType } from '@/lib/types';
 
 // ─────────────────────────────────────────────────────────────
 // The teacher's own profile.
@@ -19,9 +21,15 @@ import type { TeacherProfile, ToastType } from '@/lib/types';
 // (`mode="edit"`) the same form lets them correct it later, because people
 // change subjects between years.
 //
-// Every field here is required. The save goes through the save_teacher_profile
-// RPC rather than a table write: teacher_emails carries is_admin, and a function
-// can restrict the write to four columns where RLS cannot.
+// What is required depends on the first answer. Someone who teaches has to give
+// their subjects and grades -- subjects are what the project classifier matches
+// on, so an empty list means they are never recommended for anything. Someone who
+// does not teach or assess has neither, and being asked for both was a wall they
+// could not get past. Name and WhatsApp number are asked of everyone.
+//
+// The save goes through the save_teacher_profile RPC rather than a table write:
+// teacher_emails carries is_admin, and a function can restrict the write to the
+// profile columns where RLS cannot.
 // ─────────────────────────────────────────────────────────────
 
 interface TeacherProfileFormProps {
@@ -43,6 +51,7 @@ export default function TeacherProfileForm({
     onSaved,
     showToast,
 }: TeacherProfileFormProps) {
+    const [role, setRole] = useState<TeachingRole>(profile.teaching_role ?? 'teaching');
     const [fullName, setFullName] = useState(profile.full_name ?? '');
     const [subjects, setSubjects] = useState<string[]>(profile.expertise_subjects ?? []);
     const [grades, setGrades] = useState<string[]>(profile.grade_levels ?? []);
@@ -58,11 +67,14 @@ export default function TeacherProfileForm({
 
     const normalizedPhone = normalizeIdPhone(phoneLocal);
 
+    const teaches = role === 'teaching';
+
     const validate = (): boolean => {
         const next: Record<string, string> = {};
         if (!fullName.trim()) next.fullName = 'Please enter your full name.';
-        if (subjects.length === 0) next.subjects = 'Choose at least one subject you teach.';
-        if (grades.length === 0) next.grades = 'Choose at least one grade level you teach.';
+        // Only asked of, and only required of, someone who teaches.
+        if (teaches && subjects.length === 0) next.subjects = 'Choose at least one subject you teach.';
+        if (teaches && grades.length === 0) next.grades = 'Choose at least one grade level you teach.';
         if (!phoneLocal.trim()) {
             next.phone = 'Please enter your WhatsApp number.';
         } else if (!normalizedPhone) {
@@ -80,9 +92,12 @@ export default function TeacherProfileForm({
         setSaving(true);
         const { error } = await supabase.rpc('save_teacher_profile', {
             p_full_name: fullName.trim(),
-            p_subjects: subjects,
-            p_grades: grades,
+            // Sent empty for non-teaching staff, matching what the RPC stores, so
+            // a switch of role cannot leave stale subjects behind.
+            p_subjects: teaches ? subjects : [],
+            p_grades: teaches ? grades : [],
             p_phone: normalizedPhone,
+            p_teaching_role: role,
         });
         setSaving(false);
 
@@ -127,16 +142,17 @@ export default function TeacherProfileForm({
                     <div className="bg-amber-900/20 border border-amber-500/30 rounded-xl p-4 mb-8 flex items-start gap-3">
                         <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
                         <p className="text-sm text-amber-100">
-                            Before you can use the portal we need a few details about you. Your
-                            subjects decide which projects you are recommended for, and your name
-                            is shown to students beside any mark you give. This is a one-off —
-                            you can edit it later from My Profile.
+                            Before you can use the portal we need a few details about you. Start
+                            with your role: if you do not teach or assess, we will not ask you for
+                            subjects or grade levels. Your name is shown to students beside any
+                            mark you give. This is a one-off — you can edit it later from My Profile.
                         </p>
                     </div>
                 ) : (
                     <p className="text-slate-400 text-sm mb-8">
                         Your subjects decide which projects you are recommended for, and your name
-                        is shown to students beside any mark you give.
+                        is shown to students beside any mark you give. Change your role here if it
+                        no longer fits.
                     </p>
                 )}
 
@@ -148,6 +164,57 @@ export default function TeacherProfileForm({
                         </label>
                         <div className="bg-[#171610] border border-slate-800 rounded-xl py-3 px-4 text-slate-500">
                             {profile.email}
+                        </div>
+                    </div>
+
+                    {/* What kind of account this is. Asked first, because it
+                        decides which of the fields below apply. */}
+                    <div>
+                        <span className="block text-sm font-semibold text-slate-300 mb-2">
+                            Your role at the school <span className="text-amber-500">*</span>
+                        </span>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3" role="radiogroup" aria-label="Your role at the school">
+                            {([
+                                {
+                                    value: 'teaching' as TeachingRole,
+                                    icon: GraduationCap,
+                                    title: 'I teach and assess',
+                                    blurb: 'You guide groups and mark their work. We will ask for your subjects and grade levels.',
+                                },
+                                {
+                                    value: 'non_teaching' as TeachingRole,
+                                    icon: Briefcase,
+                                    title: 'I do not teach or assess',
+                                    blurb: 'Office, library, counselling, leadership — portal access without teaching. No subjects or grades needed.',
+                                },
+                            ]).map(opt => {
+                                const on = role === opt.value;
+                                const Icon = opt.icon;
+                                return (
+                                    <button
+                                        key={opt.value}
+                                        type="button"
+                                        role="radio"
+                                        aria-checked={on}
+                                        onClick={() => setRole(opt.value)}
+                                        className={
+                                            'text-left rounded-xl border p-4 transition-all '
+                                            + (on
+                                                ? 'bg-amber-500/10 border-amber-500/60 ring-1 ring-amber-500/40'
+                                                : 'bg-[#1c1b14] border-slate-800 hover:border-amber-500/40')
+                                        }
+                                    >
+                                        <span className="flex items-center gap-2 mb-1">
+                                            <Icon className={'w-4 h-4 ' + (on ? 'text-amber-400' : 'text-slate-500')} />
+                                            <span className={'text-sm font-semibold ' + (on ? 'text-amber-300' : 'text-slate-300')}>
+                                                {opt.title}
+                                            </span>
+                                            {on && <Check className="w-4 h-4 text-amber-400 ml-auto shrink-0" />}
+                                        </span>
+                                        <span className="text-xs text-slate-500 block">{opt.blurb}</span>
+                                    </button>
+                                );
+                            })}
                         </div>
                     </div>
 
@@ -168,7 +235,8 @@ export default function TeacherProfileForm({
                         {errors.fullName && <p className="text-red-400 text-xs mt-1.5">{errors.fullName}</p>}
                     </div>
 
-                    {/* Subjects */}
+                    {/* Subjects — teaching staff only */}
+                    {teaches && (
                     <div>
                         <label className="block text-sm font-semibold text-slate-300 mb-2">
                             Area of expertise <span className="text-amber-500">*</span>
@@ -197,8 +265,10 @@ export default function TeacherProfileForm({
                         </button>
                         {errors.subjects && <p className="text-red-400 text-xs mt-1.5">{errors.subjects}</p>}
                     </div>
+                    )}
 
-                    {/* Grade levels */}
+                    {/* Grade levels — teaching staff only */}
+                    {teaches && (
                     <div>
                         <label className="block text-sm font-semibold text-slate-300 mb-2">
                             Grade level you teach <span className="text-amber-500">*</span>
@@ -228,6 +298,18 @@ export default function TeacherProfileForm({
                         </div>
                         {errors.grades && <p className="text-red-400 text-xs mt-1.5">{errors.grades}</p>}
                     </div>
+                    )}
+
+                    {!teaches && (
+                        <div className="bg-[#1c1b14] border border-slate-800 rounded-xl p-4 flex items-start gap-3">
+                            <Briefcase className="w-5 h-5 text-slate-500 shrink-0 mt-0.5" />
+                            <p className="text-sm text-slate-400">
+                                No subjects or grade levels needed. You will not appear in project
+                                classification recommendations, which match teachers to projects by
+                                subject. Change this any time from My Profile.
+                            </p>
+                        </div>
+                    )}
 
                     {/* WhatsApp number — +62 fixed, only the rest is typed */}
                     <div>
