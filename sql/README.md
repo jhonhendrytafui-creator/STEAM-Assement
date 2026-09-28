@@ -22,11 +22,24 @@ noted, so re-running in this order is safe.
 | 12 | `harden_links_and_storage.sql` | Rejects non-http(s) links at write time; scopes logbook photos to the owning group |
 | 13 | `teacher_expertise_and_assignments.sql` | Admin-editable teacher subjects, `project_assignments`, teacher-only recommendation policies |
 | 14 | `fix_missing_themes_2026_2027.sql` | Themes for the **current** academic year — without this no grade can submit a project |
-| 15 | `teacher_profile_and_assessor.sql` | Teacher self-service profile (subjects, grades, WhatsApp) + the assessor's name on every mark |
+| 15 | `teacher_profile_1_columns.sql` -> `_2_triggers` -> `_3_save_rpc` -> `_4_policy_check` | Teacher self-service profile (subjects, grades, WhatsApp) + the assessor's name on every mark. **Four files, run in order.** |
 
 ## Existing database
 
-Run **9**, **10**, **11**, **12**, **13**, **14**, then **15**. All seven are safe to re-run.
+Run **9**, **10**, **11**, **12**, **13**, **14**, then **15**'s four parts in
+order. All are safe to re-run.
+
+**Why 15 is split into four files.** It began as one 368-line script and would
+not apply: the Supabase SQL Editor truncated the paste at exactly line 150 --
+confirmed twice, on two different versions of the file, both cut after line 150
+at different byte offsets. A paste cut off inside a function body fails with
+`unterminated dollar-quoted string`, and the line it names is where that body
+*opens*, not where the text ran out, which makes it look like a syntax error
+hundreds of lines from the real problem. Each part is now under 110 lines.
+Part 4 ends by asserting every column, trigger and function parts 1-3 should
+have created, and names any that are missing, so a skipped or truncated part
+cannot leave the migration quietly half-applied. You should see
+`ALL 4 PARTS COMPLETE` when it is done.
 
 **14 is not optional, and it is the one that was missing.** `full_schema.sql`
 seeds themes for `2025/2026` only, but `ACADEMIC_YEAR` in `src/lib/constants.ts`
