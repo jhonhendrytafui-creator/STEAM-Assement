@@ -202,7 +202,7 @@ export default function StudentDashboardPage() {
 
         const { data: scrs } = await supabase
             .from('assessment_scores')
-            .select('id, indicator_id, score, assessed_at, teacher_comment')
+            .select('id, indicator_id, score, assessed_at, teacher_comment, assessed_by_name')
             .eq('class_name', myInfo.class_name)
             .eq('group_number', myInfo.group_number)
             .eq('academic_year', ACADEMIC_YEAR);

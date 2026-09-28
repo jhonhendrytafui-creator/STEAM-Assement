@@ -30,3 +30,6 @@ export function gradeOf(className: string | null | undefined): string {
     if (!digits) return head;
     return String(Number(digits));
 }
+
+/** The grades this school runs. Drives the teacher profile picker and its check. */
+export const GRADE_LEVELS = ['7', '8', '9', '10', '11', '12'] as const;

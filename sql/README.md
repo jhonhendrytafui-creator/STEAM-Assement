@@ -22,10 +22,24 @@ noted, so re-running in this order is safe.
 | 12 | `harden_links_and_storage.sql` | Rejects non-http(s) links at write time; scopes logbook photos to the owning group |
 | 13 | `teacher_expertise_and_assignments.sql` | Admin-editable teacher subjects, `project_assignments`, teacher-only recommendation policies |
 | 14 | `fix_missing_themes_2026_2027.sql` | Themes for the **current** academic year — without this no grade can submit a project |
+| 15 | `teacher_profile_1_columns.sql` -> `_2_triggers` -> `_3_save_rpc` -> `_4_policy_check` | Teacher self-service profile (subjects, grades, WhatsApp) + the assessor's name on every mark. **Four files, run in order.** |
 
 ## Existing database
 
-Run **9**, **10**, **11**, **12**, **13**, then **14**. All six are safe to re-run.
+Run **9**, **10**, **11**, **12**, **13**, **14**, then **15**'s four parts in
+order. All are safe to re-run.
+
+**Why 15 is split into four files.** It began as one 368-line script and would
+not apply: the Supabase SQL Editor truncated the paste at exactly line 150 --
+confirmed twice, on two different versions of the file, both cut after line 150
+at different byte offsets. A paste cut off inside a function body fails with
+`unterminated dollar-quoted string`, and the line it names is where that body
+*opens*, not where the text ran out, which makes it look like a syntax error
+hundreds of lines from the real problem. Each part is now under 110 lines.
+Part 4 ends by asserting every column, trigger and function parts 1-3 should
+have created, and names any that are missing, so a skipped or truncated part
+cannot leave the migration quietly half-applied. You should see
+`ALL 4 PARTS COMPLETE` when it is done.
 
 **14 is not optional, and it is the one that was missing.** `full_schema.sql`
 seeds themes for `2025/2026` only, but `ACADEMIC_YEAR` in `src/lib/constants.ts`
@@ -39,6 +53,28 @@ grade 7 student hit. Script 14 fills in any grade that has none and leaves
 grades that already have themes untouched, so it is safe on a live database and
 safe to re-run. It also adds the unique index on
 `(theme_name, grade, academic_year)` that the theme seeds never had.
+
+**15 gates the teacher portal until each teacher fills in their own details,**
+and records who gave each mark. Two things to know before running it:
+
+- Every teacher is shown a one-off form on their next sign-in and cannot reach
+  the portal until they complete it: full name, subjects, grade levels and a
+  WhatsApp number. Admins are gated too — the form is self-service, so nobody
+  can be locked out. A teacher whose row an admin has already filled in
+  completely is not gated, because `profile_completed_at` comes across on first
+  login. To let a teacher through without the form, set
+  `profile_completed_at = NOW()` on their `teacher_emails` row.
+- `assessment_scores.assessed_by_name` is backfilled from the existing
+  `assessed_by` reference wherever it was recorded. Marks older than that
+  column keep a NULL and the UI shows "Not Recorded" — an honest gap rather
+  than a guess. The name is stored on the score row rather than joined from
+  `profiles` because RLS lets a student read only their own `profiles` row, so
+  the student dashboard cannot resolve `assessed_by` to a name.
+
+Writes go through `save_teacher_profile()`, a `SECURITY DEFINER` function, not a
+table grant: `teacher_emails` carries `is_admin`, and RLS cannot restrict an
+UPDATE to a column list. The function touches four columns for the caller's own
+email and never `is_admin`.
 
 **11 is not optional.** Without it, a student editing a peer assessment they
 already submitted sees "Assessment saved successfully" and nothing is written —

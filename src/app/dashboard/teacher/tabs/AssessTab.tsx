@@ -3,13 +3,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
     ClipboardCheck, BookOpen, Link as LinkIcon, Star, FileText, Lock, Unlock,
-    AlertTriangle, CheckCircle2, Clock, Sparkles, X
+    AlertTriangle, CheckCircle2, Clock, Sparkles, X, UserCheck
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { safeExternalUrl } from '@/lib/url';
 import { ACADEMIC_YEAR } from '@/lib/constants';
 import type { AssessmentCategory, RubricDimension, RubricIndicator, ProjectData, ToastType } from '@/lib/types';
 import { parseAbstract, subjectLabel } from '@/lib/abstract';
+import { summarizeAssessors, type AssessorSummary } from '@/lib/assessor';
 import { jsPDF } from 'jspdf';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from 'recharts';
 
@@ -54,6 +55,8 @@ export default function AssessTab({
     const [isAutoAssessing, setIsAutoAssessing] = useState(false);
     const [indicatorComments, setIndicatorComments] = useState<Record<string, string>>({});
     const [isAssessmentLocked, setIsAssessmentLocked] = useState(false);
+    // Who marked the selected category already, when anyone has.
+    const [existingAssessor, setExistingAssessor] = useState<AssessorSummary | null>(null);
     const [showUnlockConfirm, setShowUnlockConfirm] = useState(false);
 
     const availableAssessClasses = Array.from(new Set(allStudents.filter(s => String(s.class_name).split('.')[0] === assessGrade).map(s => s.class_name))).sort();
@@ -151,7 +154,7 @@ export default function AssessTab({
 
             const { data: scores } = await supabase
                 .from('assessment_scores')
-                .select('indicator_id, score, teacher_comment')
+                .select('indicator_id, score, teacher_comment, assessed_by_name, assessed_at')
                 .eq('class_name', assessClass)
                 .eq('group_number', parseInt(assessGroup))
                 .eq('category_id', assessCategory)
@@ -172,6 +175,10 @@ export default function AssessTab({
 
             const currentCat = assessmentCategories.find(c => c.id === assessCategory);
             const isC1Category = currentCat?.code === 'C1';
+
+            // Who already marked this category, so a teacher picking up a
+            // colleague's assessment can see whose work they are editing.
+            setExistingAssessor(scores && scores.length > 0 ? summarizeAssessors(scores) : null);
 
             if (scores && scores.length > 0) {
                 const scoreMap: Record<string, number> = {};
@@ -324,7 +331,11 @@ export default function AssessTab({
             score: score,
             teacher_comment: indicatorComments[indicatorId] || assessComment || null,
             // Record who graded this, so a disputed mark can be traced back.
+            // The name is stored next to the reference, not looked up from it:
+            // RLS lets a student read only their own profiles row, so the
+            // student dashboard cannot resolve assessed_by to a name.
             assessed_by: teacherProfile.id,
+            assessed_by_name: teacherProfile.full_name?.trim() || teacherProfile.email,
             assessed_at: new Date().toISOString(),
         }));
 
@@ -648,6 +659,26 @@ export default function AssessTab({
 
                                 return (
                                     <div className="space-y-6">
+                                        {existingAssessor && (
+                                            <div className="bg-[#1c1b14] border border-slate-800 rounded-xl px-4 py-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                                                <span className="inline-flex items-center gap-1.5 text-slate-500">
+                                                    <UserCheck className="w-3.5 h-3.5" />
+                                                    Assessed by
+                                                </span>
+                                                <span className={existingAssessor.unknown ? 'text-slate-500 italic' : 'text-slate-300 font-semibold'}>
+                                                    {existingAssessor.label}
+                                                </span>
+                                                {existingAssessor.lastAssessedAt && (
+                                                    <span className="text-slate-500">
+                                                        on {new Date(existingAssessor.lastAssessedAt).toLocaleString()}
+                                                    </span>
+                                                )}
+                                                {existingAssessor.partial && (
+                                                    <span className="text-slate-600">(some rows predate this being recorded)</span>
+                                                )}
+                                            </div>
+                                        )}
+
                                         {isAssessmentLocked && (
                                             <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                                                 <div className="flex items-center gap-3">
