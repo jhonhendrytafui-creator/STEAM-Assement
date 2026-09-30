@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server';
 import { requireTeacher } from '@/lib/api-auth';
-import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
+import { SchemaType } from '@google/generative-ai';
+import { GeminiGenerationError, generateWithFallback, teacherMessage } from '@/lib/gemini';
 
-// Initialize the Gemini client
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+// generateWithFallback keeps the Gemini walk inside 45 seconds, so the route
+// always answers with JSON before this limit.
+export const maxDuration = 60;
 
 // ─── Google Doc Text Extraction ─────────────────────
 async function fetchGoogleDocText(url: string): Promise<string> {
@@ -57,6 +59,18 @@ function buildScoringLogic(indicators: any[], maxScale: number = 4) {
     return { indicatorCount, maxScore, approvedThreshold, revisionThreshold };
 }
 
+// The assessment in a model's answer, or null when the answer is not JSON
+// carrying scores. A null sends the walk on to the next model, as a failed
+// JSON.parse used to.
+function readAssessment(text: string): Record<string, unknown> | null {
+    try {
+        const value = JSON.parse(text);
+        return value && typeof value.scores === 'object' && value.scores !== null ? value : null;
+    } catch {
+        return null;
+    }
+}
+
 export async function POST(req: Request) {
     try {
         const auth = await requireTeacher(req);
@@ -73,7 +87,8 @@ export async function POST(req: Request) {
         }
 
         // Validate API Key
-        if (!process.env.GEMINI_API_KEY) {
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (!apiKey) {
             return NextResponse.json(
                 { error: 'Server missing GEMINI_API_KEY configuration.' },
                 { status: 500 }
@@ -460,73 +475,43 @@ Provide your output exactly matching the JSON schema.
 `;
         }
 
-        let responseText = '';
-        let jsonPayload;
-        const fallbackModels = [
-            'gemini-2.5-flash',        // fastest + smartest current model
-            'gemini-2.5-pro',          // highest quality fallback
-            'gemini-2.5-flash-lite',   // lightweight fallback
-            'gemini-2.0-flash',        // previous generation fallback
-        ];
-        const maxRetries = fallbackModels.length;
-        let lastError: any = null;
-        
-        for (let attempt = 1; attempt <= maxRetries; attempt++) {
-            const currentModelName = fallbackModels[attempt - 1];
-            const model = genAI.getGenerativeModel({
-                model: currentModelName,
-                generationConfig: {
-                    temperature: 0.2, // Low temperature for consistent grading
-                    responseMimeType: "application/json",
-                    responseSchema: {
-                        type: SchemaType.OBJECT,
-                        properties: responseSchemaProperties,
-                        required: requiredFields
+        // Models, time limits and error wording come from src/lib/gemini.ts,
+        // shared with the other AI routes. This route used to carry its own
+        // list of gemini-2.5 and gemini-2.0 models only: 2.0 has been shut
+        // down and 2.5 refuses keys that had not used it before, so for a newer
+        // key every attempt failed, each followed by a 2-6 second sleep.
+        let responseText: string;
+        try {
+            const generated = await generateWithFallback({
+                apiKey,
+                prompt,
+                label: 'AI-Assess',
+                modelParams: {
+                    generationConfig: {
+                        temperature: 0.2, // Low temperature for consistent grading
+                        responseMimeType: "application/json",
+                        responseSchema: {
+                            type: SchemaType.OBJECT,
+                            properties: responseSchemaProperties,
+                            required: requiredFields
+                        }
                     }
-                }
+                },
+                accept: text => readAssessment(text) !== null,
             });
-
-            try {
-                console.log(`[AI-Assess] Attempt ${attempt}/${maxRetries} using model: ${currentModelName}`);
-                const result = await model.generateContent(prompt, {
-                    timeout: 60000 // 60-second timeout per attempt
-                });
-                responseText = result.response.text();
-                jsonPayload = JSON.parse(responseText);
-                break; // Success, exit retry loop
-            } catch (e: any) {
-                lastError = e;
-                const errorMsg = e?.message || '';
-                const isTimeout = e?.name === 'AbortError' || errorMsg.includes('abort') || errorMsg.includes('timeout');
-                const is503 = errorMsg.includes('503');
-                const isSafetyBlock = errorMsg.includes('SAFETY') || errorMsg.includes('blocked');
-                
-                console.error(`AI attempt ${attempt}/${maxRetries} failed:`, {
-                    type: isTimeout ? 'TIMEOUT' : is503 ? 'OVERLOADED' : isSafetyBlock ? 'SAFETY_BLOCK' : 'OTHER',
-                    message: errorMsg.slice(0, 200)
-                });
-
-                // Don't retry on safety blocks — they will always fail
-                if (isSafetyBlock) {
-                    throw new Error('The AI could not assess this project because the content was flagged by safety filters. Please review the project text for any inappropriate content and try again.');
-                }
-                
-                if (attempt === maxRetries) {
-                    if (isTimeout) {
-                        throw new Error('The AI assessment timed out after multiple attempts. This usually happens when Google servers are busy. Please try again in a moment.');
-                    } else if (is503) {
-                        throw new Error('Google AI is currently overloaded (503). We automatically tried 3 times, but it is still busy. Please try again in a few minutes.');
-                    } else {
-                        throw new Error(errorMsg || 'Failed to process AI response. Please try again.');
-                    }
-                }
-                
-                // Exponential backoff: 2s, 4s, 6s
-                await new Promise(res => setTimeout(res, attempt * 2000));
+            responseText = generated.text;
+        } catch (generationError) {
+            if (generationError instanceof GeminiGenerationError) {
+                const { failure } = generationError;
+                return NextResponse.json(
+                    { error: teacherMessage(failure), reason: failure.kind },
+                    { status: failure.status }
+                );
             }
+            throw generationError;
         }
 
-        return NextResponse.json(jsonPayload);
+        return NextResponse.json(readAssessment(responseText));
 
     } catch (error: any) {
         console.error('AI Assessment Error:', error);

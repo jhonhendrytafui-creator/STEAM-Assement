@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { FALLBACK_ACADEMIC_YEAR, isValidAcademicYear } from '@/lib/academic-year';
+import { FALLBACK_ACADEMIC_YEAR, isValidAcademicYear } from '@/lib/academic-year-shared';
 
 // ─────────────────────────────────────────────────────────────
 // The academic year for API routes.
@@ -10,7 +10,9 @@ import { FALLBACK_ACADEMIC_YEAR, isValidAcademicYear } from '@/lib/academic-year
 // takes effect on the server without a redeploy, which is the whole point.
 //
 // Only the validation and the fallback are shared with the client module, so the
-// two can never disagree about what a valid year looks like.
+// two can never disagree about what a valid year looks like. They come from
+// academic-year-shared.ts: never import '@/lib/academic-year' here. It is
+// 'use client', and its exports throw when a route handler calls them.
 // ─────────────────────────────────────────────────────────────
 
 /**

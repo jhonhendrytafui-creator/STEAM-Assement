@@ -9,9 +9,18 @@ export const maxDuration = 60;
 
 // Wall-clock cap on the Gemini walk, kept under maxDuration so the route
 // always returns JSON. If the host caps functions lower than this (Netlify's
-// synchronous default is well under 60s), lower it to match — a killed
-// function returns an HTML gateway error the browser cannot parse.
+// synchronous default is well under 60s), lower it and PER_MODEL_TIMEOUT_MS to
+// match — a killed function returns an HTML gateway error the browser cannot
+// parse, and never hands back the quota slot it reserved.
 const GENERATION_BUDGET_MS = 45_000;
+
+// Cap on each model inside that budget. gemini-3.5-flash thinks at "medium" by
+// default and takes about 15 seconds before it writes a word, then several more
+// to write this four-section review. Under the 15-second default it was often
+// cut off, and every cut-off attempt still spent one of the key's daily
+// requests for that model. 30 seconds lets it finish; if it still does not,
+// about 14 remain for gemini-3.1-flash-lite, which answers in a few.
+const PER_MODEL_TIMEOUT_MS = 30_000;
 
 // Kept in sync with MAX_PRECHECKS in SubmitProjectTab. The limit is enforced
 // here, on the server, because the browser copy can be edited by the student.
@@ -37,11 +46,19 @@ export async function POST(req: Request) {
         // Both keys used to be read after the counter was already incremented,
         // so a deployment missing one burned a group's allowance on every
         // click without ever calling Gemini.
+        //
+        // The messages name the missing variable. Neither name is a secret, and
+        // the student passes the message to a teacher who otherwise cannot tell
+        // a missing server setting from a Gemini failure. The old wording,
+        // "temporarily unavailable", also implied that waiting would help.
         const apiKey = process.env.GEMINI_API_KEY;
         if (!apiKey) {
             console.error('GEMINI_API_KEY is missing — cannot run the AI Pre-Check.');
             return NextResponse.json(
-                { error: 'AI Pre-Check is not set up yet. Please tell your teacher.' },
+                {
+                    error: 'AI Pre-Check is not set up on the server: GEMINI_API_KEY is missing. Please show this to your teacher.',
+                    reason: 'missing_gemini_key',
+                },
                 { status: 503 }
             );
         }
@@ -53,7 +70,10 @@ export async function POST(req: Request) {
         if (!serviceKey) {
             console.error('SUPABASE_SERVICE_ROLE_KEY is missing — cannot enforce the pre-check quota.');
             return NextResponse.json(
-                { error: 'AI Pre-Check is temporarily unavailable. Please tell your teacher.' },
+                {
+                    error: 'AI Pre-Check is not set up on the server: SUPABASE_SERVICE_ROLE_KEY is missing. Please show this to your teacher.',
+                    reason: 'missing_service_key',
+                },
                 { status: 503 }
             );
         }
@@ -180,6 +200,7 @@ Provide 1-2 clear, actionable next steps for them to take before submitting thei
                 prompt,
                 label: 'Precheck',
                 budgetMs: GENERATION_BUDGET_MS,
+                perAttemptTimeoutMs: PER_MODEL_TIMEOUT_MS,
             });
             responseText = generated.text;
         } catch (generationError) {

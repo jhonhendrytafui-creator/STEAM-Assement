@@ -1,11 +1,20 @@
 import { NextResponse } from 'next/server';
 import { requireTeacher } from '@/lib/api-auth';
-import { GoogleGenerativeAI, SchemaType, Schema } from '@google/generative-ai';
+import { SchemaType, Schema } from '@google/generative-ai';
+import { GeminiGenerationError, generateWithFallback, teacherMessage } from '@/lib/gemini';
 
 export const maxDuration = 60;
 
-// Initialize the Gemini client
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+// The estimate in a model's answer, or null when it has none. A null sends the
+// walk on to the next model, as the old loop did when ai_percentage was missing.
+function readDetection(text: string): { ai_percentage: number; explanation?: string } | null {
+    try {
+        const value = JSON.parse(text);
+        return typeof value?.ai_percentage === 'number' ? value : null;
+    } catch {
+        return null;
+    }
+}
 
 // ─── Google Doc Text Extraction ─────────────────────
 async function fetchGoogleDocText(url: string): Promise<string> {
@@ -48,7 +57,8 @@ export async function POST(req: Request) {
         }
 
         // Validate API Key
-        if (!process.env.GEMINI_API_KEY) {
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (!apiKey) {
             return NextResponse.json(
                 { error: 'Server missing GEMINI_API_KEY configuration.' },
                 { status: 500 }
@@ -105,26 +115,32 @@ Analyze the text and return your best estimate as a single integer percentage fr
             responseSchema: responseSchema,
         };
 
-        const fallbackModels = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite', 'gemini-2.0-flash'];
-        let parsedResponse: any = null;
-        let lastError: any = null;
-
-        for (let attempt = 0; attempt < fallbackModels.length; attempt++) {
-            const modelName = fallbackModels[attempt];
-            try {
-                console.log(`[AI-Detect] Attempt ${attempt + 1}/${fallbackModels.length} with model ${modelName}`);
-                const model = genAI.getGenerativeModel({ model: modelName, generationConfig });
-                const result = await model.generateContent(prompt, { timeout: 55000 });
-                parsedResponse = JSON.parse(result.response.text());
-                if (parsedResponse?.ai_percentage !== undefined) break;
-            } catch (e: any) {
-                lastError = e;
-                console.error(`[AI-Detect] Model ${modelName} failed:`, e?.message?.slice(0, 150));
+        // Models, time limits and error wording come from src/lib/gemini.ts.
+        // The list this route carried held only gemini-2.5 and gemini-2.0
+        // models, which a newer API key can no longer use.
+        let parsedResponse: { ai_percentage: number; explanation?: string } | null;
+        try {
+            const { text } = await generateWithFallback({
+                apiKey,
+                prompt,
+                label: 'AI-Detect',
+                modelParams: { generationConfig },
+                accept: text => readDetection(text) !== null,
+            });
+            parsedResponse = readDetection(text);
+        } catch (generationError) {
+            if (generationError instanceof GeminiGenerationError) {
+                const { failure } = generationError;
+                return NextResponse.json(
+                    { error: teacherMessage(failure), reason: failure.kind },
+                    { status: failure.status }
+                );
             }
+            throw generationError;
         }
 
         if (!parsedResponse) {
-            throw new Error(lastError?.message || 'AI detection failed after all attempts');
+            throw new Error('AI detection failed after all attempts');
         }
 
         return NextResponse.json({
