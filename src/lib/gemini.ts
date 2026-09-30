@@ -37,6 +37,20 @@ export const GEMINI_TEXT_MODELS = [
     'gemini-2.5-flash',
 ] as const;
 
+/**
+ * The same models, fastest first, for work that has to fit many calls into one
+ * time budget. gemini-3.5-flash often needs 20 seconds or more for a chunk of
+ * projects, so leading with it left room for about two chunks per run; the
+ * Flash-Lite models answer in a few.
+ */
+export const GEMINI_FAST_TEXT_MODELS = [
+    'gemini-3.1-flash-lite',
+    'gemini-3.5-flash-lite',
+    'gemini-3.5-flash',
+    'gemini-3.6-flash',
+    'gemini-2.5-flash',
+] as const;
+
 export type GeminiFailureKind =
     | 'unknown_model'
     | 'auth'
@@ -46,6 +60,7 @@ export type GeminiFailureKind =
     | 'network'
     | 'blocked'
     | 'empty'
+    | 'unusable'
     | 'bad_request'
     | 'unknown';
 
@@ -57,7 +72,10 @@ export interface GeminiFailure {
     fatal: boolean;
     /** HTTP status the route should return. */
     status: number;
-    /** Shown to the student. Says what to do, never leaks internals. */
+    /**
+     * Shown to the student. Says what to do, never leaks internals. Routes a
+     * teacher calls use teacherMessage() instead.
+     */
     message: string;
     /** Server-log detail. */
     detail: string;
@@ -196,6 +214,37 @@ export function classifyGeminiError(e: unknown): GeminiFailure {
     };
 }
 
+/**
+ * The same failure, worded for a teacher.
+ *
+ * The student wording sends the reader to their teacher, which is no help when
+ * the reader is the teacher, so this says what to check instead. The switch
+ * covers every kind: adding one without a teacher wording does not compile.
+ */
+export function teacherMessage(failure: GeminiFailure): string {
+    switch (failure.kind) {
+        case 'unknown_model':
+            return 'None of the Gemini models this app uses is available to its API key. The model list in the app needs updating.';
+        case 'auth':
+            return 'Gemini rejected the server\'s API key. Please check GEMINI_API_KEY in the server settings.';
+        case 'quota':
+            return 'The Gemini API key has reached its usage limit for now. Please try again later.';
+        case 'blocked':
+            return 'Gemini would not process this content because of its safety filters.';
+        case 'bad_request':
+            return 'Gemini rejected the request. The server log has the details.';
+        case 'unknown':
+            return 'The AI request could not be completed. Please try again.';
+        case 'timeout':
+        case 'overloaded':
+        case 'network':
+        case 'empty':
+        case 'unusable':
+            // Already worded for anyone: what happened, and to try again.
+            return failure.message;
+    }
+}
+
 const EMPTY_RESPONSE: GeminiFailure = {
     kind: 'empty',
     transient: false,
@@ -203,6 +252,15 @@ const EMPTY_RESPONSE: GeminiFailure = {
     status: 502,
     message: 'The AI returned an empty answer. Please try again.',
     detail: 'Model returned an empty response body.',
+};
+
+const UNUSABLE_RESPONSE: GeminiFailure = {
+    kind: 'unusable',
+    transient: false,
+    fatal: false,
+    status: 502,
+    message: 'The AI returned an answer that could not be read. Please try again.',
+    detail: 'Model answered, but the answer failed the caller\'s accept check.',
 };
 
 export interface GenerateWithFallbackOptions {
@@ -217,7 +275,7 @@ export interface GenerateWithFallbackOptions {
      * is working — a 404 or 429 comes back in well under a second — so it must
      * cover the model's thinking time as well as the answer. At its default
      * thinking level gemini-3.5-flash takes about 15 seconds before it writes
-     * anything.
+     * anything. Defaults to 30 seconds.
      */
     perAttemptTimeoutMs?: number;
     /**
@@ -226,6 +284,13 @@ export interface GenerateWithFallbackOptions {
      * route always returns real JSON instead of being killed mid-flight.
      */
     budgetMs?: number;
+    /**
+     * Return false for an answer that came back but cannot be used, such as
+     * JSON that does not parse or lacks a required field. It then counts as a
+     * failed attempt and the next model is tried, rather than the caller
+     * getting something it has to reject after the walk is over.
+     */
+    accept?: (text: string) => boolean;
 }
 
 const TRANSIENT_PAUSE_MS = 1_000;
@@ -265,8 +330,9 @@ export async function generateWithFallback(
         label,
         models = GEMINI_TEXT_MODELS,
         modelParams,
-        perAttemptTimeoutMs = 15_000,
+        perAttemptTimeoutMs = 30_000,
         budgetMs = 45_000,
+        accept,
     } = opts;
 
     const genAI = new GoogleGenerativeAI(apiKey);
@@ -288,6 +354,14 @@ export async function generateWithFallback(
             if (!text.trim()) {
                 reported = moreInformative(reported, EMPTY_RESPONSE);
                 console.error(`[${label}] ${modelName} returned an empty response.`);
+                continue;
+            }
+
+            if (accept && !accept(text)) {
+                reported = moreInformative(reported, UNUSABLE_RESPONSE);
+                console.error(
+                    `[${label}] ${modelName} returned an unusable answer (${text.length} chars): ${text.slice(0, 120)}`
+                );
                 continue;
             }
 

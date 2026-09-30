@@ -1,10 +1,8 @@
 import { NextResponse } from 'next/server';
 import { requireTeacher } from '@/lib/api-auth';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GeminiGenerationError, generateWithFallback, teacherMessage } from '@/lib/gemini';
 
 export const maxDuration = 60;
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
 async function fetchGoogleDocText(url: string): Promise<string> {
     try {
@@ -83,6 +81,14 @@ export async function POST(req: Request) {
             return NextResponse.json({ success: false, error: 'Project data is required.' }, { status: 400 });
         }
 
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (!apiKey) {
+            return NextResponse.json(
+                { success: false, error: 'Server missing GEMINI_API_KEY configuration.' },
+                { status: 500 }
+            );
+        }
+
         let docContent = '';
         if (projectData.google_doc_url) {
             docContent = await fetchGoogleDocText(projectData.google_doc_url);
@@ -110,28 +116,28 @@ KEY CONCEPTS INVOLVED: ${JSON.stringify(projectAbstractObj.keyConcepts || [])}
 
         const prompt = `${promptSuffix}\n\nPROJECT DATA:\n${contextString}`;
 
-        const fallbackModels = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite', 'gemini-2.0-flash'];
-        let responseText = '';
-
-        for (let attempt = 0; attempt < fallbackModels.length; attempt++) {
-            const modelName = fallbackModels[attempt];
-            try {
-                console.log(`[C5-Generate] Attempt ${attempt + 1}/${fallbackModels.length} | model: ${modelName} | lang: ${lang}`);
-                const model = genAI.getGenerativeModel({ model: modelName, systemInstruction });
-                const result = await model.generateContent(prompt, { timeout: 55000 });
-                responseText = result.response.text();
-                if (responseText) break;
-            } catch (e: any) {
-                console.error(`C5 attempt ${attempt + 1} failed (${modelName}):`, e?.message?.slice(0, 200));
-                if (attempt === fallbackModels.length - 1) {
-                    const isTimeout = e?.name === 'AbortError' || e?.message?.includes('timeout');
-                    const is503 = e?.message?.includes('503');
-                    if (isTimeout) throw new Error('Generation timed out. Please try again.');
-                    if (is503) throw new Error('Google AI is overloaded. Please try again in a moment.');
-                    throw new Error(e?.message || 'Failed to generate questions after all attempts.');
-                }
-                await new Promise(res => setTimeout(res, (attempt + 1) * 2000));
+        // Models, time limits and error wording come from src/lib/gemini.ts.
+        // The list this route carried held only gemini-2.5 and gemini-2.0
+        // models, which a newer API key can no longer use. An empty answer
+        // already counts as a failed attempt there.
+        let responseText: string;
+        try {
+            const generated = await generateWithFallback({
+                apiKey,
+                prompt,
+                label: `C5-Generate/${lang}`,
+                modelParams: { systemInstruction },
+            });
+            responseText = generated.text;
+        } catch (generationError) {
+            if (generationError instanceof GeminiGenerationError) {
+                const { failure } = generationError;
+                return NextResponse.json(
+                    { success: false, error: teacherMessage(failure), reason: failure.kind },
+                    { status: failure.status }
+                );
             }
+            throw generationError;
         }
 
         return NextResponse.json({ success: true, generatedQuestions: responseText, language: lang });

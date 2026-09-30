@@ -1,15 +1,32 @@
 import { NextResponse } from 'next/server';
-import { GoogleGenerativeAI, SchemaType, type GenerationConfig, type Schema } from '@google/generative-ai';
+import { SchemaType, type GenerationConfig, type Schema } from '@google/generative-ai';
 import { createClient } from '@supabase/supabase-js';
 import { requireTeacher } from '@/lib/api-auth';
 import { parseAbstract, subjectLabel } from '@/lib/abstract';
+import { GeminiGenerationError, generateWithFallback, teacherMessage } from '@/lib/gemini';
 import { isKnownSubject, subjectLabel as steamSubjectLabel } from '@/lib/subjects';
 import { gradeOf } from '@/lib/grade';
 
 export const maxDuration = 60;
 
-// Initialize the Gemini client
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+/** One entry of the response schema below. */
+interface Recommendation {
+    teacher_email: string;
+    rank_level: string;
+    relevance_percentage: number;
+    reason: string;
+}
+
+// The recommendations in a model's answer, or null when there are none. A null
+// sends the walk on to the next model, as the old loop did for an empty list.
+function readRecommendations(text: string): Recommendation[] | null {
+    try {
+        const list = JSON.parse(text)?.recommendations;
+        return Array.isArray(list) && list.length > 0 ? list : null;
+    } catch {
+        return null;
+    }
+}
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
@@ -28,6 +45,14 @@ export async function POST(req: Request) {
 
         if (!projectId) {
             return NextResponse.json({ error: 'Missing projectId' }, { status: 400 });
+        }
+
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (!apiKey) {
+            return NextResponse.json(
+                { error: 'Server missing GEMINI_API_KEY configuration.' },
+                { status: 500 }
+            );
         }
 
         // Now that the caller is a verified teacher, use the elevated client so
@@ -191,31 +216,37 @@ RULES:
             }
         };
 
-        const fallbackModels = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite', 'gemini-2.0-flash'];
-        let recommendations: any[] = [];
-        let lastError: any = null;
-
-        for (let attempt = 0; attempt < fallbackModels.length; attempt++) {
-            const modelName = fallbackModels[attempt];
-            try {
-                console.log(`[AI-Classify] Attempt ${attempt + 1}/${fallbackModels.length} with model ${modelName} for project: ${project.title}`);
-                const model = genAI.getGenerativeModel({ model: modelName, generationConfig });
-                const result = await model.generateContent(prompt, { timeout: 55000 });
-                const jsonPayload = JSON.parse(result.response.text());
-                recommendations = jsonPayload.recommendations || [];
-                if (recommendations.length > 0) break;
-            } catch (e: any) {
-                lastError = e;
-                console.error(`[AI-Classify] Model ${modelName} failed:`, e?.message?.slice(0, 150));
+        // Models, time limits and error wording come from src/lib/gemini.ts.
+        // The list this route carried held only gemini-2.5 and gemini-2.0
+        // models, which a newer API key can no longer use.
+        let recommendations: Recommendation[] | null;
+        try {
+            console.log(`[AI-Classify] Classifying project: ${project.title}`);
+            const { text } = await generateWithFallback({
+                apiKey,
+                prompt,
+                label: 'AI-Classify',
+                modelParams: { generationConfig },
+                accept: text => readRecommendations(text) !== null,
+            });
+            recommendations = readRecommendations(text);
+        } catch (generationError) {
+            if (generationError instanceof GeminiGenerationError) {
+                const { failure } = generationError;
+                return NextResponse.json(
+                    { error: teacherMessage(failure), reason: failure.kind },
+                    { status: failure.status }
+                );
             }
+            throw generationError;
         }
 
-        if (!recommendations || recommendations.length === 0) {
-            throw new Error(lastError?.message || 'AI returned no recommendations after all attempts');
+        if (!recommendations) {
+            throw new Error('AI returned no recommendations after all attempts');
         }
 
         // 4. Save recommendations to database
-        const insertData = recommendations.map((rec: any) => {
+        const insertData = recommendations.map(rec => {
             const teacher = teachers.find(t => t.email === rec.teacher_email);
             return {
                 project_id: projectId,

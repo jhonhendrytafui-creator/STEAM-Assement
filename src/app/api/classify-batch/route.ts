@@ -3,7 +3,7 @@ import { SchemaType, type Schema } from '@google/generative-ai';
 import { createClient } from '@supabase/supabase-js';
 import { requireTeacher } from '@/lib/api-auth';
 import { getAcademicYearServer } from '@/lib/academic-year-server';
-import { GeminiGenerationError, generateWithFallback } from '@/lib/gemini';
+import { GEMINI_FAST_TEXT_MODELS, GeminiGenerationError, generateWithFallback, teacherMessage } from '@/lib/gemini';
 import { parseAbstract, subjectLabel as abstractSubjectLabel } from '@/lib/abstract';
 import { SUBJECT_DEFS, isKnownSubject, subjectLabel } from '@/lib/subjects';
 import {
@@ -230,6 +230,10 @@ export async function POST(req: Request) {
                     apiKey,
                     prompt: buildPrompt(chunk),
                     label: 'Classify',
+                    // Fastest first: every chunk has to fit in one shared
+                    // budget, and sorting projects by subject does not need
+                    // the slower model's extra reasoning.
+                    models: GEMINI_FAST_TEXT_MODELS,
                     modelParams: {
                         generationConfig: {
                             temperature: 0.2,
@@ -237,7 +241,6 @@ export async function POST(req: Request) {
                             responseSchema,
                         },
                     },
-                    perAttemptTimeoutMs: 20_000,
                     budgetMs: Math.max(5_000, BUDGET_MS - (Date.now() - startedAt)),
                 });
                 payload = JSON.parse(text);
@@ -246,7 +249,7 @@ export async function POST(req: Request) {
                     // Nothing succeeded at all — report the real reason rather
                     // than a half-finished run.
                     return NextResponse.json(
-                        { error: e.failure.message, reason: e.failure.kind },
+                        { error: teacherMessage(e.failure), reason: e.failure.kind },
                         { status: e.failure.status }
                     );
                 }
