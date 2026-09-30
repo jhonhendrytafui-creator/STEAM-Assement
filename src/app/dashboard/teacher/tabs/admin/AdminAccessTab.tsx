@@ -3,13 +3,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     ShieldCheck, Plus, Trash2, RefreshCw, KeyRound, UserCheck, AlertTriangle, BookOpen, MessageCircle,
-    GraduationCap, Briefcase,
+    GraduationCap, Briefcase, UserCog,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { logAdminAction, isValidSchoolEmail, ALLOWED_EMAIL_DOMAIN } from '@/lib/admin';
 import { subjectLabel } from '@/lib/subjects';
 import { waMeLink, formatIdPhone } from '@/lib/phone';
 import SubjectPicker from '@/components/ui/SubjectPicker';
+import TeacherProfileForm from '../../TeacherProfileForm';
 import type { TeacherEmailRecord, ToastType } from '@/lib/types';
 
 interface AdminAccessTabProps {
@@ -28,6 +29,8 @@ export default function AdminAccessTab({ adminEmail, showToast, showConfirm }: A
 
     // Which teacher's subjects are open for editing, if any.
     const [editingSubjectsFor, setEditingSubjectsFor] = useState<TeacherEmailRecord | null>(null);
+    // Whole-profile editor, for filling one in on a teacher's behalf.
+    const [editingProfileFor, setEditingProfileFor] = useState<TeacherEmailRecord | null>(null);
     const [savingSubjects, setSavingSubjects] = useState(false);
 
     // The query is awaited before any setState, so mounting this tab does not
@@ -400,7 +403,15 @@ export default function AdminAccessTab({ adminEmail, showToast, showConfirm }: A
                                     </td>
                                     <td className="py-3 text-right whitespace-nowrap">
                                         <button
+                                            onClick={() => setEditingProfileFor(t)}
+                                            title="Fill in or correct this teacher's whole profile"
+                                            className="text-xs px-3 py-1.5 mr-1 rounded-lg border border-amber-900/40 text-slate-300 hover:text-amber-400 hover:bg-amber-500/10 transition-colors inline-flex items-center gap-1.5"
+                                        >
+                                            <UserCog className="w-3.5 h-3.5" aria-hidden="true" /> Profile
+                                        </button>
+                                        <button
                                             onClick={() => setEditingSubjectsFor(t)}
+                                            title="Change only the subjects"
                                             className="text-xs px-3 py-1.5 mr-1 rounded-lg border border-amber-900/40 text-slate-300 hover:text-amber-400 hover:bg-amber-500/10 transition-colors inline-flex items-center gap-1.5"
                                         >
                                             <BookOpen className="w-3.5 h-3.5" aria-hidden="true" /> Subjects
@@ -423,6 +434,37 @@ export default function AdminAccessTab({ adminEmail, showToast, showConfirm }: A
                             ))}
                         </tbody>
                     </table>
+                </div>
+            )}
+
+            {editingProfileFor && (
+                // A dialog rather than an inline row: the form is the same one
+                // the teacher fills in, so it is too tall to sit in a table.
+                <div
+                    className="fixed inset-0 z-50 overflow-y-auto bg-black/70 backdrop-blur-[2px] p-4 sm:p-8"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label={`Edit the profile of ${editingProfileFor.email}`}
+                >
+                    <div className="max-w-2xl mx-auto">
+                        <TeacherProfileForm
+                            mode="admin"
+                            profile={{
+                                id: '',
+                                email: editingProfileFor.email,
+                                role: 'teacher',
+                                full_name: editingProfileFor.full_name ?? null,
+                                teaching_role: editingProfileFor.teaching_role ?? 'teaching',
+                                expertise_subjects: editingProfileFor.expertise_subjects ?? [],
+                                grade_levels: editingProfileFor.grade_levels ?? [],
+                                phone_e164: editingProfileFor.phone_e164 ?? null,
+                                profile_completed_at: editingProfileFor.profile_completed_at ?? null,
+                            }}
+                            onCancel={() => setEditingProfileFor(null)}
+                            onSaved={async () => { setEditingProfileFor(null); await fetchTeachers(); }}
+                            showToast={showToast}
+                        />
+                    </div>
                 </div>
             )}
 
