@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
     ClipboardCheck, BookOpen, Link as LinkIcon, Star, FileText, Lock, Unlock,
-    AlertTriangle, CheckCircle2, Clock, Sparkles, X, UserCheck
+    AlertTriangle, CheckCircle2, Clock, Sparkles, X, UserCheck, FileX
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { academicYear } from '@/lib/academic-year';
@@ -12,6 +12,51 @@ import { safeExternalUrl } from '@/lib/url';
 import type { AssessmentCategory, RubricDimension, RubricIndicator, ProjectData, ToastType } from '@/lib/types';
 import { parseAbstract, subjectLabel } from '@/lib/abstract';
 import { summarizeAssessors, type AssessorSummary } from '@/lib/assessor';
+
+/**
+ * Where a group stands on one assessment category.
+ *   not_submitted - no project at all, so there is nothing to mark
+ *   pending       - submitted and waiting to be marked
+ *   assessed      - marked (for C1, also decided)
+ */
+export type GroupAssessStatus = 'not_submitted' | 'pending' | 'assessed';
+
+/**
+ * Where one group stands on one category. Pure, so the rule can be read and
+ * tested on its own rather than inferred from a fetch.
+ *
+ * @param projectStatus status of the group's latest project iteration, or null
+ *                      when they have never submitted
+ * @param hasScores     any saved score for this group in this category
+ * @param isC1          C1 also requires an approval decision: scores alone
+ *                      leave it outstanding, because the teacher has graded the
+ *                      abstract but not yet said what happens to it
+ */
+export function deriveGroupStatus(
+    projectStatus: string | null | undefined,
+    hasScores: boolean,
+    isC1: boolean,
+): GroupAssessStatus {
+    if (projectStatus == null) return 'not_submitted';
+    if (!hasScores) return 'pending';
+    if (isC1 && projectStatus === 'pending') return 'pending';
+    return 'assessed';
+}
+
+const STATUS_BADGE: Record<GroupAssessStatus, { label: string; className: string }> = {
+    not_submitted: {
+        label: 'Not Submitted',
+        className: 'bg-red-500/10 text-red-400 border-red-500/30 group-hover:bg-red-500/20',
+    },
+    pending: {
+        label: 'Pending',
+        className: 'bg-amber-500/10 text-amber-400 border-amber-500/30 group-hover:bg-amber-500/20',
+    },
+    assessed: {
+        label: 'Assessed',
+        className: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 group-hover:bg-emerald-500/20',
+    },
+};
 import { jsPDF } from 'jspdf';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from 'recharts';
 
@@ -34,13 +79,23 @@ export default function AssessTab({
     onAssessmentSaved,
     teacherProfile
 }: AssessTabProps) {
-    const availableGrades = Array.from(new Set(allStudents.map(s => String(s.class_name).split('.')[0]))).sort();
+    // Memoized: these scan the whole roster, which is thousands of rows, and
+    // a fresh array each render also made availableAssessGroups unusable as an
+    // effect dependency.
+    const availableGrades = useMemo(
+        () => Array.from(new Set(allStudents.map(s => String(s.class_name).split('.')[0]))).sort(),
+        [allStudents],
+    );
 
     const [assessGrade, setAssessGrade] = useState<string>('');
     const [assessClass, setAssessClass] = useState<string>('');
     const [assessGroup, setAssessGroup] = useState<string>('');
     const [assessCategory, setAssessCategory] = useState<string>('');
-    const [assessedGroupsMap, setAssessedGroupsMap] = useState<Record<number, boolean>>({});
+    // Where each group stands for the selected category, for the Quick
+    // Navigation panel. "Pending" used to cover both a group that had submitted
+    // and was waiting to be marked and one that had never submitted at all --
+    // two very different things to a teacher deciding what to do next.
+    const [groupStatusMap, setGroupStatusMap] = useState<Record<number, GroupAssessStatus>>({});
     const [groupCompletedCategories, setGroupCompletedCategories] = useState<Set<string>>(new Set());
 
     const [assessProject, setAssessProject] = useState<any>(null);
@@ -60,8 +115,18 @@ export default function AssessTab({
     const [existingAssessor, setExistingAssessor] = useState<AssessorSummary | null>(null);
     const [showUnlockConfirm, setShowUnlockConfirm] = useState(false);
 
-    const availableAssessClasses = Array.from(new Set(allStudents.filter(s => String(s.class_name).split('.')[0] === assessGrade).map(s => s.class_name))).sort();
-    const availableAssessGroups = Array.from(new Set(allStudents.filter(s => s.class_name === assessClass).map(s => s.group_number))).sort((a: number, b: number) => a - b);
+    const availableAssessClasses = useMemo(
+        () => Array.from(new Set(allStudents
+            .filter(s => String(s.class_name).split('.')[0] === assessGrade)
+            .map(s => s.class_name))).sort(),
+        [allStudents, assessGrade],
+    );
+    const availableAssessGroups = useMemo<number[]>(
+        () => Array.from(new Set(allStudents
+            .filter(s => s.class_name === assessClass)
+            .map(s => s.group_number))).sort((a: number, b: number) => a - b),
+        [allStudents, assessClass],
+    );
 
     // Auto-select first group when class changes
     useEffect(() => {
@@ -72,57 +137,55 @@ export default function AssessTab({
         }
     }, [assessClass]);
 
-    // Fetch assessed groups map when class or category changes
+    // Where every group in the class stands, when a class and category are chosen.
     useEffect(() => {
-        const fetchAssessedGroups = async () => {
+        const fetchGroupStatuses = async () => {
             if (!assessClass || !assessCategory) {
-                setAssessedGroupsMap({});
+                setGroupStatusMap({});
                 return;
             }
-            const { data: scores } = await supabase
-                .from('assessment_scores')
-                .select('group_number')
-                .eq('class_name', assessClass)
-                .eq('category_id', assessCategory)
-                .eq('academic_year', academicYear());
 
-            const map: Record<number, boolean> = {};
-            const currentCat = assessmentCategories.find(c => c.id === assessCategory);
-            const isC1Category = currentCat?.code === 'C1';
-
-            if (isC1Category) {
-                const { data: projs } = await supabase
+            // The project list is read for every category, not only C1: it is
+            // what separates a group that has not submitted from one that is
+            // waiting to be marked.
+            const [{ data: scores }, { data: projs }] = await Promise.all([
+                supabase
+                    .from('assessment_scores')
+                    .select('group_number')
+                    .eq('class_name', assessClass)
+                    .eq('category_id', assessCategory)
+                    .eq('academic_year', academicYear()),
+                supabase
                     .from('projects')
                     .select('group_number, status')
                     .eq('class_name', assessClass)
                     .eq('academic_year', academicYear())
-                    .order('iteration', { ascending: false });
+                    .order('iteration', { ascending: false }),
+            ]);
 
-                const latestProjs = new Map();
-                if (projs) {
-                    projs.forEach(p => {
-                        if (!latestProjs.has(p.group_number)) {
-                            latestProjs.set(p.group_number, p.status);
-                        }
-                    });
-                }
+            // Latest iteration per group; the query is ordered so the first
+            // row seen for a group is its newest.
+            const latestStatus = new Map<number, string>();
+            (projs ?? []).forEach(p => {
+                if (!latestStatus.has(p.group_number)) latestStatus.set(p.group_number, p.status);
+            });
 
-                if (scores) {
-                    scores.forEach(s => {
-                        if (latestProjs.get(s.group_number) !== 'pending') {
-                            map[s.group_number] = true;
-                        }
-                    });
-                }
-            } else {
-                if (scores) {
-                    scores.forEach(s => { map[s.group_number] = true; });
-                }
+            const scored = new Set<number>((scores ?? []).map(s => s.group_number));
+            const currentCat = assessmentCategories.find(c => c.id === assessCategory);
+            const isC1Category = currentCat?.code === 'C1';
+
+            const map: Record<number, GroupAssessStatus> = {};
+            for (const g of availableAssessGroups) {
+                map[g] = deriveGroupStatus(
+                    latestStatus.has(g) ? (latestStatus.get(g) ?? '') : null,
+                    scored.has(g),
+                    Boolean(isC1Category),
+                );
             }
-            setAssessedGroupsMap(map);
+            setGroupStatusMap(map);
         };
-        fetchAssessedGroups();
-    }, [assessClass, assessCategory, supabase, assessmentCategories]);
+        fetchGroupStatuses();
+    }, [assessClass, assessCategory, supabase, assessmentCategories, availableAssessGroups]);
 
     useEffect(() => {
         const loadAssessData = async () => {
@@ -375,7 +438,15 @@ export default function AssessTab({
 
                 showToast('Assessment saved successfully!', 'success');
                 setIsAssessmentLocked(true);
-                setAssessedGroupsMap(prev => ({ ...prev, [groupNum]: true }));
+                // Optimistic, so the Quick Navigation badge flips without a
+                // refetch. C1 counts as assessed only once a decision is also
+                // recorded, which the update just below writes.
+                setGroupStatusMap(prev => ({
+                    ...prev,
+                    [groupNum]: (isC1Category && (!assessStatus || assessStatus === 'pending'))
+                        ? 'pending'
+                        : 'assessed',
+                }));
                 
                 onAssessmentSaved(scoreEntries, assessClass, groupNum, assessCategory);
 
@@ -995,26 +1066,42 @@ export default function AssessTab({
                         <div className="xl:col-span-2 space-y-6">
                             <div className="bg-[#1c1b14] border border-slate-800 rounded-xl p-4 sticky top-24">
                                 <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Quick Navigation</h4>
-                                <p className="text-sm font-bold text-white mb-4">Class {assessClass}</p>
+                                <p className="text-sm font-bold text-white mb-3">Class {assessClass}</p>
+                                <div className="flex flex-wrap gap-1.5 mb-4">
+                                    {(['assessed', 'pending', 'not_submitted'] as GroupAssessStatus[]).map(st => {
+                                        const n = availableAssessGroups.filter(
+                                            g => (groupStatusMap[g] ?? 'pending') === st).length;
+                                        if (n === 0) return null;
+                                        return (
+                                            <span
+                                                key={st}
+                                                className={`text-[10px] uppercase tracking-wider font-bold px-2 py-1 rounded border ${STATUS_BADGE[st].className}`}
+                                            >
+                                                {n} {STATUS_BADGE[st].label}
+                                            </span>
+                                        );
+                                    })}
+                                </div>
                                 <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
                                     {availableAssessGroups.map(g => {
-                                        const isAssessed = assessedGroupsMap[g] === true;
+                                        const status = groupStatusMap[g] ?? 'pending';
+                                        const badge = STATUS_BADGE[status];
                                         return (
                                             <button
                                                 key={g}
                                                 onClick={() => setAssessGroup(g.toString())}
-                                                className={`w-full text-left px-4 py-2.5 rounded-lg border transition-all text-sm font-semibold flex items-center justify-between group ${assessGroup === g.toString()
+                                                title={`Group ${g} — ${badge.label}`}
+                                                className={`w-full text-left px-4 py-2.5 rounded-lg border transition-all text-sm font-semibold flex items-center justify-between gap-2 group ${assessGroup === g.toString()
                                                     ? 'bg-amber-500/10 border-amber-500/50 text-amber-400 shadow-lg shadow-amber-900/10'
                                                     : 'bg-[#1a1811] border-slate-800/50 text-slate-400 hover:border-slate-600 hover:text-slate-200 hover:bg-[#25221b]'
                                                     }`}
                                             >
-                                                <span>Group {g}</span>
-                                                <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] uppercase tracking-wider font-bold border transition-colors ${isAssessed
-                                                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 group-hover:bg-emerald-500/20'
-                                                    : 'bg-slate-800 text-slate-400 border-slate-700 group-hover:bg-slate-700 group-hover:text-slate-300'
-                                                    }`}>
-                                                    {isAssessed ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Clock className="w-3 h-3" />}
-                                                    <span>{isAssessed ? 'Assessed' : 'Pending'}</span>
+                                                <span className="shrink-0">Group {g}</span>
+                                                <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] uppercase tracking-wider font-bold border transition-colors shrink-0 ${badge.className}`}>
+                                                    {status === 'assessed' && <CheckCircle2 className="w-3.5 h-3.5" />}
+                                                    {status === 'pending' && <Clock className="w-3 h-3" />}
+                                                    {status === 'not_submitted' && <FileX className="w-3 h-3" />}
+                                                    <span>{badge.label}</span>
                                                 </div>
                                             </button>
                                         );
