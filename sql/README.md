@@ -146,6 +146,25 @@ Before running 10, run its Section 0 pre-flight query and keep the output — it
 tells you which of the two conflicting policy sets was live, which is worth
 knowing if you ever need to explain the gap.
 
+### Admin editing a teacher's profile
+
+`teacher_profile_admin_edit.sql` -- one short file, safe to re-run. Admin ->
+Teacher Access gains a **Profile** button that opens the same form the teacher
+fills in, writing `teacher_emails` directly (the `save_teacher_profile` RPC is
+scoped to the caller's own email by design).
+
+The phone number is optional there, because an admin often will not have it.
+Without it the record is saved but not marked complete, so the teacher is still
+shown the form at sign-in with everything the admin entered pre-filled. **A
+teacher needs only subjects and grade levels to count for project
+classification**, so an admin can unblock a grade that has no teacher without
+waiting for anyone to sign in.
+
+The script itself moves the `assessed_by_name` refresh out of
+`save_teacher_profile()` and into the sync trigger, so an admin correcting a
+name also fixes the marks that teacher already gave -- which previously only
+happened when the teacher saved their own profile.
+
 ## Checking a live database
 
 `health_check_1_schema.sql` then `health_check_2_data.sql`. Both are read-only

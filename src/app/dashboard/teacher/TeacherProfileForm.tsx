@@ -27,18 +27,32 @@ import type { TeacherProfile, TeachingRole, ToastType } from '@/lib/types';
 // does not teach or assess has neither, and being asked for both was a wall they
 // could not get past. Name and WhatsApp number are asked of everyone.
 //
-// The save goes through the save_teacher_profile RPC rather than a table write:
-// teacher_emails carries is_admin, and a function can restrict the write to the
-// profile columns where RLS cannot.
+// A teacher's own save goes through the save_teacher_profile RPC rather than a
+// table write: teacher_emails carries is_admin, and a function can restrict the
+// write to the profile columns where RLS cannot.
+//
+// An admin filling one in for somebody else (`mode="admin"`) cannot use that
+// RPC -- it is deliberately scoped to the caller's own email -- so it writes
+// teacher_emails directly, which the "Admins can manage teacher_emails" policy
+// already allows. Same form, same validation, one difference: the phone number
+// is optional, because an admin often will not have it. Without it the record
+// is saved but not marked complete, so the teacher is still shown the form at
+// sign-in with everything the admin entered already filled in.
 // ─────────────────────────────────────────────────────────────
 
 interface TeacherProfileFormProps {
+    /** The record being edited: the reader's own, or in admin mode someone else's. */
     profile: TeacherProfile;
-    /** 'onboarding' blocks the portal behind this form; 'edit' renders it as a tab. */
-    mode: 'onboarding' | 'edit';
+    /**
+     * 'onboarding' blocks the portal behind this form, 'edit' renders it as the
+     * reader's own tab, 'admin' fills one in on another teacher's behalf.
+     */
+    mode: 'onboarding' | 'edit' | 'admin';
     /** Re-read the profile so the parent can let them through, or show the new values. */
     onSaved: () => void | Promise<void>;
     showToast: (message: string, type: ToastType) => void;
+    /** admin mode: close the editor without saving. */
+    onCancel?: () => void;
 }
 
 const inputClass =
@@ -50,6 +64,7 @@ export default function TeacherProfileForm({
     mode,
     onSaved,
     showToast,
+    onCancel,
 }: TeacherProfileFormProps) {
     const [role, setRole] = useState<TeachingRole>(profile.teaching_role ?? 'teaching');
     const [fullName, setFullName] = useState(profile.full_name ?? '');
@@ -68,15 +83,24 @@ export default function TeacherProfileForm({
     const normalizedPhone = normalizeIdPhone(phoneLocal);
 
     const teaches = role === 'teaching';
+    const adminMode = mode === 'admin';
+    const who = adminMode ? 'they' : 'you';
+
+    // Everything present, so the teacher can skip the sign-in form entirely.
+    const isComplete = Boolean(
+        fullName.trim() && normalizedPhone && (!teaches || (subjects.length > 0 && grades.length > 0)),
+    );
 
     const validate = (): boolean => {
         const next: Record<string, string> = {};
-        if (!fullName.trim()) next.fullName = 'Please enter your full name.';
+        if (!fullName.trim()) next.fullName = `Please enter ${adminMode ? 'their' : 'your'} full name.`;
         // Only asked of, and only required of, someone who teaches.
-        if (teaches && subjects.length === 0) next.subjects = 'Choose at least one subject you teach.';
-        if (teaches && grades.length === 0) next.grades = 'Choose at least one grade level you teach.';
+        if (teaches && subjects.length === 0) next.subjects = `Choose at least one subject ${who} teach.`;
+        if (teaches && grades.length === 0) next.grades = `Choose at least one grade level ${who} teach.`;
         if (!phoneLocal.trim()) {
-            next.phone = 'Please enter your WhatsApp number.';
+            // Optional for an admin, who often will not have it: the record is
+            // saved without it and the teacher is asked at sign-in instead.
+            if (!adminMode) next.phone = 'Please enter your WhatsApp number.';
         } else if (!normalizedPhone) {
             next.phone = 'That does not look like an Indonesian mobile number. Example: 85712345678';
         }
@@ -90,25 +114,53 @@ export default function TeacherProfileForm({
         if (!validate()) return;
 
         setSaving(true);
-        const { error } = await supabase.rpc('save_teacher_profile', {
-            p_full_name: fullName.trim(),
-            // Sent empty for non-teaching staff, matching what the RPC stores, so
-            // a switch of role cannot leave stale subjects behind.
-            p_subjects: teaches ? subjects : [],
-            p_grades: teaches ? grades : [],
-            p_phone: normalizedPhone,
-            p_teaching_role: role,
-        });
+
+        // Sent empty for non-teaching staff so a change of role cannot leave
+        // stale subjects behind, matching what the RPC stores.
+        const nextSubjects = teaches ? subjects : [];
+        const nextGrades = teaches ? grades : [];
+
+        const { error } = adminMode
+            // No RPC here: save_teacher_profile is scoped to the caller's own
+            // email by design. teacher_emails is the source of truth and the
+            // sync trigger mirrors this to profiles; is_admin is left alone.
+            ? await supabase
+                .from('teacher_emails')
+                .update({
+                    full_name: fullName.trim(),
+                    teaching_role: role,
+                    expertise_subjects: nextSubjects,
+                    grade_levels: nextGrades,
+                    phone_e164: normalizedPhone,
+                    // Only a complete record lets them skip the sign-in form.
+                    profile_completed_at: isComplete
+                        ? (profile.profile_completed_at ?? new Date().toISOString())
+                        : null,
+                })
+                .eq('email', profile.email)
+            : await supabase.rpc('save_teacher_profile', {
+                p_full_name: fullName.trim(),
+                p_subjects: nextSubjects,
+                p_grades: nextGrades,
+                p_phone: normalizedPhone,
+                p_teaching_role: role,
+            });
+
         setSaving(false);
 
         if (error) {
-            // The RPC repeats every check, so its message is the useful one.
-            showToast(error.message || 'Could not save your profile. Please try again.', 'error');
+            // The RPC and the CHECK constraints repeat every rule, so their
+            // message is the useful one.
+            showToast(error.message || 'Could not save the profile. Please try again.', 'error');
             return;
         }
 
         showToast(
-            mode === 'onboarding' ? 'Profile saved. Welcome!' : 'Profile updated.',
+            adminMode
+                ? (isComplete
+                    ? `Saved. ${fullName.trim()} will not be asked to fill the form.`
+                    : `Saved. ${fullName.trim()} will still be asked for the missing details at sign-in.`)
+                : mode === 'onboarding' ? 'Profile saved. Welcome!' : 'Profile updated.',
             'success',
         );
         await onSaved();
@@ -135,7 +187,9 @@ export default function TeacherProfileForm({
             >
                 <h2 className="text-2xl font-bold text-white mb-2 flex items-center gap-3">
                     <UserCog className="text-amber-500" />
-                    {onboarding ? 'Complete your teacher profile' : 'My Profile'}
+                    {onboarding
+                        ? 'Complete your teacher profile'
+                        : adminMode ? 'Edit teacher profile' : 'My Profile'}
                 </h2>
 
                 {onboarding ? (
@@ -146,6 +200,18 @@ export default function TeacherProfileForm({
                             with your role: if you do not teach or assess, we will not ask you for
                             subjects or grade levels. Your name is shown to students beside any
                             mark you give. This is a one-off — you can edit it later from My Profile.
+                        </p>
+                    </div>
+                ) : adminMode ? (
+                    <div className="bg-[#1c1b14] border border-slate-800 rounded-xl p-4 mb-8">
+                        <p className="text-sm text-slate-300">
+                            Filling this in for <span className="text-amber-300 font-semibold">{profile.email}</span>.
+                            They can change it themselves later from My Profile.
+                        </p>
+                        <p className={'text-xs mt-2 ' + (isComplete ? 'text-emerald-400' : 'text-amber-400')}>
+                            {isComplete
+                                ? 'Complete — they will go straight into the portal at sign-in.'
+                                : 'Incomplete — they will still be asked at sign-in, with this pre-filled.'}
                         </p>
                     </div>
                 ) : (
@@ -171,7 +237,8 @@ export default function TeacherProfileForm({
                         decides which of the fields below apply. */}
                     <div>
                         <span className="block text-sm font-semibold text-slate-300 mb-2">
-                            Your role at the school <span className="text-amber-500">*</span>
+                            {adminMode ? 'Their role at the school' : 'Your role at the school'}{' '}
+                            <span className="text-amber-500">*</span>
                         </span>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3" role="radiogroup" aria-label="Your role at the school">
                             {([
@@ -221,7 +288,7 @@ export default function TeacherProfileForm({
                     {/* Full name */}
                     <div>
                         <label htmlFor="tp-full-name" className="block text-sm font-semibold text-slate-300 mb-2">
-                            Full name <span className="text-amber-500">*</span>
+                            {adminMode ? 'Their full name' : 'Full name'} <span className="text-amber-500">*</span>
                         </label>
                         <input
                             id="tp-full-name"
@@ -271,7 +338,8 @@ export default function TeacherProfileForm({
                     {teaches && (
                     <div>
                         <label className="block text-sm font-semibold text-slate-300 mb-2">
-                            Grade level you teach <span className="text-amber-500">*</span>
+                            {adminMode ? 'Grade levels they teach' : 'Grade level you teach'}{' '}
+                            <span className="text-amber-500">*</span>
                         </label>
                         <p className="text-xs text-slate-500 mb-3">Pick every grade you teach.</p>
                         <div className="flex flex-wrap gap-2">
@@ -314,7 +382,10 @@ export default function TeacherProfileForm({
                     {/* WhatsApp number — +62 fixed, only the rest is typed */}
                     <div>
                         <label htmlFor="tp-phone" className="block text-sm font-semibold text-slate-300 mb-2">
-                            WhatsApp number <span className="text-amber-500">*</span>
+                            WhatsApp number{' '}
+                            {adminMode
+                                ? <span className="text-slate-500 text-xs font-normal">(optional — they can add it)</span>
+                                : <span className="text-amber-500">*</span>}
                         </label>
                         <div className="flex items-stretch">
                             <span
@@ -339,9 +410,11 @@ export default function TeacherProfileForm({
                             />
                         </div>
                         <p id="tp-phone-help" className="text-xs text-slate-500 mt-1.5">
-                            No need for the leading 0 — if you type 0857… we store it as{' '}
-                            <span className="text-slate-400">+62 857…</span>. Students and staff
-                            reach you through a WhatsApp button.
+                            No need for the leading 0 — 0857... is stored as{' '}
+                            <span className="text-slate-400">+62 857...</span>.{' '}
+                            {adminMode
+                                ? 'Leave it blank if you do not have it.'
+                                : 'Students and staff reach you through a WhatsApp button.'}
                         </p>
                         {normalizedPhone && (
                             <p className="text-xs text-emerald-400 mt-1.5 flex items-center gap-1.5">
@@ -352,6 +425,16 @@ export default function TeacherProfileForm({
                         {errors.phone && <p className="text-red-400 text-xs mt-1.5">{errors.phone}</p>}
                     </div>
 
+                    <div className={adminMode ? 'flex flex-col sm:flex-row gap-3' : ''}>
+                    {adminMode && (
+                        <button
+                            type="button"
+                            onClick={onCancel}
+                            className="sm:w-40 bg-[#1c1b14] hover:bg-[#232118] border border-slate-800 text-slate-300 font-semibold py-4 rounded-xl transition-colors"
+                        >
+                            Cancel
+                        </button>
+                    )}
                     <button
                         type="submit"
                         disabled={saving}
@@ -366,8 +449,11 @@ export default function TeacherProfileForm({
                             ? 'Saving...'
                             : onboarding
                                 ? 'Save and enter the portal'
-                                : 'Save changes'}
+                                : adminMode
+                                    ? 'Save this teacher\u2019s profile'
+                                    : 'Save changes'}
                     </button>
+                    </div>
                 </form>
             </div>
         </div>
