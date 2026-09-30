@@ -1,6 +1,11 @@
 'use client';
 
 import { supabase } from '@/lib/supabase/client';
+import { FALLBACK_ACADEMIC_YEAR, isValidAcademicYear } from '@/lib/academic-year-shared';
+
+// Defined in academic-year-shared.ts so server code can use them too, and
+// re-exported for the screens that import them from here.
+export { FALLBACK_ACADEMIC_YEAR, isValidAcademicYear };
 
 // ─────────────────────────────────────────────────────────────
 // The academic year, as data.
@@ -24,20 +29,10 @@ import { supabase } from '@/lib/supabase/client';
 //     typo like '2026/2028' or '26/27' cannot be saved and orphan every row.
 // ─────────────────────────────────────────────────────────────
 
-/** Used only when app_settings has no usable value, and on a failed read. */
-export const FALLBACK_ACADEMIC_YEAR = '2026/2027';
-
 const SETTING_KEY = 'academic_year';
 
 let cached: string | null = null;
 let inflight: Promise<string> | null = null;
-
-/** 'YYYY/YYYY' where the second year is the first plus one. */
-export function isValidAcademicYear(value: string | null | undefined): boolean {
-    const m = /^(\d{4})\/(\d{4})$/.exec(String(value ?? '').trim());
-    if (!m) return false;
-    return Number(m[2]) === Number(m[1]) + 1;
-}
 
 /** The year after the one given: '2026/2027' -> '2027/2028'. */
 export function nextAcademicYear(value: string): string {
