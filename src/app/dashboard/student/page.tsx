@@ -3,7 +3,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import {
     Database, PenSquare, Monitor, BookOpen, Users,
-    FileCheck, Trophy, HelpCircle,
+    FileCheck, Trophy, HelpCircle, Activity,
 } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase/client';
@@ -31,6 +31,7 @@ import AssessmentResultTab from './tabs/AssessmentResultTab';
 import LeaderboardTab from './tabs/LeaderboardTab';
 import PeerAssessmentTab from './PeerAssessmentTab';
 import HelpCenterTab from '../components/HelpCenterTab';
+import ActivityTab from './tabs/ActivityTab';
 
 // Modal components
 import PastIterationModal from './modals/PastIterationModal';
@@ -43,6 +44,7 @@ const STUDENT_TABS = [
     { id: 'presentation', label: 'Project Document', icon: Monitor },
     { id: 'logbook', label: 'Project Logbook', icon: BookOpen },
     { id: 'peer', label: 'Peer & Self Assessment', icon: Users },
+    { id: 'activity', label: 'Group Activity', icon: Activity },
     { id: 'result', label: 'Assessment Result', icon: FileCheck },
     { id: 'leaderboard', label: 'Project Leaderboard', icon: Trophy },
     { id: 'help', label: 'Help Center', icon: HelpCircle },
@@ -388,6 +390,15 @@ export default function StudentDashboardPage() {
                                 studentInfo={studentInfo}
                                 teamMembers={teamMembers}
                                 academicYear={academicYear()}
+                                showToast={showToast}
+                            />
+                        )}
+
+                        {activeTab === 'activity' && (
+                            <ActivityTab
+                                studentInfo={studentInfo}
+                                teamMembers={teamMembers}
+                                userEmail={userEmail}
                                 showToast={showToast}
                             />
                         )}
