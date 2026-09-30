@@ -342,6 +342,10 @@ export default function TeacherDashboardPage() {
                     sections={isAdmin ? [...TEACHER_SECTIONS, ADMIN_SECTION] : TEACHER_SECTIONS}
                     activeTab={activeTab}
                     onTabChange={setActiveTab}
+                    // Fifteen items across five sections, leading to rubrics and
+                    // score tables that want the width back.
+                    collapsible
+                    storageKey="steam:teacher-sidebar-collapsed"
                 />
 
                 <div className="flex-1 w-full min-w-0 md:overflow-y-auto">
