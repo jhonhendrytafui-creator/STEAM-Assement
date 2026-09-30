@@ -146,6 +146,19 @@ Before running 10, run its Section 0 pre-flight query and keep the output — it
 tells you which of the two conflicting policy sets was live, which is worth
 knowing if you ever need to explain the gap.
 
+## Checking a live database
+
+`health_check_1_schema.sql` then `health_check_2_data.sql`. Both are read-only
+and safe to run any time.
+
+Part 1 reads only the system catalogs, never the new tables or columns, so it
+runs even on a database where a migration did not land -- which is when you need
+it. Every row should say OK; anything else names the script to re-run. Part 2
+then reports the data state that decides whether people can actually work:
+themes per grade, who still owes a profile, whether classification has anyone to
+assign to. Run it only once part 1 is clean, or it will fail on a missing column
+instead of telling you anything.
+
 ## Notes
 
 - `rls_and_triggers.sql` drops and rebuilds policies for ten named tables. Its
