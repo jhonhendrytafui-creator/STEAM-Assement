@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
     LayoutDashboard, FolderOpen, BookOpen, ClipboardCheck,
     Users, BarChart2, Star, TrendingUp, HelpCircle, Search, BrainCircuit,
-    ShieldCheck, DatabaseZap, ScrollText, UserCog, CalendarClock, Palette
+    ShieldCheck, DatabaseZap, ScrollText, UserCog, CalendarClock, Palette, Activity
 } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase/client';
@@ -43,6 +43,7 @@ import AdminAuditTab from './tabs/admin/AdminAuditTab';
 import AdminAcademicYearTab from './tabs/admin/AdminAcademicYearTab';
 import AdminThemesTab from './tabs/admin/AdminThemesTab';
 import TeacherProfileForm from './TeacherProfileForm';
+import GroupActivityTab from './tabs/GroupActivityTab';
 
 // Sidebar sections. Eleven teacher tabs plus four admin ones is too long for a
 // flat list — grouping gives the menu a shape and lets the admin items drop the
@@ -54,6 +55,7 @@ const TEACHER_SECTIONS: SidebarSection[] = [
             { id: 'overview', label: 'Project Overview', icon: LayoutDashboard },
             { id: 'submissions', label: 'Project Submission', icon: FolderOpen },
             { id: 'logbook', label: 'Project Logbook', icon: BookOpen },
+            { id: 'activity', label: 'Group Activity', icon: Activity },
             { id: 'plagiarism', label: 'AI Plagiarism Check', icon: Search },
         ],
     },
@@ -360,6 +362,13 @@ export default function TeacherDashboardPage() {
 
                     {activeTab === 'logbook' && (
                         <LogbookTab
+                            allStudents={allStudents}
+                            showToast={showToast}
+                        />
+                    )}
+
+                    {activeTab === 'activity' && (
+                        <GroupActivityTab
                             allStudents={allStudents}
                             showToast={showToast}
                         />

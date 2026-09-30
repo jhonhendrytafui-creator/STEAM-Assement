@@ -24,11 +24,30 @@ noted, so re-running in this order is safe.
 | 14 | `fix_missing_themes_2026_2027.sql` | Themes for the **current** academic year — without this no grade can submit a project |
 | 15 | `teacher_profile_1_columns.sql` -> `_2_triggers` -> `_3_save_rpc` -> `_4_policy_check` | Teacher self-service profile (subjects, grades, WhatsApp) + the assessor's name on every mark. **Four files, run in order.** |
 | 16 | `teacher_role_1_column.sql` -> `_2_save_rpc` -> `_3_check` | A teaching / non-teaching flag, so staff who do not teach are not asked for subjects or grade levels. **Three files, run in order.** |
+| 17 | `group_activity_1_table.sql` -> `_2_project_triggers` -> `_3_logbook_triggers` | The group activity log: who in each group did what. **Three files, run in order.** |
 
 ## Existing database
 
 Run **9**, **10**, **11**, **12**, **13**, **14**, **15**'s four parts, then
 **16**'s three parts, in order. All are safe to re-run.
+
+**17 records who in a group did what.** Every member can submit the project,
+write logbook entries and change the document links, and nothing recorded which
+of them did it. `group_activity_log` gets one row per action, readable by that
+group and by any teacher.
+
+It is written by database triggers rather than from the browser, and that is
+deliberate: a trigger cannot be forgotten when a new write site is added or
+skipped by a client, and because the table has **no INSERT, UPDATE or DELETE
+policy at all**, nobody can forge an entry or erase one -- the trigger functions
+are `SECURITY DEFINER` and bypass RLS. The log is append-only even for admins
+through the app.
+
+Peer assessments record only that one was completed, never who it was about: the
+tab promises students theirs are confidential, and naming the subject in a log
+the whole group reads would break that. The log starts empty and fills from the
+moment you run it; it cannot be backfilled, because the history of who did what
+was never stored.
 
 **16 makes subjects and grades conditional.** Not everyone with portal access
 teaches: office staff, a librarian, a counsellor, a head who only reads the
