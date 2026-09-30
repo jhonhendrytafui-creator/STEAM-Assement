@@ -12,18 +12,29 @@ import { GoogleGenerativeAI, type ModelParams } from '@google/generative-ai';
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Text-generation models, best first. Spans three generations on purpose: an
- * API key that cannot reach the newest model falls through to one it can,
- * and an id that stops being served (gemini-2.5-* retires in October 2026)
- * costs one fast 404 rather than an outage.
+ * Text-generation models, best first. Every entry must be one Google serves to
+ * any key, new or old — check before adding one:
+ *
+ *   - gemini-2.0-flash was shut down on 2026-06-01; every call is a 404.
+ *   - gemini-2.5-* answer only keys whose project used them before. Any other
+ *     key gets a 404 "no longer available to new users", and the family is due
+ *     to retire in October 2026.
+ *
+ * Four of the previous six entries were in those two groups, so a newer key
+ * had two live models, not six. Free-tier quota is counted per model, so each
+ * live entry here is also a separate allowance to fall back on.
+ *
+ * gemini-3.1-flash-lite is second because it thinks at "minimal" by default and
+ * answers in seconds, which is what a fallback needs after the first model has
+ * spent most of the budget. gemini-2.5-flash stays last only for keys that
+ * still have it; for the rest it costs one fast 404.
  */
 export const GEMINI_TEXT_MODELS = [
     'gemini-3.5-flash',
     'gemini-3.1-flash-lite',
+    'gemini-3.6-flash',
+    'gemini-3.5-flash-lite',
     'gemini-2.5-flash',
-    'gemini-2.5-pro',
-    'gemini-2.5-flash-lite',
-    'gemini-2.0-flash',
 ] as const;
 
 export type GeminiFailureKind =
@@ -201,7 +212,13 @@ export interface GenerateWithFallbackOptions {
     label: string;
     models?: readonly string[];
     modelParams?: Omit<ModelParams, 'model'>;
-    /** Cap on a single generateContent call. */
+    /**
+     * Cap on a single generateContent call. It only ever cuts off a model that
+     * is working — a 404 or 429 comes back in well under a second — so it must
+     * cover the model's thinking time as well as the answer. At its default
+     * thinking level gemini-3.5-flash takes about 15 seconds before it writes
+     * anything.
+     */
     perAttemptTimeoutMs?: number;
     /**
      * Wall-clock cap on the whole walk. Must stay under the route's
@@ -212,6 +229,22 @@ export interface GenerateWithFallbackOptions {
 }
 
 const TRANSIENT_PAUSE_MS = 1_000;
+
+/**
+ * The failure to show once every model has been tried.
+ *
+ * A model this key cannot use (404) says nothing about why the models it can
+ * use failed, so it never replaces a failure already recorded. Reporting simply
+ * the last one meant a quota or timeout on the live models reached the student
+ * as "The AI model is not available right now" — the 404 from whichever
+ * retired model ended the list — which reads as a broken API key.
+ */
+function moreInformative(recorded: GeminiFailure | null, next: GeminiFailure): GeminiFailure {
+    if (recorded && recorded.kind !== 'unknown_model' && next.kind === 'unknown_model') {
+        return recorded;
+    }
+    return next;
+}
 
 /**
  * Try each model in turn until one answers.
@@ -238,7 +271,7 @@ export async function generateWithFallback(
 
     const genAI = new GoogleGenerativeAI(apiKey);
     const deadline = Date.now() + budgetMs;
-    let lastFailure: GeminiFailure | null = null;
+    let reported: GeminiFailure | null = null;
 
     for (let i = 0; i < models.length; i++) {
         const modelName = models[i];
@@ -253,7 +286,7 @@ export async function generateWithFallback(
             const text = result.response.text();
 
             if (!text.trim()) {
-                lastFailure = EMPTY_RESPONSE;
+                reported = moreInformative(reported, EMPTY_RESPONSE);
                 console.error(`[${label}] ${modelName} returned an empty response.`);
                 continue;
             }
@@ -261,13 +294,14 @@ export async function generateWithFallback(
             console.log(`[${label}] answered by ${modelName} (attempt ${i + 1}/${models.length})`);
             return { text, model: modelName };
         } catch (e) {
-            lastFailure = classifyGeminiError(e);
+            const failure = classifyGeminiError(e);
+            reported = moreInformative(reported, failure);
             console.error(
-                `[${label}] ${modelName} failed (${lastFailure.kind}): ${lastFailure.detail.slice(0, 200)}`
+                `[${label}] ${modelName} failed (${failure.kind}): ${failure.detail.slice(0, 200)}`
             );
 
-            if (lastFailure.fatal) break;
-            if (lastFailure.transient) {
+            if (failure.fatal) break;
+            if (failure.transient) {
                 const pause = Math.min(TRANSIENT_PAUSE_MS, Math.max(0, deadline - Date.now()));
                 if (pause > 0) await new Promise(res => setTimeout(res, pause));
             }
@@ -275,7 +309,7 @@ export async function generateWithFallback(
     }
 
     throw new GeminiGenerationError(
-        lastFailure ?? {
+        reported ?? {
             kind: 'timeout',
             transient: true,
             fatal: false,
