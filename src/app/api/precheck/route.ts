@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { requireUser } from '@/lib/api-auth';
 import { getAcademicYearServer } from '@/lib/academic-year-server';
+import { schoolKnowledge, themeNameFor } from '@/lib/ai-knowledge';
 import { GeminiGenerationError, generateWithFallback } from '@/lib/gemini';
 import { subjectLabel } from '@/lib/subjects';
 
@@ -33,7 +34,7 @@ export async function POST(req: Request) {
         const auth = await requireUser(req);
         if ('response' in auth) return auth.response;
 
-        const { problem, solution, keyConcepts } = await req.json();
+        const { problem, solution, keyConcepts, themeId } = await req.json();
 
         if (!problem || !solution) {
             return NextResponse.json(
@@ -154,8 +155,17 @@ export async function POST(req: Request) {
             })
             .join('\n');
 
+        // Who these students are and the school's contextual-problem rule, so
+        // the pre-check judges the problem the way the C1 assessment will.
+        // The grade comes from the roster; the theme id from the form, read
+        // back by id so only a real theme's name reaches the prompt.
+        const knowledge = schoolKnowledge(
+            { className: roster.class_name, themeName: await themeNameFor(admin, themeId) },
+            'precheck',
+        );
+
         const prompt = `
-You are a friendly, encouraging STEAM Education Expert reviewing a high school student's STEAM project draft *before* they officially submit it to their teacher. 
+You are a friendly, encouraging STEAM Education Expert reviewing a student group's STEAM project draft *before* they officially submit it to their teacher.
 
 Your goal is to provide a detailed, holistic "Pre-Check" that highlights what they are doing well, gives constructive feedback for each specific part of their abstract (Problem, Solution, Key Concepts), and reviews how everything connects together.
 
@@ -165,6 +175,8 @@ CRITICAL RULES:
 3. Provide feedback on EVERY part of their submitted abstract.
 4. **LANGUAGE: Write in simple, clear English. Use short sentences. Avoid difficult words. This is for students and teachers who use English as a second language (ESL). Make it easy to understand but still professional for a school setting.**
 5. **DO NOT use any emojis in your response.**
+
+${knowledge}
 
 STUDENT DRAFT DATA:
 ### Problem Statement:
@@ -178,7 +190,7 @@ ${conceptsString}
 
 Format your response in simple Markdown. Use the following sections:
 ### Problem Statement Feedback
-Evaluate their problem statement. Is it clear? Is it a real-world problem? Give them specific questions to deepen their problem definition.
+Start with the contextuality check from the knowledge above: does their background story show that this problem is part of their own daily life? Say clearly whether it is contextual yet, and why. If it is not, help them find their own version of it with guiding questions. Then evaluate whether the problem is clear, and give them specific questions to deepen their problem definition.
 
 ### Proposed Solution Feedback
 Evaluate their solution. Does it actually solve the problem? Is it feasible? Suggest areas where they can improve their prototype idea.
