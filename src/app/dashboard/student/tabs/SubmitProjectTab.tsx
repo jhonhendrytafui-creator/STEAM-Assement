@@ -235,6 +235,7 @@ export default function SubmitProjectTab({
         const problemSnapshot = problem;
         const solutionSnapshot = solution;
         const conceptsSnapshot = keyConcepts.filter(c => c.concept.trim() !== '');
+        const themeSnapshot = theme || null;
 
         onStartPrecheck();
 
@@ -248,7 +249,10 @@ export default function SubmitProjectTab({
                 body: JSON.stringify({
                     problem: problemSnapshot,
                     solution: solutionSnapshot,
-                    keyConcepts: conceptsSnapshot
+                    keyConcepts: conceptsSnapshot,
+                    // So the pre-check can judge the problem against the theme
+                    // the group picked, as the teacher's C1 assessment will.
+                    themeId: themeSnapshot
                 })
             });
 

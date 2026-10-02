@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { requireTeacher } from '@/lib/api-auth';
+import { requireTeacher, serverClient } from '@/lib/api-auth';
+import { schoolKnowledge, themeNameFor } from '@/lib/ai-knowledge';
 import { GeminiGenerationError, generateWithFallback, teacherMessage } from '@/lib/gemini';
 
 export const maxDuration = 60;
@@ -114,7 +115,17 @@ KEY CONCEPTS INVOLVED: ${JSON.stringify(projectAbstractObj.keyConcepts || [])}
             ? 'Analisis data proyek STEAM berikut dan buat 10 pertanyaan tanya jawab yang menantang untuk sesi presentasi akhir sesuai kerangka yang diberikan.'
             : 'Analyze the following STEAM project data and generate 10 rigorous Q&A questions for the final presentation based on the provided framework.';
 
-        const prompt = `${promptSuffix}\n\nPROJECT DATA:\n${contextString}`;
+        // Who the students are and the school's contextual-problem rule, so the
+        // questions can test whether the problem is really part of their lives.
+        const knowledge = schoolKnowledge(
+            {
+                className: projectData.class_name,
+                themeName: await themeNameFor(await serverClient(), projectData.theme_id),
+            },
+            'c5-questions',
+        );
+
+        const prompt = `${promptSuffix}\n\n${knowledge}\n\nPROJECT DATA:\n${contextString}`;
 
         // Models, time limits and error wording come from src/lib/gemini.ts.
         // The list this route carried held only gemini-2.5 and gemini-2.0

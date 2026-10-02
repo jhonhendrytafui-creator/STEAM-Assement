@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
-import { requireTeacher } from '@/lib/api-auth';
+import { requireTeacher, serverClient } from '@/lib/api-auth';
 import { SchemaType } from '@google/generative-ai';
+import {
+    applyContextRule, contextIndicatorIds, schoolKnowledge, themeNameFor, type KnowledgePhase,
+} from '@/lib/ai-knowledge';
 import { GeminiGenerationError, generateWithFallback, teacherMessage } from '@/lib/gemini';
 
 // generateWithFallback keeps the Gemini walk inside 45 seconds, so the route
@@ -110,7 +113,27 @@ export async function POST(req: Request) {
         const isC3 = lowerCat.includes('c3') || lowerCat.includes('solution') || lowerCat.includes('execution') || lowerCat.includes('imagine') || lowerCat.includes('plan');
         const isC4 = lowerCat.includes('c4') || lowerCat.includes('logbook') || lowerCat.includes('process');
         const isC1 = lowerCat.includes('c1') || lowerCat.includes('abstract');
+        const isC5 = lowerCat.includes('c5') || lowerCat.includes('presentation');
         const isNoStatusCategory = isC2 || isC3 || isC4;
+
+        // Same precedence as the prompt selection below.
+        const phase: KnowledgePhase = isC2 ? 'C2' : isC3 ? 'C3' : isC4 ? 'C4' : isC1 ? 'C1' : isC5 ? 'C5' : 'other';
+
+        // The indicator scoring whether the problem is contextual, when this
+        // rubric has one (C1 does). It switches on the scoring levels in the
+        // knowledge and the rule that such a project cannot be approved.
+        const contextIds = contextIndicatorIds(indicators);
+
+        // Who the students are, read from the project rather than taken from
+        // the browser: the grade from its class, the theme by its id.
+        const knowledge = schoolKnowledge(
+            {
+                className: project.class_name,
+                themeName: await themeNameFor(await serverClient(), project.theme_id),
+            },
+            phase,
+            { scoreContext: contextIds.length > 0 },
+        );
 
         const responseSchemaProperties: Record<string, any> = {
             scores: {
@@ -186,7 +209,8 @@ export async function POST(req: Request) {
 3. Determine the final decision (suggested_status):
   * 'approved' (≥80%, ${approvedThreshold}+ points): Accepted. Green light to proceed.
   * 'revision' (55–79%, ${revisionThreshold}–${approvedThreshold - 1} points): Accepted with Revision. Needs improvements before proceeding.
-  * 'disapproved' (<55%, below ${revisionThreshold} points): Not Accepted. Misses the mark on multiple fronts.`;
+  * 'disapproved' (<55%, below ${revisionThreshold} points): Not Accepted. Misses the mark on multiple fronts.${contextIds.length > 0 ? `
+4. School rule, which overrides the percentages: if you scored the real-life context indicator 1 or 2, suggested_status cannot be 'approved'. Use 'revision' at most.` : ''}`;
 
 
         let docText = '';
@@ -205,6 +229,8 @@ export async function POST(req: Request) {
 You are a STEAM Education Expert and Project Assessment AI. Your job is to evaluate the "Ask and Research" phase (Problem Description and Theoretical Literature) of a student's STEAM project. You will analyze how well the student defines a real-world problem, backs it up with credible research, connects interdisciplinary STEAM theories, and identifies a clear opportunity for innovation.
 
 **LANGUAGE RULE: Write all feedback in simple, clear English. Use short sentences. Avoid difficult vocabulary. This is for students and teachers who use English as a second language (ESL). Make it easy to read but still professional for a school setting.**
+
+${knowledge}
 
 You are evaluating content from the student's Google Doc. The Google Doc has 2 tabs: one for the cover and one for the body where all the project information is located. For the C2 Assessment, focus specifically on **Section 1 (Background)** and **Section 2 (STEAM Element)** from the document body tab.
 
@@ -253,6 +279,8 @@ Do NOT include a 'suggested_status' field. Just provide 'scores', 'teacher_comme
 You are a sharp, objective STEAM Education Expert and Project Assessment AI. Your job is to evaluate the "Solution & Execution" phase (typically found in Bab 3 and Bab 4) of a student's STEAM project. You will analyze how well the student has planned the actual creation of their prototype, focusing heavily on execution steps, budgeting, visual design, risk mitigation, and how well the physical/digital build actually applies STEAM concepts. You must be fair and highly analytical. Do not sugarcoat your critiques.
 
 **LANGUAGE RULE: Write all feedback in simple, clear English. Use short sentences. Avoid difficult vocabulary. This is for students and teachers who use English as a second language (ESL). Make it easy to read but still professional for a school setting.**
+
+${knowledge}
 
 You are evaluating content from the student's written document, focusing specifically on **Bab 3 (Solution Design & Planning)** and **Bab 4 (Prototype Execution & Build)**.
 
@@ -310,6 +338,8 @@ You are a sharp, analytical STEAM Education Expert and Project Assessment AI. Yo
 
 **LANGUAGE RULE: Write all feedback in simple, clear English. Use short sentences. Avoid difficult vocabulary. This is for students and teachers who use English as a second language (ESL). Make it easy to read but still professional for a school setting.**
 
+${knowledge}
+
 **Student Project Info**
 * Title: ${project.title}
 * Problem Summary: ${problemDesc || 'N/A'}
@@ -357,6 +387,8 @@ Remember: This is an ABSTRACT — a short summary of the student's project idea.
 
 **PRECISION RULE**: Your feedback MUST be extremely precise and specific. Do NOT give generic advice like "Add more detail" or "Explain better". Instead, quote exactly what the student wrote and explain exactly why it is flawed or what specific detail is missing. Ask targeted questions that force them to think critically about their specific project.
 
+${knowledge}
+
 **Input Data Expectation**
 You will receive student proposals containing:
 * Title: ${project.title}
@@ -385,13 +417,13 @@ The tone of your comment MUST change based on your suggested_status decision:
 Use this exact structure:
 
 PROBLEM STATEMENT
-[Write a detailed paragraph evaluating whether the student clearly explained the problem they want to solve. Discuss if it's contextual and if they explained why it matters. If weak, quote the vague part and provide a specific guiding question.]
+[Write a detailed paragraph. First say whether the problem is contextual, meaning part of the students' own lives as shown by their background story (see the knowledge above), and why, quoting their story. Then evaluate whether they clearly explained the problem and why it matters. If weak, quote the vague part and provide a specific guiding question. If it is not contextual, help them find their own version of the problem as the knowledge above describes.]
 
 PROPOSED SOLUTION
 [Write a detailed paragraph evaluating if the solution directly addresses the problem. Discuss if it's clearly a prototype. If weak, point out what doesn't make sense and ask how it will be built.]
 
 THEME ALIGNMENT
-[Write a detailed paragraph discussing how well the project connects to the chosen theme. Suggest how to bridge gaps if weak.]
+[Write a detailed paragraph discussing how well the project connects to the theme the group chose (named in the knowledge above). Suggest how to bridge gaps if weak.]
 
 KEY CONCEPTS (STEAM Integration)
 [Write a detailed paragraph evaluating the chosen subjects. Call out vague explanations directly. Discuss interdisciplinary connections and suggest additions if needed.]
@@ -424,6 +456,8 @@ Provide your output exactly matching the JSON schema.`;
             prompt = `You are a sharp, highly objective STEAM educator assistant. Your task is to rigorously review a student's STEAM project paper based on a specific rubric and provide scores and detailed feedback.
 
 **LANGUAGE RULE: Write all feedback in simple, clear English. Use short sentences. Avoid difficult vocabulary. This is for students and teachers who use English as a second language (ESL). Make it easy to read but still professional for a school setting.**
+
+${knowledge}
 
 You are assessing the category: "${categoryName}".
 
@@ -511,7 +545,9 @@ Provide your output exactly matching the JSON schema.
             throw generationError;
         }
 
-        return NextResponse.json(readAssessment(responseText));
+        // The school rule once more, on the answer itself: the prompt tells the
+        // model a non-contextual problem cannot be approved, and this makes sure.
+        return NextResponse.json(applyContextRule(readAssessment(responseText) ?? {}, contextIds));
 
     } catch (error: any) {
         console.error('AI Assessment Error:', error);

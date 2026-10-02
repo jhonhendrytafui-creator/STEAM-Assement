@@ -18,8 +18,11 @@ export interface AuthedUser {
     is_admin: boolean;
 }
 
-/** Supabase client bound to the caller's cookies. Reads run under their RLS. */
-async function serverClient() {
+/**
+ * Supabase client bound to the caller's cookies. Reads run under their RLS.
+ * Exported for routes that read on the caller's behalf, such as a theme name.
+ */
+export async function serverClient() {
     const cookieStore = await cookies();
     return createServerClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
