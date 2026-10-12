@@ -13,6 +13,7 @@ import {
 } from '@/lib/contribution';
 import type { AssessmentCategory, RubricDimension, RubricIndicator } from '@/lib/types';
 import { summarizeAssessors } from '@/lib/assessor';
+import { hasCustomWeights, weightedScore, scoresByCriterion, maxScaleOf, formatScore, groupRubrics } from '@/lib/rubric';
 
 interface ScoreTabProps {
     allStudents: any[];
@@ -85,19 +86,31 @@ export default function ScoreTab({ allStudents, assessmentCategories, rubricDime
                 const dims = rubricDimensions.filter(d => d.category_id === catId);
                 const inds = rubricIndicators.filter(i => dims.some(d => d.id === i.dimension_id));
 
-                const maxScale = parseInt(cat?.rubric_type.replace('scale_', '') || '1');
-                const isChecklist = cat?.rubric_type === 'checklist';
-                const totalMax = isChecklist ? inds.length : inds.length * maxScale;
-
                 const groupCatScores = scoresData?.filter(s => s.group_number === student.group_number && s.category_id === catId) || [];
-                const groupScore = groupCatScores.reduce((sum, s) => sum + s.score, 0);
-                const totalScore = applyMultiplier(groupScore, totalMax, contribution.multiplier);
+                const result = weightedScore(inds, scoresByCriterion(groupCatScores), maxScaleOf(cat?.rubric_type));
+                // A rubric whose criteria are weighted differently is shown as
+                // a percentage only: its points would not add up to it.
+                const weighted = hasCustomWeights(inds);
+
+                let groupScore: number, totalScore: number, totalMax: number, percentage: number;
+                if (weighted) {
+                    groupScore = Math.round(result.percentage * 100) / 100;
+                    totalScore = Math.min(100, Math.round(result.percentage * contribution.multiplier * 100) / 100);
+                    totalMax = 100;
+                    percentage = totalScore;
+                } else {
+                    groupScore = result.points;
+                    totalScore = applyMultiplier(groupScore, result.maxPoints, contribution.multiplier);
+                    totalMax = result.maxPoints;
+                    percentage = totalMax > 0 ? Math.round((totalScore / totalMax) * 100) : 0;
+                }
 
                 studentAssessments[catId] = {
                     groupScore,
                     totalScore,
                     totalMax,
-                    percentage: totalMax > 0 ? Math.round((totalScore / totalMax) * 100) : 0,
+                    percentage,
+                    weighted,
                     isAssessed: groupCatScores.length > 0,
                     adjusted: totalScore !== groupScore,
                     // Who marked it. Teachers mark in a team, so a category can
@@ -165,9 +178,11 @@ export default function ScoreTab({ allStudents, assessmentCategories, rubricDime
             scoreCategories.forEach(catId => {
                 const assessment = row.assessments[catId];
                 rowData.push(csvCell(
-                    assessment.isAssessed
-                        ? `${assessment.totalScore}/${assessment.totalMax} (${assessment.percentage}%)`
-                        : '-'
+                    !assessment.isAssessed
+                        ? '-'
+                        : assessment.weighted
+                            ? `${formatScore(assessment.percentage)}% (weighted)`
+                            : `${assessment.totalScore}/${assessment.totalMax} (${assessment.percentage}%)`
                 ));
             });
 
@@ -269,32 +284,43 @@ export default function ScoreTab({ allStudents, assessmentCategories, rubricDime
 
                 <div className="lg:col-span-2">
                     <span className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase" id="score-assessments">Assessments (Multi-Select)</span>
-                    <div className="bg-[#1a1811] border border-slate-800 rounded-lg p-3 custom-scrollbar overflow-y-auto max-h-48" role="group" aria-labelledby="score-assessments">
-                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-                            {assessmentCategories.map(c => {
-                                const isSelected = scoreCategories.includes(c.id);
-                                return (
-                                    <button
-                                        key={c.id}
-                                        onClick={() => {
-                                            if (isSelected) {
-                                                setScoreCategories(prev => prev.filter(id => id !== c.id));
-                                            } else {
-                                                setScoreCategories(prev => [...prev, c.id]);
-                                            }
-                                            setClassScores([]);
-                                        }}
-                                        className={`p-2 rounded-lg text-left transition-all border flex flex-col justify-center h-full ${isSelected
-                                            ? 'bg-amber-500 text-[#1a1811] border-amber-500 shadow-md'
-                                            : 'bg-[#1c1b14] border-slate-700 hover:border-amber-500/50'
-                                            }`}
-                                    >
-                                        <span className={`text-xs font-extrabold ${isSelected ? 'text-[#1a1811]' : 'text-slate-300'}`}>{c.code}</span>
-                                        <span className={`text-[10px] leading-tight mt-0.5 line-clamp-2 ${isSelected ? 'text-amber-950' : 'text-slate-500'}`}>{c.name}</span>
-                                    </button>
-                                );
-                            })}
-                        </div>
+                    <div className="bg-[#1a1811] border border-slate-800 rounded-lg p-3 custom-scrollbar overflow-y-auto max-h-48 space-y-3" role="group" aria-labelledby="score-assessments">
+                        {(() => {
+                            const { phases, others } = groupRubrics(assessmentCategories);
+                            return [
+                                { label: 'STEAM phases', items: phases },
+                                { label: 'Other rubrics', items: others },
+                            ].filter(section => section.items.length > 0).map(section => (
+                                <div key={section.label}>
+                                    <span className="block text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">{section.label}</span>
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                                        {section.items.map(c => {
+                                            const isSelected = scoreCategories.includes(c.id);
+                                            return (
+                                                <button
+                                                    key={c.id}
+                                                    onClick={() => {
+                                                        if (isSelected) {
+                                                            setScoreCategories(prev => prev.filter(id => id !== c.id));
+                                                        } else {
+                                                            setScoreCategories(prev => [...prev, c.id]);
+                                                        }
+                                                        setClassScores([]);
+                                                    }}
+                                                    className={`p-2 rounded-lg text-left transition-all border flex flex-col justify-center h-full ${isSelected
+                                                        ? 'bg-amber-500 text-[#1a1811] border-amber-500 shadow-md'
+                                                        : 'bg-[#1c1b14] border-slate-700 hover:border-amber-500/50'
+                                                        }`}
+                                                >
+                                                    <span className={`text-xs font-extrabold ${isSelected ? 'text-[#1a1811]' : 'text-slate-300'}`}>{c.code}</span>
+                                                    <span className={`text-[10px] leading-tight mt-0.5 line-clamp-2 ${isSelected ? 'text-amber-950' : 'text-slate-500'}`}>{c.name}</span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            ));
+                        })()}
                         {assessmentCategories.length === 0 && <span className="text-sm text-slate-500 italic">No assessments available.</span>}
                     </div>
                 </div>
@@ -387,13 +413,15 @@ export default function ScoreTab({ allStudents, assessmentCategories, rubricDime
                                                     {assessment.isAssessed ? (
                                                         <div className="flex flex-col items-center">
                                                             <span className={`text-sm font-bold ${assessment.percentage >= 80 ? 'text-emerald-400' : assessment.percentage >= 60 ? 'text-amber-400' : 'text-red-400'}`}>
-                                                                {assessment.percentage}%
+                                                                {formatScore(assessment.percentage)}%
                                                             </span>
                                                             <span className="text-[10px] text-slate-500 font-medium block">
-                                                                {assessment.totalScore}/{assessment.totalMax}
+                                                                {assessment.weighted
+                                                                    ? <span title="Criteria count by their weights, so this is a percentage, not points">weighted</span>
+                                                                    : <>{assessment.totalScore}/{assessment.totalMax}</>}
                                                                 {assessment.adjusted && (
                                                                     <span className="text-slate-600" title="Group score before the contribution multiplier">
-                                                                        {' '}(group {assessment.groupScore})
+                                                                        {' '}(group {assessment.weighted ? `${formatScore(assessment.groupScore)}%` : assessment.groupScore})
                                                                     </span>
                                                                 )}
                                                             </span>

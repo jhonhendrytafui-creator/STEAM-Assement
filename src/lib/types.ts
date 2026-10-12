@@ -83,6 +83,8 @@ export interface RubricIndicator {
     dimension_id: string;
     description: string;
     criteria?: Record<string, string>;
+    /** Share of the rubric's score in percent; NULL means equal share. See src/lib/rubric.ts. */
+    weight?: number | null;
     sort_order: number;
 }
 

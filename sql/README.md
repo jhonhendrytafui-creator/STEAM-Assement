@@ -25,11 +25,39 @@ noted, so re-running in this order is safe.
 | 15 | `teacher_profile_1_columns.sql` -> `_2_triggers` -> `_3_save_rpc` -> `_4_policy_check` | Teacher self-service profile (subjects, grades, WhatsApp) + the assessor's name on every mark. **Four files, run in order.** |
 | 16 | `teacher_role_1_column.sql` -> `_2_save_rpc` -> `_3_check` | A teaching / non-teaching flag, so staff who do not teach are not asked for subjects or grade levels. **Three files, run in order.** |
 | 17 | `group_activity_1_table.sql` -> `_2_project_triggers` -> `_3_logbook_triggers` | The group activity log: who in each group did what. **Three files, run in order.** |
+| 18 | `subject_rubrics_1_weights.sql` -> `_2_english` -> `_3_indonesian` -> `_4_check` | Criterion weights (admin-only) and the English / Bahasa Indonesia rubrics. **Four files, run in order.** |
 
 ## Existing database
 
 Run **9**, **10**, **11**, **12**, **13**, **14**, **15**'s four parts, then
-**16**'s three parts, in order. All are safe to re-run.
+**16**'s and **17**'s three parts, then **18**'s four parts, in order. All are
+safe to re-run.
+
+**18 adds the subject rubrics and rubric weights.** Four rubrics for subjects
+outside STEAM: English Infographic (`ENG-INF`), English Presentation
+(`ENG-PRS`), Bahasa Indonesia Infografis (`IND-INF`) and Bahasa Indonesia
+Presentasi (`IND-PRS`), each scored per group on a 1-4 scale, with the text of
+the school's rubric documents. They are not part of the C1-C5 sequence: like
+BCM, each opens once the group's C1 is scored and the project approved, and
+they can then be used in any order.
+
+Each criterion can carry a weight, its share of the rubric's score in percent
+(`rubric_indicators.weight`). Empty means equal share, and a rubric uses its
+weights only when every criterion has one, so C1-C5, BCM and any rubric nobody
+has weighted score exactly as before. The English rubrics and BI Presentasi
+come with the weights from their documents; the BI Infografis document lists
+none, so its five criteria count 20% each. A score is
+`sum(score / 4 x weight)`: English Infographic levels 3, 4, 3, 3, 2 give 76.25.
+
+Weights are changed in **Admin -> Rubric Weights**, which saves through
+`set_rubric_weights()` (admin-only, must total 100, audited). Every teacher can
+write the rubric tables, so a trigger also refuses a weight change from anyone
+but an admin; the SQL editor is not affected. Parts 2 and 3 never touch a
+rubric that already has criteria, so re-running them cannot undo an admin's
+weights. The old empty `ENG` and `IND` categories from `full_schema.sql` are
+turned into `ENG-INF` and `IND-INF` rather than left beside them. Part 4 checks
+everything landed and lists every rubric with its weights; you should see
+`ALL 4 PARTS COMPLETE`.
 
 **17 records who in a group did what.** Every member can submit the project,
 write logbook entries and change the document links, and nothing recorded which

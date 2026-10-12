@@ -1,13 +1,14 @@
 # Admin Access — Setup Guide
 
 Some teachers can be given **admin** rights on top of their normal teacher
-account. An admin sees four extra menu items in the teacher dashboard:
+account. An admin sees extra menu items in the teacher dashboard, among them:
 
 | Menu | What it does |
 |---|---|
 | **Admin · Students** | Add, edit and remove students; change their class and group; move several students at once; bulk-import a whole class by pasting from a spreadsheet |
 | **Admin · Teacher Access** | Give a new teacher access to the teacher portal, promote a teacher to admin, or revoke either |
 | **Admin · Project Data** | Delete a single project submission, or reset a group completely (projects, scores, logbook, peer assessments, AI Pre-Check quota) so they can start fresh |
+| **Admin · Rubric Weights** | Set how much each criterion counts toward a rubric's score (they must add up to 100%), or put a rubric back on equal weights. Applies at once to every group already assessed with it. Needs `sql/subject_rubrics_1_weights.sql` |
 | **Admin · Activity Log** | An append-only record of every admin action, with who did it and when |
 
 Everything else in the teacher dashboard is unchanged. A teacher without the
