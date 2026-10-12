@@ -5,6 +5,7 @@ import {
     applyContextRule, contextIndicatorIds, schoolKnowledge, themeNameFor, type KnowledgePhase,
 } from '@/lib/ai-knowledge';
 import { GeminiGenerationError, generateWithFallback, teacherMessage } from '@/lib/gemini';
+import { effectiveWeights, formatWeight, hasCustomWeights } from '@/lib/rubric';
 
 // generateWithFallback keeps the Gemini walk inside 45 seconds, so the route
 // always answers with JSON before this limit.
@@ -36,19 +37,21 @@ async function fetchGoogleDocText(url: string): Promise<string> {
 }
 
 // ─── Dynamic Rubric Context Builder ─────────────────
-// Builds rubric text from the DB-stored criteria on each indicator
-function buildDynamicRubricContext(indicators: any[]): string {
+// Builds rubric text from the DB-stored criteria on each indicator. When the
+// rubric weights its criteria differently, each one says its share.
+function buildDynamicRubricContext(indicators: any[], shares: Map<string, number> | null): string {
     return indicators.map(ind => {
         const criteria = ind.criteria || {};
         const levels = Object.entries(criteria)
             .sort(([a], [b]) => Number(a) - Number(b))
             .map(([level, desc]) => `  ${level}: ${desc}`)
             .join('\n');
+        const weight = shares ? ` (weight: ${formatWeight(shares.get(ind.id) ?? 0)} of the score)` : '';
 
         if (!levels) {
-            return `Indicator: "${ind.description}"\n  (No specific criteria defined — use generic 1-4 scale)`;
+            return `Indicator: "${ind.description}"${weight}\n  (No specific criteria defined — use generic 1-4 scale)`;
         }
-        return `Indicator: "${ind.description}"\n${levels}`;
+        return `Indicator: "${ind.description}"${weight}\n${levels}`;
     }).join('\n\n');
 }
 
@@ -80,7 +83,7 @@ export async function POST(req: Request) {
         if ('response' in auth) return auth.response;
 
         const body = await req.json();
-        const { project, categoryName, indicators, googleDocUrl, assessLogbooks } = body;
+        const { project, categoryName, categoryCode, indicators, googleDocUrl, assessLogbooks } = body;
 
         if (!project || !categoryName || !indicators) {
             return NextResponse.json(
@@ -98,26 +101,40 @@ export async function POST(req: Request) {
             );
         }
 
+        // Which rubric this is. The code decides when the browser sends it;
+        // matching on the name alone took "English Presentation" for C5. The
+        // name rules stay for a browser still running an older deployment.
+        const code = typeof categoryCode === 'string' ? categoryCode.trim().toUpperCase() : '';
+        const lowerCat = categoryName.toLowerCase();
+        const nameHas = (...words: string[]) => words.some(w => lowerCat.includes(w));
+        const isC2 = code ? code === 'C2' : nameHas('c2', 'ask');
+        const isC3 = code ? code === 'C3' : nameHas('c3', 'solution', 'execution', 'imagine', 'plan');
+        const isC4 = code ? code === 'C4' : nameHas('c4', 'logbook', 'process');
+        const isC1 = code ? code === 'C1' : nameHas('c1', 'abstract');
+        const isC5 = code ? code === 'C5' : nameHas('c5', 'presentation');
+
+        // The English and Bahasa Indonesia rubrics assess the students'
+        // language, not the project, so they get a prompt of their own.
+        const subject = /^ENG(-|$)/.test(code) ? 'english' : /^IND(-|$)/.test(code) ? 'indonesian' : null;
+        const subjectWork = code.endsWith('-PRS') ? 'presentation' : code.endsWith('-INF') ? 'infographic' : 'work';
+        const isSubject = subject !== null;
+
+        // Categories without a decision status (C2, C3, C4 and the subject rubrics)
+        const isNoStatusCategory = isC2 || isC3 || isC4 || isSubject;
+
+        // Same precedence as the prompt selection below.
+        const phase: KnowledgePhase = isSubject ? 'other' : isC2 ? 'C2' : isC3 ? 'C3' : isC4 ? 'C4' : isC1 ? 'C1' : isC5 ? 'C5' : 'other';
+
         // Create dynamic schema properties for the scores based on indicators
         const scoreProperties: Record<string, any> = {};
         indicators.forEach((i: any) => {
             scoreProperties[i.id] = {
                 type: SchemaType.INTEGER,
-                description: `Score for indicator: ${i.description}`
+                description: isSubject
+                    ? `Score 1-4 for indicator: ${i.description}. 0 when it cannot be judged from the text.`
+                    : `Score for indicator: ${i.description}`
             };
         });
-
-        // Determine if this is a category without a decision status (C2, C3, C4)
-        const lowerCat = categoryName.toLowerCase();
-        const isC2 = lowerCat.includes('c2') || lowerCat.includes('ask');
-        const isC3 = lowerCat.includes('c3') || lowerCat.includes('solution') || lowerCat.includes('execution') || lowerCat.includes('imagine') || lowerCat.includes('plan');
-        const isC4 = lowerCat.includes('c4') || lowerCat.includes('logbook') || lowerCat.includes('process');
-        const isC1 = lowerCat.includes('c1') || lowerCat.includes('abstract');
-        const isC5 = lowerCat.includes('c5') || lowerCat.includes('presentation');
-        const isNoStatusCategory = isC2 || isC3 || isC4;
-
-        // Same precedence as the prompt selection below.
-        const phase: KnowledgePhase = isC2 ? 'C2' : isC3 ? 'C3' : isC4 ? 'C4' : isC1 ? 'C1' : isC5 ? 'C5' : 'other';
 
         // The indicator scoring whether the problem is contextual, when this
         // rubric has one (C1 does). It switches on the scoring levels in the
@@ -144,7 +161,9 @@ export async function POST(req: Request) {
             },
             teacher_comment: {
                 type: SchemaType.STRING,
-                description: isC4 
+                description: isSubject
+                    ? `Feedback on the group's ${subject === 'indonesian' ? 'Bahasa Indonesia, written in clear, standard Bahasa Indonesia' : 'English, written in simple, clear English'}, in well-aligned paragraphs separated by double line breaks (\\n\\n): an overall verdict, what they do well, the most important errors quoted with their corrections, and 2 or 3 concrete next steps. Name the criteria the teacher still has to score by viewing or watching the work. Do NOT mention scores or percentages.`
+                    : isC4
                     ? "A single, coherent, casual paragraph providing sharp, objective feedback based on the logbook rubric. State the final score, process category, an objective compliment, a sharp critique, and an actionable suggestion."
                     : isNoStatusCategory
                         ? "A highly detailed, critical, and objective review written in well-aligned proper paragraphs (no bullet points). State the overall verdict, then provide detailed paragraphs evaluating each rubric indicator, citing a maximum of 5 specific reasons with exact evidence from the document and pointing out logical errors or weaknesses."
@@ -171,7 +190,11 @@ export async function POST(req: Request) {
         // Model is initialized dynamically within the retry loop for fallback support
 
         // ===== DYNAMIC RUBRIC CONTEXT (from DB criteria) =====
-        const rubricContext = buildDynamicRubricContext(indicators);
+        // Criteria can carry different weights (src/lib/rubric.ts); the
+        // browser sends each one's share. Without them every criterion counts
+        // the same and the arithmetic below is the plain sum it always was.
+        const weighted = hasCustomWeights(indicators);
+        const rubricContext = buildDynamicRubricContext(indicators, weighted ? effectiveWeights(indicators) : null);
         const { indicatorCount, maxScore, approvedThreshold, revisionThreshold } = buildScoringLogic(indicators);
 
         // Extract problem, solution, and key concepts from project abstract
@@ -193,23 +216,35 @@ export async function POST(req: Request) {
         let prompt = '';
 
         // ===== PERCENTAGE-BASED SCORING BLOCK (shared by all prompts) =====
+        // A weighted rubric has no meaningful point total, so its bands are
+        // percentages only.
+        const scaleLine = weighted
+            ? `(Weighted: ${indicatorCount} indicators, each scored 1-4 and worth the share of the score shown in the rubric)`
+            : `(Max ${maxScore} Points from ${indicatorCount} indicators × 4)`;
+        const percentageSteps = weighted
+            ? `1. Score each of the ${indicatorCount} indicators from 1 to 4.
+2. Calculate the percentage: add up (score ÷ 4 × weight) over all ${indicatorCount} indicators. The weights add up to 100%, so a heavier indicator moves the result more.`
+            : `1. Calculate the total score by adding the points from all ${indicatorCount} indicators.
+2. Calculate the percentage: total / ${maxScore} × 100.`;
+        // "≥80% (17+ points)" for a plain rubric, "≥80%" for a weighted one.
+        const band = (percent: string, points: string, join: ' (' | ', ') =>
+            weighted ? percent : `${percent}${join}${points}${join === ' (' ? ')' : ''}`;
+
         const scoringBlock = `
-**Scoring & Decision Logic (Max ${maxScore} Points from ${indicatorCount} indicators × 4)**
-1. Calculate the total score by adding the points from all ${indicatorCount} indicators.
-2. Calculate the percentage: total / ${maxScore} × 100.
+**Scoring & Decision Logic ${scaleLine}**
+${percentageSteps}
 3. Determine the category:
-  * ≥80% (${approvedThreshold}+ points): Exemplary — Outstanding work across the board.
-  * 55–79% (${revisionThreshold}–${approvedThreshold - 1} points): Proficient — Solid but has noticeable gaps that need improvement.
-  * <55% (below ${revisionThreshold} points): Developing/Beginning — Significant weaknesses; needs major revision.`;
+  * ${band('≥80%', `${approvedThreshold}+ points`, ' (')}: Exemplary — Outstanding work across the board.
+  * ${band('55–79%', `${revisionThreshold}–${approvedThreshold - 1} points`, ' (')}: Proficient — Solid but has noticeable gaps that need improvement.
+  * ${band('<55%', `below ${revisionThreshold} points`, ' (')}: Developing/Beginning — Significant weaknesses; needs major revision.`;
 
         const decisionBlock = `
-**Decision Logic (Max ${maxScore} Points from ${indicatorCount} indicators × 4)**
-1. Calculate the total score by adding the points from all ${indicatorCount} indicators.
-2. Calculate the percentage: total / ${maxScore} × 100.
+**Decision Logic ${scaleLine}**
+${percentageSteps}
 3. Determine the final decision (suggested_status):
-  * 'approved' (≥80%, ${approvedThreshold}+ points): Accepted. Green light to proceed.
-  * 'revision' (55–79%, ${revisionThreshold}–${approvedThreshold - 1} points): Accepted with Revision. Needs improvements before proceeding.
-  * 'disapproved' (<55%, below ${revisionThreshold} points): Not Accepted. Misses the mark on multiple fronts.${contextIds.length > 0 ? `
+  * 'approved' (${band('≥80%', `${approvedThreshold}+ points`, ', ')}): Accepted. Green light to proceed.
+  * 'revision' (${band('55–79%', `${revisionThreshold}–${approvedThreshold - 1} points`, ', ')}): Accepted with Revision. Needs improvements before proceeding.
+  * 'disapproved' (${band('<55%', `below ${revisionThreshold} points`, ', ')}): Not Accepted. Misses the mark on multiple fronts.${contextIds.length > 0 ? `
 4. School rule, which overrides the percentages: if you scored the real-life context indicator 1 or 2, suggested_status cannot be 'approved'. Use 'revision' at most.` : ''}`;
 
 
@@ -221,7 +256,72 @@ export async function POST(req: Request) {
             }
         }
 
-        if (isC2) {
+        if (isSubject) {
+            // ===== English / Bahasa Indonesia rubrics: the students' language =====
+            const languageName = subject === 'indonesian' ? 'Bahasa Indonesia' : 'English';
+            const feedbackLanguage = subject === 'indonesian'
+                ? '**LANGUAGE RULE: Write teacher_comment and indicator_comments in clear, standard Bahasa Indonesia (bahasa baku) that SMP and SMA students can follow. Use short sentences.**'
+                : '**LANGUAGE RULE: Write all feedback in simple, clear English. Use short sentences. Avoid difficult vocabulary. This is for students and teachers who use English as a second language (ESL). Make it easy to read but still professional for a school setting.**';
+            const unseen = subjectWork === 'presentation'
+                ? `You cannot see the slides, hear the presentation or see the Q&A. Criteria about speaking (spoken grammar and vocabulary, pronunciation, intonation, fluency, how the spoken presentation flows, answers to questions) and about the slides themselves can only be judged by the teacher who watched it.`
+                : subjectWork === 'infographic'
+                    ? `You cannot see the infographic itself. Use the written text below as the closest evidence of the group's written ${languageName}, and say in your comments that the teacher should confirm against the infographic. Criteria about layout, visuals or how the infographic reads at a glance can only be judged by looking at it.`
+                    : `You cannot see or hear anything except the text below.`;
+
+            prompt = `### System Instructions for Language Assessment (${languageName}: ${categoryName})
+
+**Role & Objective**
+You are an experienced ${subject === 'indonesian' ? 'Bahasa Indonesia' : 'English as a second language'} teacher at an Indonesian secondary school. You assess the ${languageName} the students used in their STEAM project work, using the rubric below. This is a language assessment: judge how well they use ${languageName}, not the science or the quality of the project idea, and do not apply STEAM integration rules.
+
+${feedbackLanguage}
+
+${knowledge}
+
+The background above tells you who these students are. In this assessment, use it only to pitch your explanations at their level; apply the rubric levels as written.
+
+**What you can see**
+You can read only the text below: the project title, the abstract and, when available, the project document. ${unseen}
+Score a criterion 0 when you cannot judge it from this text. 0 means "the teacher scores this"; never guess a number for it. In that criterion's indicator comment, say what the teacher should look or listen for.
+
+**Student Text**
+<TITLE>
+${project.title}
+</TITLE>
+<PROBLEM>
+${problemDesc || 'Not provided.'}
+</PROBLEM>
+<SOLUTION>
+${solutionDesc || 'Not provided.'}
+</SOLUTION>
+<DOCUMENT>
+${docText || 'No document content available. Judge only from the title and abstract above.'}
+</DOCUMENT>
+
+**Evaluation Rubric (Score each indicator 1 to 4 using the criteria below, or 0 when you cannot judge it)**
+${rubricContext}
+
+Assessment Indicators (you MUST give each one a score):
+${JSON.stringify(indicators.map((i: { id: string; description: string }) => ({ id: i.id, description: i.description })), null, 2)}
+
+${scoringBlock}
+Leave the 0-scored criteria out of this; the teacher completes them.
+
+**FEEDBACK GUIDELINES**
+1. Quote short examples from the students' own text: an error with its correction, a sentence that works well, a term used well or badly.
+2. Judge only the language they actually wrote. A scientific mistake matters here only when it makes the language unclear.
+3. Your 'teacher_comment' MUST be written in **well-aligned proper paragraphs separated by double line breaks (\\n\\n)**, with no bullet points: an overall verdict, what they do well, the most important errors with corrections, and 2 or 3 concrete next steps. End by naming the criteria the teacher still has to score.
+4. Do not mention points or percentages in the comment.
+
+**INDICATOR COMMENTS (indicator_comments field)**
+For each indicator ID listed in the "Assessment Indicators" block above, write a concise explanation of WHY you gave that specific score, or, for a 0, what the teacher should check.
+- Base your reasons ONLY on evidence found in the student's text above. Do NOT invent or hallucinate details.
+- Give between 1 and 5 reasons (use fewer if the evidence is limited — do not pad).
+- Keep each reason to 1-2 sentences.
+- Write as plain prose sentences separated by ". " — no bullet symbols.
+
+Provide your output exactly matching the JSON schema.`;
+
+        } else if (isC2) {
             // ===== C2: Ask & Research — reads Google Doc content =====
             prompt = `### System Instructions for STEAM Project Assessment API (Phase: Ask & Research)
 
@@ -545,9 +645,22 @@ Provide your output exactly matching the JSON schema.
             throw generationError;
         }
 
+        const assessment = readAssessment(responseText) ?? {};
+
+        // A subject rubric's 0 means "the teacher scores this": drop it, and
+        // anything else outside 1-4, so the criterion stays blank in the form
+        // instead of being saved as a score nobody gave.
+        if (isSubject && assessment.scores && typeof assessment.scores === 'object') {
+            const scores = assessment.scores as Record<string, unknown>;
+            for (const [id, value] of Object.entries(scores)) {
+                const n = Number(value);
+                if (!Number.isInteger(n) || n < 1 || n > 4) delete scores[id];
+            }
+        }
+
         // The school rule once more, on the answer itself: the prompt tells the
         // model a non-contextual problem cannot be approved, and this makes sure.
-        return NextResponse.json(applyContextRule(readAssessment(responseText) ?? {}, contextIds));
+        return NextResponse.json(applyContextRule(assessment, contextIds));
 
     } catch (error: any) {
         console.error('AI Assessment Error:', error);

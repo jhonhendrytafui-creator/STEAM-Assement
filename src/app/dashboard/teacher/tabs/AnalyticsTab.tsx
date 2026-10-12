@@ -6,6 +6,32 @@ import {
 } from 'lucide-react';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import type { AssessmentCategory, RubricDimension, RubricIndicator } from '@/lib/types';
+import { hasCustomWeights, weightedScore, maxScaleOf, groupRubrics } from '@/lib/rubric';
+
+/**
+ * Each group's score on the given criteria, as a weighted percentage, keyed
+ * "class-group". Only groups with a score on at least one of the criteria.
+ */
+function groupPercentages(
+    criteria: ReadonlyArray<{ id: string; weight?: number | null }>,
+    scores: ReadonlyArray<{ class_name: string; group_number: number; indicator_id: string; score: number }>,
+    maxScale: number,
+): Map<string, number> {
+    const ids = new Set(criteria.map(c => c.id));
+    const byGroup = new Map<string, Record<string, number>>();
+    for (const s of scores) {
+        if (!ids.has(s.indicator_id)) continue;
+        const key = `${s.class_name}-${s.group_number}`;
+        const map = byGroup.get(key) ?? {};
+        map[s.indicator_id] = s.score;
+        byGroup.set(key, map);
+    }
+    const out = new Map<string, number>();
+    byGroup.forEach((map, key) => out.set(key, weightedScore(criteria, map, maxScale).percentage));
+    return out;
+}
+
+const average = (values: number[]) => values.length > 0 ? Math.round(values.reduce((a, b) => a + b, 0) / values.length) : 0;
 
 interface AnalyticsTabProps {
     allStudents: any[];
@@ -33,9 +59,6 @@ export default function AnalyticsTab({ allStudents, allAssessmentScores, assessm
     const chart1Data = assessmentCategories.map(cat => {
         const dims = rubricDimensions.filter(d => d.category_id === cat.id);
         const inds = rubricIndicators.filter(i => dims.some(d => d.id === i.dimension_id));
-        const isChecklist = cat.rubric_type === 'checklist';
-        const maxScale = parseInt(cat.rubric_type.replace('scale_', '') || '1');
-        const maxPerGroup = isChecklist ? inds.length : inds.length * maxScale;
 
         let baseScores = allAssessmentScores.filter(s => s.category_id === cat.id);
         if (analyticsClass) {
@@ -44,17 +67,8 @@ export default function AnalyticsTab({ allStudents, allAssessmentScores, assessm
             baseScores = baseScores.filter(s => String(s.class_name).split('.')[0] === analyticsGrade);
         }
 
-        const groupScores = new Map<string, number>();
-        baseScores.forEach(s => {
-            const key = `${s.class_name}-${s.group_number}`;
-            groupScores.set(key, (groupScores.get(key) || 0) + s.score);
-        });
-
-        const groupEntries = Array.from(groupScores.values());
-        const avgPct = groupEntries.length > 0 && maxPerGroup > 0
-            ? Math.round(groupEntries.reduce((a, b) => a + b, 0) / groupEntries.length / maxPerGroup * 100)
-            : 0;
-        return { code: cat.code, name: cat.name, avgPct, groupCount: groupEntries.length };
+        const groupEntries = Array.from(groupPercentages(inds, baseScores, maxScaleOf(cat.rubric_type)).values());
+        return { code: cat.code, name: cat.name, avgPct: average(groupEntries), groupCount: groupEntries.length };
     });
 
     // Chart 2 & 3 Dependencies: Selected Category
@@ -65,9 +79,6 @@ export default function AnalyticsTab({ allStudents, allAssessmentScores, assessm
     if (selectedCatForCharts) {
         const dims = rubricDimensions.filter(d => d.category_id === selectedCatForCharts.id);
         const inds = rubricIndicators.filter(i => dims.some(d => d.id === i.dimension_id));
-        const isChecklist = selectedCatForCharts.rubric_type === 'checklist';
-        const maxScale = parseInt(selectedCatForCharts.rubric_type.replace('scale_', '') || '1');
-        const maxPerGroup = isChecklist ? inds.length : inds.length * maxScale;
 
         let baseScores = allAssessmentScores.filter(s => s.category_id === selectedCatForCharts.id);
         if (analyticsClass) {
@@ -76,16 +87,9 @@ export default function AnalyticsTab({ allStudents, allAssessmentScores, assessm
             baseScores = baseScores.filter(s => String(s.class_name).split('.')[0] === analyticsGrade);
         }
 
-        const groupScores = new Map<string, number>();
-        baseScores.forEach(s => {
-            const key = `${s.class_name}-${s.group_number}`;
-            groupScores.set(key, (groupScores.get(key) || 0) + s.score);
-        });
-
-        groupScores.forEach((score, key) => {
-            const pct = maxPerGroup > 0 ? Math.round((score / maxPerGroup) * 100) : 0;
+        groupPercentages(inds, baseScores, maxScaleOf(selectedCatForCharts.rubric_type)).forEach((pct, key) => {
             const [cls, grp] = key.split('-');
-            analyticsLeaderboardData.push({ label: `${cls} G${grp}`, pct });
+            analyticsLeaderboardData.push({ label: `${cls} G${grp}`, pct: Math.round(pct) });
         });
         analyticsLeaderboardData.sort((a, b) => b.pct - a.pct);
         analyticsLeaderboardData = analyticsLeaderboardData.slice(0, 10); // Top 10
@@ -95,13 +99,14 @@ export default function AnalyticsTab({ allStudents, allAssessmentScores, assessm
     const chart3Data: { dimName: string; avgPct: number; count: number }[] = [];
     if (selectedCatForCharts) {
         const dims = rubricDimensions.filter(d => d.category_id === selectedCatForCharts.id);
-        const isChecklist = selectedCatForCharts.rubric_type === 'checklist';
-        const maxScale = parseInt(selectedCatForCharts.rubric_type.replace('scale_', '') || '1');
+        const maxScale = maxScaleOf(selectedCatForCharts.rubric_type);
+        // Within a dimension, criteria keep their weights relative to each
+        // other; a rubric scored on equal weights stays equal here.
+        const weighted = hasCustomWeights(rubricIndicators.filter(i => dims.some(d => d.id === i.dimension_id)));
 
         dims.forEach(dim => {
             const inds = rubricIndicators.filter(i => i.dimension_id === dim.id);
             const indIds = inds.map(i => i.id);
-            const maxPerGroup = isChecklist ? inds.length : inds.length * maxScale;
 
             let baseScores = allAssessmentScores.filter(s => indIds.includes(s.indicator_id));
             if (analyticsClass) {
@@ -110,17 +115,9 @@ export default function AnalyticsTab({ allStudents, allAssessmentScores, assessm
                 baseScores = baseScores.filter(s => String(s.class_name).split('.')[0] === analyticsGrade);
             }
 
-            const groupScores = new Map<string, number>();
-            baseScores.forEach(s => {
-                const key = `${s.class_name}-${s.group_number}`;
-                groupScores.set(key, (groupScores.get(key) || 0) + s.score);
-            });
-
-            const entries = Array.from(groupScores.values());
-            const avgPct = entries.length > 0 && maxPerGroup > 0
-                ? Math.round(entries.reduce((a, b) => a + b, 0) / entries.length / maxPerGroup * 100)
-                : 0;
-            chart3Data.push({ dimName: dim.name, avgPct, count: entries.length });
+            const criteria = weighted ? inds : inds.map(i => ({ id: i.id }));
+            const entries = Array.from(groupPercentages(criteria, baseScores, maxScale).values());
+            chart3Data.push({ dimName: dim.name, avgPct: average(entries), count: entries.length });
         });
     }
 
@@ -169,7 +166,23 @@ export default function AnalyticsTab({ allStudents, allAssessmentScores, assessm
                         className="w-full bg-[#1a1811] border border-slate-800 rounded-lg py-2.5 px-3 text-sm text-slate-200 focus:outline-none focus:border-emerald-500"
                     >
                         <option value="">Select an Assessment...</option>
-                        {assessmentCategories.map(c => <option key={c.id} value={c.id}>{c.code} - {c.name}</option>)}
+                        {(() => {
+                            const { phases, others } = groupRubrics(assessmentCategories);
+                            return (
+                                <>
+                                    {phases.length > 0 && (
+                                        <optgroup label="STEAM phases">
+                                            {phases.map(c => <option key={c.id} value={c.id}>{c.code} - {c.name}</option>)}
+                                        </optgroup>
+                                    )}
+                                    {others.length > 0 && (
+                                        <optgroup label="Other rubrics">
+                                            {others.map(c => <option key={c.id} value={c.id}>{c.code} - {c.name}</option>)}
+                                        </optgroup>
+                                    )}
+                                </>
+                            );
+                        })()}
                     </select>
                 </div>
             </div>
@@ -191,7 +204,7 @@ export default function AnalyticsTab({ allStudents, allAssessmentScores, assessm
                         <div className="space-y-4">
                             {chart1Data.map(c => (
                                 <div key={c.code} className="flex items-center gap-4">
-                                    <span className="w-12 text-sm font-bold text-amber-400 shrink-0" title={c.name}>{c.code}</span>
+                                    <span className="w-16 text-sm font-bold text-amber-400 shrink-0" title={c.name}>{c.code}</span>
                                     <div className="flex-1 bg-[#1c1b14] rounded-full h-8 border border-slate-800 overflow-hidden">
                                         <div className={`h-full rounded-r-full ${barColor(c.avgPct)} transition-all flex items-center justify-end pr-3`} style={{ width: `${Math.max(c.avgPct, 5)}%` }}>
                                             <span className="text-xs font-bold text-white drop-shadow-md">{c.avgPct}%</span>

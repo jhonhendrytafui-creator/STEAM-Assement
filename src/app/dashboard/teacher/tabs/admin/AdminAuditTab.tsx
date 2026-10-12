@@ -22,6 +22,7 @@ const ACTION_LABELS: Record<string, string> = {
     'teacher.revoke_admin': 'Removed admin rights',
     'project.delete_iteration': 'Deleted a submission',
     'project.reset_group': 'Reset a group',
+    'rubric.set_weights': 'Changed rubric weights',
 };
 
 const DESTRUCTIVE = new Set([

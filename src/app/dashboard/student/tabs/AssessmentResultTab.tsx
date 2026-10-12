@@ -4,6 +4,10 @@ import React, { useState } from 'react';
 import { FileCheck, TrendingUp, CheckCircle2, X, UserCheck } from 'lucide-react';
 import type { AssessmentCategory, RubricDimension, RubricIndicator, AssessmentScoreEntry } from '@/lib/types';
 import { summarizeAssessors } from '@/lib/assessor';
+import {
+    effectiveWeights, hasCustomWeights, weightedScore, scoresByCriterion,
+    maxScaleOf, formatScore, formatWeight, groupRubrics,
+} from '@/lib/rubric';
 
 interface AssessmentResultTabProps {
     assessmentCategories: AssessmentCategory[];
@@ -31,31 +35,46 @@ export default function AssessmentResultTab({
                 Assessment Results
             </h2>
 
-            {/* Category Pills */}
-            <div className="flex flex-wrap gap-2 mb-8">
-                {assessmentCategories.map((cat) => {
-                    const isActive = selectedCategory === cat.id;
-                    const catDimIds = rubricDimensions.filter(d => d.category_id === cat.id).map(d => d.id);
-                    const catIndIds = rubricIndicators.filter(ind => catDimIds.includes(ind.dimension_id)).map(ind => ind.id);
-                    const hasScores = assessmentScores.some(s => catIndIds.includes(s.indicator_id));
-
-                    return (
-                        <button
-                            key={cat.id}
-                            onClick={() => setSelectedCategory(cat.id)}
-                            className={`relative px-4 py-2 rounded-xl text-sm font-semibold border transition-all ${isActive
-                                ? 'bg-amber-500/20 text-amber-400 border-amber-500/50 shadow-lg shadow-amber-900/10'
-                                : 'bg-[#1c1b14] text-slate-400 border-slate-800 hover:border-slate-600 hover:text-slate-300'
-                                }`}
-                        >
-                            <span className="text-xs font-bold mr-1.5 opacity-60">{cat.code}</span>
-                            <span className="hidden sm:inline">{cat.name}</span>
-                            {hasScores && (
-                                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-[#1a1811]"></span>
+            {/* Category Pills: the STEAM phases, then the other rubrics */}
+            <div className="space-y-3 mb-8">
+                {(() => {
+                    const { phases, others } = groupRubrics(assessmentCategories);
+                    return [
+                        { label: 'STEAM phases', items: phases },
+                        { label: 'Other rubrics', items: others },
+                    ].filter(section => section.items.length > 0).map(section => (
+                        <div key={section.label}>
+                            {others.length > 0 && (
+                                <span className="block text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">{section.label}</span>
                             )}
-                        </button>
-                    );
-                })}
+                            <div className="flex flex-wrap gap-2">
+                                {section.items.map((cat) => {
+                                    const isActive = selectedCategory === cat.id;
+                                    const catDimIds = rubricDimensions.filter(d => d.category_id === cat.id).map(d => d.id);
+                                    const catIndIds = rubricIndicators.filter(ind => catDimIds.includes(ind.dimension_id)).map(ind => ind.id);
+                                    const hasScores = assessmentScores.some(s => catIndIds.includes(s.indicator_id));
+
+                                    return (
+                                        <button
+                                            key={cat.id}
+                                            onClick={() => setSelectedCategory(cat.id)}
+                                            className={`relative px-4 py-2 rounded-xl text-sm font-semibold border transition-all ${isActive
+                                                ? 'bg-amber-500/20 text-amber-400 border-amber-500/50 shadow-lg shadow-amber-900/10'
+                                                : 'bg-[#1c1b14] text-slate-400 border-slate-800 hover:border-slate-600 hover:text-slate-300'
+                                                }`}
+                                        >
+                                            <span className="text-xs font-bold mr-1.5 opacity-60">{cat.code}</span>
+                                            <span className="hidden sm:inline">{cat.name}</span>
+                                            {hasScores && (
+                                                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-[#1a1811]"></span>
+                                            )}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    ));
+                })()}
             </div>
 
             {/* Rubric Result View */}
@@ -66,7 +85,7 @@ export default function AssessmentResultTab({
                 if (!cat) return null;
 
                 const dims = rubricDimensions.filter(d => d.category_id === cat.id).sort((a, b) => a.sort_order - b.sort_order);
-                const maxScale = parseInt(cat.rubric_type.replace('scale_', '')) || 1;
+                const maxScale = maxScaleOf(cat.rubric_type);
                 const isChecklist = cat.rubric_type === 'checklist';
 
                 const allInds = dims.flatMap(dim =>
@@ -99,9 +118,14 @@ export default function AssessmentResultTab({
                     );
                 }
 
-                const totalScore = catScores.reduce((sum, s) => sum + s.score, 0);
-                const totalMax = isChecklist ? allInds.length : allInds.length * maxScale;
-                const overallPct = totalMax > 0 ? Math.round((totalScore / totalMax) * 100) : 0;
+                // Criteria can carry different weights (src/lib/rubric.ts). When
+                // they do, the score is a weighted percentage and the plain
+                // points are not shown, because they would not add up to it.
+                const weighted = hasCustomWeights(allInds);
+                const shares = effectiveWeights(allInds);
+                const scoreMap = scoresByCriterion(catScores);
+                const overall = weightedScore(allInds, scoreMap, maxScale);
+                const overallPct = weighted ? Math.round(overall.percentage * 100) / 100 : Math.round(overall.percentage);
 
                 let overallColor = 'text-amber-400';
                 let overallBg = 'bg-amber-500';
@@ -130,8 +154,10 @@ export default function AssessmentResultTab({
                                 </span>
                             </div>
                             <div className="flex items-end gap-3 mt-3">
-                                <span className={`text-4xl font-bold ${overallColor}`}>{overallPct}%</span>
-                                <span className="text-sm text-slate-500 mb-1">({totalScore}/{totalMax} points)</span>
+                                <span className={`text-4xl font-bold ${overallColor}`}>{formatScore(overallPct)}%</span>
+                                <span className="text-sm text-slate-500 mb-1">
+                                    {weighted ? '(weighted score)' : `(${overall.points}/${overall.maxPoints} points)`}
+                                </span>
                             </div>
                             <div className="w-full bg-slate-800 rounded-full h-2 mt-3">
                                 <div className={`${overallBg} h-2 rounded-full transition-all duration-700`} style={{ width: `${overallPct}%` }}></div>
@@ -176,16 +202,27 @@ export default function AssessmentResultTab({
                             const dimIndIds = dimInds.map(ind => ind.id);
                             const dimScores = assessmentScores.filter(s => dimIndIds.includes(s.indicator_id));
 
-                            const dimTotal = dimScores.reduce((sum, s) => sum + s.score, 0);
-                            const dimMax = isChecklist ? dimInds.length : dimInds.length * maxScale;
-                            const dimPct = dimMax > 0 ? Math.round((dimTotal / dimMax) * 100) : 0;
+                            // Within a dimension the criteria keep their weights
+                            // relative to each other. A rubric scored on equal
+                            // weights is equal here too, whatever is stored.
+                            const dimResult = weightedScore(
+                                weighted ? dimInds : dimInds.map(ind => ({ id: ind.id })),
+                                scoreMap,
+                                maxScale,
+                            );
+                            const dimPct = Math.round(dimResult.percentage);
+                            const dimShare = dimInds.reduce((sum, ind) => sum + (shares.get(ind.id) ?? 0), 0);
 
                             return (
                                 <div key={dim.id} className="bg-[#1c1b14] border border-slate-800 rounded-xl overflow-hidden">
                                     <div className="px-5 py-4 border-b border-slate-800/50 flex items-center justify-between">
                                         <h4 className="font-bold text-white text-sm">{dim.name}</h4>
                                         <div className="flex items-center gap-2">
-                                            <span className="text-xs text-slate-500">{dimTotal}/{dimMax}</span>
+                                            <span className="text-xs text-slate-500">
+                                                {weighted
+                                                    ? (dims.length > 1 ? `${formatWeight(dimShare)} of the score` : '')
+                                                    : `${dimResult.points}/${dimResult.maxPoints}`}
+                                            </span>
                                             <span className={`text-sm font-bold ${dimPct >= 80 ? 'text-emerald-400' : dimPct >= 60 ? 'text-amber-400' : 'text-red-400'}`}>
                                                 {dimPct}%
                                             </span>
@@ -202,7 +239,14 @@ export default function AssessmentResultTab({
                                                 <div key={ind.id} className="px-5 py-3 hover:bg-[#1a1811] transition-colors">
                                                     <div className="flex items-center gap-4">
                                                         <span className="text-xs text-slate-600 font-mono w-6 shrink-0">{idx + 1}.</span>
-                                                        <p className="text-sm text-slate-300 flex-1">{ind.description}</p>
+                                                        <p className="text-sm text-slate-300 flex-1">
+                                                            {ind.description}
+                                                            {weighted && (
+                                                                <span className="ml-2 inline-block align-middle text-[10px] font-bold text-sky-300 bg-sky-500/10 border border-sky-500/30 rounded px-1.5 py-0.5" title="This criterion's share of the score">
+                                                                    {formatWeight(shares.get(ind.id) ?? 0)}
+                                                                </span>
+                                                            )}
+                                                        </p>
 
                                                         <div className="flex items-center gap-1 shrink-0">
                                                             {isChecklist ? (

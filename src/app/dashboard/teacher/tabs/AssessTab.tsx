@@ -12,6 +12,10 @@ import { safeExternalUrl } from '@/lib/url';
 import type { AssessmentCategory, RubricDimension, RubricIndicator, ProjectData, ToastType } from '@/lib/types';
 import { parseAbstract, subjectLabel } from '@/lib/abstract';
 import { summarizeAssessors, type AssessorSummary } from '@/lib/assessor';
+import {
+    effectiveWeights, hasCustomWeights, weightedScore, formatScore, formatWeight,
+    maxScaleOf, rubricLock, groupRubrics, isSteamPhase, STEAM_PHASE_CODES,
+} from '@/lib/rubric';
 
 /**
  * Where a group stands on one assessment category.
@@ -303,6 +307,9 @@ export default function AssessTab({
             const cat = assessmentCategories.find(c => c.id === assessCategory);
             const dims = rubricDimensions.filter(d => d.category_id === assessCategory);
             const inds = rubricIndicators.filter(i => dims.some(d => d.id === i.dimension_id));
+            // Each criterion's share of the score, so the AI weighs the
+            // criteria the way the rubric does (and knows when they are equal).
+            const shares = effectiveWeights(inds);
 
             const response = await fetch('/api/ai-assess', {
                 method: 'POST',
@@ -310,7 +317,13 @@ export default function AssessTab({
                 body: JSON.stringify({
                     project: assessProject,
                     categoryName: cat?.name || 'Unknown Category',
-                    indicators: inds.map(i => ({ id: i.id, description: i.description, criteria: i.criteria || {} })),
+                    categoryCode: cat?.code,
+                    indicators: inds.map(i => ({
+                        id: i.id,
+                        description: i.description,
+                        criteria: i.criteria || {},
+                        weight: Math.round((shares.get(i.id) ?? 0) * 10000) / 100,
+                    })),
                     googleDocUrl: assessProject?.google_doc_url || null,
                     assessLogbooks: cat?.code === 'C4' ? assessLogbooks : undefined
                 })
@@ -326,7 +339,14 @@ export default function AssessTab({
             if (data.suggested_status) setAssessStatus(data.suggested_status);
             if (data.indicator_comments) setIndicatorComments(data.indicator_comments);
 
-            showToast('AI Assessment complete! Please review.', 'success');
+            // The AI leaves blank what it cannot judge from text, such as
+            // pronunciation or answers in a live Q&A.
+            const leftBlank = inds.filter(i => data.scores?.[i.id] === undefined).length;
+            if (leftBlank > 0) {
+                showToast(`AI Assessment complete. ${leftBlank} criteria need your score: the AI could not judge them from the text.`, 'info');
+            } else {
+                showToast('AI Assessment complete! Please review.', 'success');
+            }
         } catch (error: any) {
             showToast(error.message, 'error');
         } finally {
@@ -409,6 +429,19 @@ export default function AssessTab({
         if (scoreEntries.length === 0) {
             showToast('No scores provided. Please fill out the rubric.', 'warning');
             return;
+        }
+
+        // On a scale rubric every criterion needs a level: a blank one would
+        // count as zero and pull the score down without anyone choosing that.
+        // (A checklist item left unticked is a real "not met".)
+        if (selectedCat?.rubric_type !== 'checklist') {
+            const catDims = rubricDimensions.filter(d => d.category_id === assessCategory);
+            const unscored = rubricIndicators.filter(i =>
+                catDims.some(d => d.id === i.dimension_id) && !(currentScores[i.id] >= 1));
+            if (unscored.length > 0) {
+                showToast(`Score every criterion before saving (${unscored.length} left).`, 'warning');
+                return;
+            }
         }
 
         setIsSubmittingScore(true);
@@ -531,7 +564,23 @@ export default function AssessTab({
                             className="w-full bg-[#1a1811] border border-slate-800 rounded-lg py-2.5 px-3 text-sm text-slate-200 focus:outline-none focus:border-amber-500"
                         >
                             <option value="">Select Assessment</option>
-                            {assessmentCategories.map(c => <option key={c.id} value={c.id}>{c.code} - {c.name}</option>)}
+                            {(() => {
+                                const { phases, others } = groupRubrics(assessmentCategories);
+                                return (
+                                    <>
+                                        {phases.length > 0 && (
+                                            <optgroup label="STEAM phases (in order)">
+                                                {phases.map(c => <option key={c.id} value={c.id}>{c.code} - {c.name}</option>)}
+                                            </optgroup>
+                                        )}
+                                        {others.length > 0 && (
+                                            <optgroup label="Other rubrics (after C1 is approved)">
+                                                {others.map(c => <option key={c.id} value={c.id}>{c.code} - {c.name}</option>)}
+                                            </optgroup>
+                                        )}
+                                    </>
+                                );
+                            })()}
                         </select>
                     </div>
                 </div>
@@ -683,27 +732,11 @@ export default function AssessTab({
                                 const cat = assessmentCategories.find(c => c.id === assessCategory);
                                 const dims = rubricDimensions.filter(d => d.category_id === assessCategory);
 
-                                const checkCategoryUnlocked = () => {
-                                    if (!cat || !assessProject) return true;
-                                    if (cat.code === 'C1') return true;
+                                // C1 first; then C2-C5 in order, and every other
+                                // rubric in any order. See rubricLock.
+                                const lock = rubricLock(cat, assessmentCategories, groupCompletedCategories, assessProject);
 
-                                    const c1Cat = assessmentCategories.find(c => c.code === 'C1');
-                                    if (!c1Cat || !groupCompletedCategories.has(c1Cat.id) || assessProject?.status !== 'approved') return false;
-
-                                    const codes = ['C1', 'C2', 'C3', 'C4', 'C5'];
-                                    const targetIndex = codes.indexOf(cat.code);
-                                    if (targetIndex > 1) {
-                                        for (let i = 1; i < targetIndex; i++) {
-                                            const prevCat = assessmentCategories.find(c => c.code === codes[i]);
-                                            if (prevCat && !groupCompletedCategories.has(prevCat.id)) return false;
-                                        }
-                                    }
-                                    return true;
-                                };
-
-                                const isPrerequisitesMet = checkCategoryUnlocked();
-
-                                if (!isPrerequisitesMet) {
+                                if (lock) {
                                     return (
                                         <div className="bg-[#1c1b14] border border-red-500/20 rounded-xl p-10 text-center text-red-400 shadow-xl">
                                             <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -711,8 +744,17 @@ export default function AssessTab({
                                             </div>
                                             <h3 className="text-xl font-bold text-slate-200 mb-2">Assessment Blocked</h3>
                                             <p className="text-slate-400 text-sm max-w-sm mx-auto leading-relaxed">
-                                                You must complete the previous assessments in order. For C1, ensure the project is fully scored and its status is set to <strong>Approved</strong> before proceeding to {cat?.code}.
+                                                {lock === 'c1-not-approved' ? (
+                                                    <>C1 comes first. {cat?.code} opens once this group&apos;s C1 is scored and the project is set to <strong>Approved</strong>.</>
+                                                ) : (
+                                                    <>The STEAM phases are assessed in order. Complete {STEAM_PHASE_CODES.slice(1, STEAM_PHASE_CODES.indexOf(cat?.code as typeof STEAM_PHASE_CODES[number])).join(', ')} before {cat?.code}.</>
+                                                )}
                                             </p>
+                                            {lock === 'c1-not-approved' && cat && !isSteamPhase(cat.code) && (
+                                                <p className="text-slate-500 text-xs max-w-sm mx-auto mt-3">
+                                                    This rubric is not part of the C1-C5 sequence, so once C1 is approved it can be used at any time.
+                                                </p>
+                                            )}
                                         </div>
                                     );
                                 }
@@ -727,7 +769,11 @@ export default function AssessTab({
                                 }
 
                                 const isChecklist = cat?.rubric_type === 'checklist';
-                                const maxScale = parseInt(cat?.rubric_type.replace('scale_', '') || '1');
+                                const maxScale = maxScaleOf(cat?.rubric_type);
+                                const allInds = dims.flatMap(d => rubricIndicators.filter(i => i.dimension_id === d.id));
+                                const shares = effectiveWeights(allInds);
+                                const showWeights = hasCustomWeights(allInds);
+                                const liveScore = weightedScore(allInds, currentScores, maxScale);
 
                                 return (
                                     <div className="space-y-6">
@@ -748,6 +794,21 @@ export default function AssessTab({
                                                 {existingAssessor.partial && (
                                                     <span className="text-slate-600">(some rows predate this being recorded)</span>
                                                 )}
+                                            </div>
+                                        )}
+
+                                        {allInds.length > 0 && (
+                                            <div className="bg-[#1c1b14] border border-slate-800 rounded-xl px-4 py-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+                                                <span className="text-xs text-slate-500">
+                                                    {showWeights ? 'Weighted score' : 'Score'}
+                                                    <span className="text-slate-600"> · {liveScore.scoredCount} of {allInds.length} criteria scored</span>
+                                                </span>
+                                                <span className="text-sm font-bold text-amber-400">
+                                                    {formatScore(liveScore.percentage)} / 100
+                                                    {!showWeights && (
+                                                        <span className="text-xs font-semibold text-slate-500"> ({liveScore.points}/{liveScore.maxPoints} pts)</span>
+                                                    )}
+                                                </span>
                                             </div>
                                         )}
 
@@ -813,7 +874,14 @@ export default function AssessTab({
                                                     <div className="divide-y divide-slate-800/50">
                                                         {inds.map(ind => (
                                                             <div key={ind.id} className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-[#1a1811]/50 transition-colors last:rounded-b-xl">
-                                                                <p className="text-sm text-slate-400 flex-1">{ind.description}</p>
+                                                                <p className="text-sm text-slate-400 flex-1">
+                                                                    {ind.description}
+                                                                    {showWeights && (
+                                                                        <span className="ml-2 inline-block align-middle text-[10px] font-bold text-sky-300 bg-sky-500/10 border border-sky-500/30 rounded px-1.5 py-0.5" title="This criterion's share of the rubric's score">
+                                                                            {formatWeight(shares.get(ind.id) ?? 0)}
+                                                                        </span>
+                                                                    )}
+                                                                </p>
                                                                 <div className="shrink-0 flex items-center justify-end">
                                                                     {isChecklist ? (
                                                                         <button

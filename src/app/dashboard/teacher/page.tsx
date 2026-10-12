@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
     LayoutDashboard, FolderOpen, BookOpen, ClipboardCheck,
     Users, BarChart2, Star, TrendingUp, HelpCircle, Search, BrainCircuit,
-    ShieldCheck, DatabaseZap, ScrollText, UserCog, CalendarClock, Palette, Activity
+    ShieldCheck, DatabaseZap, ScrollText, UserCog, CalendarClock, Palette, Activity, Scale
 } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase/client';
@@ -42,6 +42,7 @@ import AdminProjectsTab from './tabs/admin/AdminProjectsTab';
 import AdminAuditTab from './tabs/admin/AdminAuditTab';
 import AdminAcademicYearTab from './tabs/admin/AdminAcademicYearTab';
 import AdminThemesTab from './tabs/admin/AdminThemesTab';
+import AdminRubricWeightsTab from './tabs/admin/AdminRubricWeightsTab';
 import TeacherProfileForm from './TeacherProfileForm';
 import GroupActivityTab from './tabs/GroupActivityTab';
 
@@ -93,6 +94,7 @@ const ADMIN_SECTION: SidebarSection = {
         { id: 'admin-access', label: 'Teacher Access', icon: ShieldCheck },
         { id: 'admin-projects', label: 'Project Data', icon: DatabaseZap },
         { id: 'admin-themes', label: 'Project Themes', icon: Palette },
+        { id: 'admin-rubrics', label: 'Rubric Weights', icon: Scale },
         { id: 'admin-year', label: 'Academic Year', icon: CalendarClock },
         { id: 'admin-audit', label: 'Activity Log', icon: ScrollText },
     ],
@@ -156,6 +158,19 @@ export default function TeacherDashboardPage() {
             setAllStudents(students);
             setTotalGroups(new Set(students.map(s => `${s.class_name}-${s.group_number}`)).size);
         }
+    }, []);
+
+    // Re-read the rubrics after an admin changes their weights, so assessment,
+    // scores and analytics use the new ones without a reload.
+    const refreshRubrics = useCallback(async () => {
+        const [{ data: cats }, { data: dims }, { data: inds }] = await Promise.all([
+            supabase.from('assessment_categories').select('*').order('sort_order'),
+            supabase.from('rubric_dimensions').select('*').order('sort_order'),
+            supabase.from('rubric_indicators').select('*').order('sort_order'),
+        ]);
+        if (cats) setAssessmentCategories(cats);
+        if (dims) setRubricDimensions(dims);
+        if (inds) setRubricIndicators(inds);
     }, []);
 
     // Leaderboard refresh (used by VotingTab)
@@ -489,6 +504,14 @@ export default function TeacherDashboardPage() {
                             adminEmail={teacherProfile?.email ?? null}
                             showToast={showToast}
                             showConfirm={showConfirm}
+                        />
+                    )}
+
+                    {isAdmin && activeTab === 'admin-rubrics' && (
+                        <AdminRubricWeightsTab
+                            showToast={showToast}
+                            showConfirm={showConfirm}
+                            onWeightsChanged={refreshRubrics}
                         />
                     )}
 
