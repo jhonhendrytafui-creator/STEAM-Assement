@@ -26,12 +26,34 @@ noted, so re-running in this order is safe.
 | 16 | `teacher_role_1_column.sql` -> `_2_save_rpc` -> `_3_check` | A teaching / non-teaching flag, so staff who do not teach are not asked for subjects or grade levels. **Three files, run in order.** |
 | 17 | `group_activity_1_table.sql` -> `_2_project_triggers` -> `_3_logbook_triggers` | The group activity log: who in each group did what. **Three files, run in order.** |
 | 18 | `subject_rubrics_1_weights.sql` -> `_2_english` -> `_3_indonesian` -> `_4_check` | Criterion weights (admin-only) and the English / Bahasa Indonesia rubrics. **Four files, run in order.** |
+| 19 | `science_rubrics_1_seed.sql` -> `_2_check` | The Science rubrics (Writing, Presentation). Needs **18**. **Two files, run in order.** |
 
 ## Existing database
 
 Run **9**, **10**, **11**, **12**, **13**, **14**, **15**'s four parts, then
-**16**'s and **17**'s three parts, then **18**'s four parts, in order. All are
-safe to re-run.
+**16**'s and **17**'s three parts, then **18**'s four parts, then **19**'s two
+parts, in order. All are safe to re-run.
+
+**19 adds the Science rubrics.** Two rubrics from the school's Science content
+rubrics (kelas 7-9), for science teachers: Science Writing (`SCI-WRT`, semester
+1: poster in grade 7, infografis in grade 8, scientific paper in grade 9) and
+Science Presentation (`SCI-PRS`, semester 2: presentation, with the
+product/prototype in grades 8 and 9). Each has ten indikator scored 1-4, with
+the documents' text in Bahasa Indonesia and the English name in brackets. They
+score the science content and scientific reasoning only, not how the product
+looks or how it is engineered. Like the English and Bahasa Indonesia rubrics
+they open once C1 is approved, can be used in any order, any teacher can use
+them, and they show for every grade.
+
+Both documents score as `(total / 40) x 100`, so the ten indikator count 10%
+each and no weights are stored; an admin can still set some in **Admin ->
+Rubric Weights**. AI auto-assess has a Science prompt of its own that writes its
+feedback in Bahasa Indonesia, follows the documents' rules (count first; between
+two levels take the lower) and leaves the Presentation's *Pertahanan Ilmiah &
+Tanya Jawab* for the teacher, as well as anything the project document does not
+show. Part 1 refuses to run before **18**, and never touches a rubric that
+already has criteria. Part 2 checks both rubrics landed with their ten
+indikator; you should see `SCIENCE RUBRICS READY`.
 
 **18 adds the subject rubrics and rubric weights.** Four rubrics for subjects
 outside STEAM: English Infographic (`ENG-INF`), English Presentation
