@@ -6,12 +6,17 @@ import {
 } from '@/lib/ai-knowledge';
 import { GeminiGenerationError, generateWithFallback, teacherMessage } from '@/lib/gemini';
 import { effectiveWeights, formatWeight, hasCustomWeights } from '@/lib/rubric';
+import { extractChapters } from '@/lib/doc-chapters';
 
 // generateWithFallback keeps the Gemini walk inside 45 seconds, so the route
 // always answers with JSON before this limit.
 export const maxDuration = 60;
 
 // ─── Google Doc Text Extraction ─────────────────────
+// How much of the document is read, and how much of it goes into a prompt.
+const DOC_FETCH_LIMIT = 200_000;
+const DOC_PROMPT_LIMIT = 40_000;
+
 async function fetchGoogleDocText(url: string): Promise<string> {
     try {
         // Extract Google Doc ID from URL
@@ -28,8 +33,11 @@ async function fetchGoogleDocText(url: string): Promise<string> {
 
         if (!response.ok) return '';
         const text = await response.text();
-        // Limit to ~15000 chars to stay within token limits
-        return text.slice(0, 15000);
+        // The whole document, within reason: each phase takes its own
+        // chapters from it first (src/lib/doc-chapters.ts), and the prompt
+        // limit applies after that, so a long chapter 1-2 cannot push
+        // chapters 3-4 out of C3's view.
+        return text.slice(0, DOC_FETCH_LIMIT);
     } catch (e) {
         console.error('Failed to fetch Google Doc text:', e);
         return '';
@@ -54,6 +62,31 @@ function buildDynamicRubricContext(indicators: any[], shares: Map<string, number
         return `Indicator: "${ind.description}"${weight}\n${levels}`;
     }).join('\n\n');
 }
+
+// ─── Science rubric glossaries ──────────────────────
+// The "Penjelasan Istilah" tables of the school's Science rubrics (SCI-WRT,
+// SCI-PRS). The level texts count things these terms define, so the model
+// needs the same definitions the teachers use.
+const SCIENCE_GLOSSARY: Record<'writing' | 'presentation', string> = {
+    writing: `- Konsep Science: ide/prinsip ilmu pengetahuan yang bisa diberi nama dan dijelaskan.
+- Klaim: pernyataan siswa yang perlu dibuktikan ("Bahan A lebih menyerap air daripada bahan B").
+- Evidence: bukti yang mendukung klaim: data angka, hasil percobaan/pengamatan, atau fakta dari sumber kredibel. Pendapat pribadi bukan evidence.
+- Sumber kredibel: buku pelajaran/buku ilmiah, jurnal, situs pemerintah, universitas, atau lembaga resmi, yang jelas penulis/lembaga dan tahunnya. Media sosial dan blog tanpa penulis tidak dihitung.
+- Kondisi/batasan: hal yang memengaruhi keberhasilan solusi (suhu, jumlah bahan, waktu, tempat) atau hal yang membuat solusi tidak berlaku.
+- Kesalahan kecil: salah yang tidak mengubah kesimpulan siswa (istilah kurang tepat tetapi ide utamanya benar).`,
+    presentation: `- Solusi / prototype: produk (kelas 8-9) atau rancangan solusi yang dipresentasikan (kelas 7). Dinilai dari sisi Science-nya saja.
+- Konsep Science: ide/prinsip ilmu pengetahuan yang bisa diberi nama dan dijelaskan.
+- Evidence: bukti: data angka, hasil uji/pengamatan, atau fakta dari sumber kredibel. Pendapat pribadi bukan evidence.
+- Kriteria terukur: syarat keberhasilan yang punya angka/satuan atau ciri yang bisa dilihat (contoh: "suhu turun minimal 5 °C dalam 10 menit").
+- Variabel: hal yang diubah, diukur, atau dijaga tetap saat pengujian (mis. mengubah jumlah bahan, mengukur waktu, menjaga suhu tetap).
+- Keterbatasan: hal yang membuat hasil kurang kuat (contoh: data sedikit, alat kurang teliti, kondisi uji tidak sama).
+- Istilah keliru / kesalahan kecil: istilah keliru = istilah Science dipakai dengan arti yang salah; kesalahan kecil = salah yang tidak mengubah kesimpulan siswa.
+- Tanya jawab (5 pertanyaan): guru menyiapkan 5 pertanyaan Science yang sama untuk setiap kelompok. Jawaban dihitung benar jika tepat dan disertai alasan Science.`,
+};
+
+// The Science Presentation indikator only the teacher can score: the answers
+// to the teacher's five questions, which no document records.
+const SCIENCE_QA_INDICATOR = /tanya jawab|q\s*&\s*a/i;
 
 // ─── Dynamic Scoring Logic Builder ──────────────────
 // Calculates max score and percentage thresholds dynamically
@@ -114,9 +147,16 @@ export async function POST(req: Request) {
         const isC5 = code ? code === 'C5' : nameHas('c5', 'presentation');
 
         // The English and Bahasa Indonesia rubrics assess the students'
-        // language, not the project, so they get a prompt of their own.
-        const subject = /^ENG(-|$)/.test(code) ? 'english' : /^IND(-|$)/.test(code) ? 'indonesian' : null;
-        const subjectWork = code.endsWith('-PRS') ? 'presentation' : code.endsWith('-INF') ? 'infographic' : 'work';
+        // language, not the project, and the Science rubrics its science
+        // content, so each gets a prompt of its own.
+        const subject = /^ENG(-|$)/.test(code) ? 'english'
+            : /^IND(-|$)/.test(code) ? 'indonesian'
+            : /^SCI(-|$)/.test(code) ? 'science'
+            : null;
+        const subjectWork = code.endsWith('-PRS') ? 'presentation'
+            : code.endsWith('-INF') ? 'infographic'
+            : code.endsWith('-WRT') ? 'writing'
+            : 'work';
         const isSubject = subject !== null;
 
         // Categories without a decision status (C2, C3, C4 and the subject rubrics)
@@ -161,7 +201,9 @@ export async function POST(req: Request) {
             },
             teacher_comment: {
                 type: SchemaType.STRING,
-                description: isSubject
+                description: subject === 'science'
+                    ? `Feedback on the science content and scientific reasoning of the group's work, written in clear, standard Bahasa Indonesia (bahasa baku), in well-aligned paragraphs separated by double line breaks (\\n\\n): an overall verdict, what they do well, the most important scientific weaknesses with what to fix, and 2 or 3 concrete next steps. Name the criteria the teacher still has to score. Do NOT mention scores or percentages.`
+                    : isSubject
                     ? `Feedback on the group's ${subject === 'indonesian' ? 'Bahasa Indonesia, written in clear, standard Bahasa Indonesia' : 'English, written in simple, clear English'}, in well-aligned paragraphs separated by double line breaks (\\n\\n): an overall verdict, what they do well, the most important errors quoted with their corrections, and 2 or 3 concrete next steps. Name the criteria the teacher still has to score by viewing or watching the work. Do NOT mention scores or percentages.`
                     : isC4
                     ? "A single, coherent, casual paragraph providing sharp, objective feedback based on the logbook rubric. State the final score, process category, an objective compliment, a sharp critique, and an actionable suggestion."
@@ -248,15 +290,112 @@ ${percentageSteps}
 4. School rule, which overrides the percentages: if you scored the real-life context indicator 1 or 2, suggested_status cannot be 'approved'. Use 'revision' at most.` : ''}`;
 
 
+        // C1 reads the abstract and C4 the logbook, never the document. C2 and
+        // C3 each assess their own chapters of it, and only those are sent;
+        // every other rubric (the subject rubrics, BCM) reads all of it.
         let docText = '';
+        let docScope = '';
         if (!isC1 && !isC4) {
             const docUrl = googleDocUrl || project.google_doc_url;
-            if (docUrl) {
-                docText = await fetchGoogleDocText(docUrl);
+            const fullDoc = docUrl ? await fetchGoogleDocText(docUrl) : '';
+            const wanted = isSubject ? null : isC2 ? [1, 2] : isC3 ? [3, 4] : null;
+            docText = fullDoc;
+            if (fullDoc && wanted) {
+                const label = `Chapters ${wanted.join(' and ')}`;
+                const part = extractChapters(fullDoc, wanted);
+                if (part && part.found.length > 0) {
+                    docText = part.text;
+                    docScope = part.missing.length === 0
+                        ? `The text in <DOCUMENT> is only ${label} of the students' document, taken out by the system. Assess only this text.`
+                        : `The text in <DOCUMENT> is only Chapter ${part.found.join(' and ')} of the students' document: no heading for Chapter ${part.missing.join(' and ')} was found. Assess the text given, treat the content of the missing chapter as not found, and say in your comment that the teacher should check whether the document has Chapter ${part.missing.join(' and ')} under another heading.`;
+                } else {
+                    docScope = `No headings for ${label} were found in the students' document, so <DOCUMENT> is the whole document. Assess only the content that belongs to ${label} and ignore the other chapters.`;
+                }
             }
+            docText = docText.slice(0, DOC_PROMPT_LIMIT);
         }
 
-        if (isSubject) {
+        if (subject === 'science') {
+            // ===== Science rubrics: the science content and reasoning =====
+            const isPresentation = subjectWork === 'presentation';
+            const glossary = SCIENCE_GLOSSARY[isPresentation ? 'presentation' : 'writing'];
+            const qaIndicators = isPresentation
+                ? indicators.filter((i: { description?: string }) => SCIENCE_QA_INDICATOR.test(i.description ?? ''))
+                : [];
+            const qaNames = qaIndicators.map((i: { description: string }) => `"${i.description}"`).join(', ');
+            const workLine = isPresentation
+                ? `The work being scored is the group's presentation (grade 7) or product/prototype with a presentation (grades 8 and 9), where they apply, test, analyse and defend the science of their solution in front of the teacher.`
+                : `The work being scored is the group's written work: a poster (grade 7), an infographic (grade 8) or a scientific paper (grade 9).`;
+            const unseen = isPresentation
+                ? `You cannot see the presentation, the product/prototype or the question-and-answer session. ${qaNames ? `${qaNames} is scored from the teacher's five questions: always score it 0. ` : ''}For every other indikator, score only what the text below clearly shows (concepts, test steps and results, data, analysis, improvements). Where the text is silent, score 0 rather than assume the group did not show it in the presentation, and say what the teacher should look or listen for.`
+                : `The document below is the students' whole project document. Read all of it, but score only its science: what each indikator below describes. Parts about technology, engineering, art, mathematics, the build, the budget or the schedule count only where they carry the science (a science concept, cause and effect, evidence, a source). The document is the closest evidence of the written work. If it reads like notes rather than the poster, infographic or paper itself, still score from it, and say in your comments that the teacher should confirm against the work.`;
+
+            prompt = `### System Instructions for Science Content Assessment (${categoryName})
+
+**Role & Objective**
+You are an experienced science teacher at an Indonesian secondary school. You assess the science content and scientific reasoning in a group's STEAM project, using the school's Science rubric below. ${workLine}
+
+**What this rubric does NOT score**
+How the product looks, how well it is designed or built (engineering sophistication), and the quality of the students' language are not scored here. Do not apply STEAM integration rules: a project that rests mainly on one field of science is not marked down for that (the indikator about integrating concepts already handles it).
+
+**LANGUAGE RULE: Write teacher_comment and indicator_comments in clear, standard Bahasa Indonesia (bahasa baku) that SMP students can follow. Use short sentences. Keep the rubric's own terms (konsep Science, evidence, klaim, variabel, keterbatasan).**
+
+${knowledge}
+
+The background above tells you who these students are. In this assessment, use it only to pitch your explanations at their level; apply the rubric levels as written. The numbers in the levels apply to every grade.
+
+**What you can see**
+You can read only the text below: the project title, the abstract, the key concepts and, when available, the project document. ${unseen}
+Score an indikator 0 when you cannot judge it from this text. 0 means "the teacher scores this"; never guess a number for it.
+
+**How to choose a level (the school's rules for this rubric)**
+1. Count first, then choose the level. Count what the level texts count in the students' work: concepts, scientific reasons, cause-and-effect links, evidence, sources, claims, tests, variables, success criteria, errors, limitations, improvements.
+2. When the work sits between two levels, choose the level whose requirements are all met (the lower one).
+3. Use these definitions when counting:
+${glossary}
+
+**Student Work**
+<TITLE>
+${project.title}
+</TITLE>
+<PROBLEM>
+${problemDesc || 'Not provided.'}
+</PROBLEM>
+<SOLUTION>
+${solutionDesc || 'Not provided.'}
+</SOLUTION>
+<KEY_CONCEPTS>
+${JSON.stringify(keyConcepts || {})}
+</KEY_CONCEPTS>
+<DOCUMENT>
+${docText || 'No document content available. Judge only from the title, abstract and key concepts above.'}
+</DOCUMENT>
+
+**Evaluation Rubric (Score each indikator 1 to 4 using the criteria below, or 0 when you cannot judge it)**
+${rubricContext}
+
+Assessment Indicators (you MUST give each one a score):
+${JSON.stringify(indicators.map((i: { id: string; description: string }) => ({ id: i.id, description: i.description })), null, 2)}
+
+${scoringBlock}
+Leave the 0-scored indikator out of this; the teacher completes them.
+
+**FEEDBACK GUIDELINES**
+1. For each level you give, name what you counted ("2 konsep: ...", "1 kali uji", "0 sumber kredibel") and quote or point to the part of the students' text it comes from.
+2. Correct any scientific misconception you find, briefly and accurately.
+3. Your 'teacher_comment' MUST be written in **well-aligned proper paragraphs separated by double line breaks (\\n\\n)**, with no bullet points: an overall verdict, what they do well, the most important scientific weaknesses, and 2 or 3 concrete next steps. End by naming the indikator the teacher still has to score.
+4. Do not mention points or percentages in the comment.
+
+**INDICATOR COMMENTS (indicator_comments field)**
+For each indicator ID listed in the "Assessment Indicators" block above, write a concise explanation of WHY you gave that specific score, or, for a 0, what the teacher should check.
+- Base your reasons ONLY on evidence found in the students' text above. Do NOT invent or hallucinate details.
+- Give between 1 and 5 reasons (use fewer if the evidence is limited — do not pad).
+- Keep each reason to 1-2 sentences.
+- Write as plain prose sentences separated by ". " — no bullet symbols.
+
+Provide your output exactly matching the JSON schema.`;
+
+        } else if (isSubject) {
             // ===== English / Bahasa Indonesia rubrics: the students' language =====
             const languageName = subject === 'indonesian' ? 'Bahasa Indonesia' : 'English';
             const feedbackLanguage = subject === 'indonesian'
@@ -332,7 +471,8 @@ You are a STEAM Education Expert and Project Assessment AI. Your job is to evalu
 
 ${knowledge}
 
-You are evaluating content from the student's Google Doc. The Google Doc has 2 tabs: one for the cover and one for the body where all the project information is located. For the C2 Assessment, focus specifically on **Section 1 (Background)** and **Section 2 (STEAM Element)** from the document body tab.
+You are evaluating content from the student's Google Doc. The Google Doc has 2 tabs: one for the cover and one for the body where all the project information is located. C2 assesses **Chapter 1 (Background)** and **Chapter 2 (STEAM Element)** of the document body only.
+${docScope}
 
 **Student Project Info**
 * Title: ${project.title}
@@ -340,7 +480,7 @@ You are evaluating content from the student's Google Doc. The Google Doc has 2 t
 * Solution Summary: ${solutionDesc || 'See document content below.'}
 * Key Concepts: ${JSON.stringify(keyConcepts || {})}
 
-**Student Document Content (from Google Doc — focus on Section 1: Background & Section 2: STEAM Element):**
+**Student Document Content (from Google Doc — Chapter 1: Background & Chapter 2: STEAM Element):**
 <DOCUMENT>
 ${docText || 'No document content available. Assess based on the project data provided above.'}
 </DOCUMENT>
@@ -382,7 +522,8 @@ You are a sharp, objective STEAM Education Expert and Project Assessment AI. You
 
 ${knowledge}
 
-You are evaluating content from the student's written document, focusing specifically on **Bab 3 (Solution Design & Planning)** and **Bab 4 (Prototype Execution & Build)**.
+You are evaluating content from the student's written document. C3 assesses **Chapter 3 (Solution Design & Planning)** and **Chapter 4 (Prototype Execution & Build)** only.
+${docScope}
 
 **Student Project Info**
 * Title: ${project.title}
@@ -390,7 +531,7 @@ You are evaluating content from the student's written document, focusing specifi
 * Solution Summary: ${solutionDesc || 'See document content below.'}
 * Key Concepts: ${JSON.stringify(keyConcepts || {})}
 
-**Student Document Content (from Google Doc — focus on Bab 3 & Bab 4):**
+**Student Document Content (from Google Doc — Chapter 3 & Chapter 4):**
 <DOCUMENT>
 ${docText || 'No document content available. Assess based on the project data provided above.'}
 </DOCUMENT>
@@ -655,6 +796,14 @@ Provide your output exactly matching the JSON schema.
             for (const [id, value] of Object.entries(scores)) {
                 const n = Number(value);
                 if (!Number.isInteger(n) || n < 1 || n > 4) delete scores[id];
+            }
+            // The Science Presentation Q&A is the teacher's to score, whatever
+            // the model answered: no document shows the answers to the
+            // teacher's five questions.
+            if (subject === 'science' && subjectWork === 'presentation') {
+                for (const i of indicators as Array<{ id: string; description?: string }>) {
+                    if (SCIENCE_QA_INDICATOR.test(i.description ?? '')) delete scores[i.id];
+                }
             }
         }
 
