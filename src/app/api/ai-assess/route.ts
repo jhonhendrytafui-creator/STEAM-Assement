@@ -6,12 +6,17 @@ import {
 } from '@/lib/ai-knowledge';
 import { GeminiGenerationError, generateWithFallback, teacherMessage } from '@/lib/gemini';
 import { effectiveWeights, formatWeight, hasCustomWeights } from '@/lib/rubric';
+import { extractChapters } from '@/lib/doc-chapters';
 
 // generateWithFallback keeps the Gemini walk inside 45 seconds, so the route
 // always answers with JSON before this limit.
 export const maxDuration = 60;
 
 // ─── Google Doc Text Extraction ─────────────────────
+// How much of the document is read, and how much of it goes into a prompt.
+const DOC_FETCH_LIMIT = 200_000;
+const DOC_PROMPT_LIMIT = 40_000;
+
 async function fetchGoogleDocText(url: string): Promise<string> {
     try {
         // Extract Google Doc ID from URL
@@ -28,8 +33,11 @@ async function fetchGoogleDocText(url: string): Promise<string> {
 
         if (!response.ok) return '';
         const text = await response.text();
-        // Limit to ~15000 chars to stay within token limits
-        return text.slice(0, 15000);
+        // The whole document, within reason: each phase takes its own
+        // chapters from it first (src/lib/doc-chapters.ts), and the prompt
+        // limit applies after that, so a long chapter 1-2 cannot push
+        // chapters 3-4 out of C3's view.
+        return text.slice(0, DOC_FETCH_LIMIT);
     } catch (e) {
         console.error('Failed to fetch Google Doc text:', e);
         return '';
@@ -282,12 +290,29 @@ ${percentageSteps}
 4. School rule, which overrides the percentages: if you scored the real-life context indicator 1 or 2, suggested_status cannot be 'approved'. Use 'revision' at most.` : ''}`;
 
 
+        // C1 reads the abstract and C4 the logbook, never the document. C2 and
+        // C3 each assess their own chapters of it, and only those are sent;
+        // every other rubric (the subject rubrics, BCM) reads all of it.
         let docText = '';
+        let docScope = '';
         if (!isC1 && !isC4) {
             const docUrl = googleDocUrl || project.google_doc_url;
-            if (docUrl) {
-                docText = await fetchGoogleDocText(docUrl);
+            const fullDoc = docUrl ? await fetchGoogleDocText(docUrl) : '';
+            const wanted = isSubject ? null : isC2 ? [1, 2] : isC3 ? [3, 4] : null;
+            docText = fullDoc;
+            if (fullDoc && wanted) {
+                const label = `Chapters ${wanted.join(' and ')}`;
+                const part = extractChapters(fullDoc, wanted);
+                if (part && part.found.length > 0) {
+                    docText = part.text;
+                    docScope = part.missing.length === 0
+                        ? `The text in <DOCUMENT> is only ${label} of the students' document, taken out by the system. Assess only this text.`
+                        : `The text in <DOCUMENT> is only Chapter ${part.found.join(' and ')} of the students' document: no heading for Chapter ${part.missing.join(' and ')} was found. Assess the text given, treat the content of the missing chapter as not found, and say in your comment that the teacher should check whether the document has Chapter ${part.missing.join(' and ')} under another heading.`;
+                } else {
+                    docScope = `No headings for ${label} were found in the students' document, so <DOCUMENT> is the whole document. Assess only the content that belongs to ${label} and ignore the other chapters.`;
+                }
             }
+            docText = docText.slice(0, DOC_PROMPT_LIMIT);
         }
 
         if (subject === 'science') {
@@ -303,7 +328,7 @@ ${percentageSteps}
                 : `The work being scored is the group's written work: a poster (grade 7), an infographic (grade 8) or a scientific paper (grade 9).`;
             const unseen = isPresentation
                 ? `You cannot see the presentation, the product/prototype or the question-and-answer session. ${qaNames ? `${qaNames} is scored from the teacher's five questions: always score it 0. ` : ''}For every other indikator, score only what the text below clearly shows (concepts, test steps and results, data, analysis, improvements). Where the text is silent, score 0 rather than assume the group did not show it in the presentation, and say what the teacher should look or listen for.`
-                : `The document below is the closest evidence of the written work. If it reads like notes rather than the poster, infographic or paper itself, still score from it, and say in your comments that the teacher should confirm against the work.`;
+                : `The document below is the students' whole project document. Read all of it, but score only its science: what each indikator below describes. Parts about technology, engineering, art, mathematics, the build, the budget or the schedule count only where they carry the science (a science concept, cause and effect, evidence, a source). The document is the closest evidence of the written work. If it reads like notes rather than the poster, infographic or paper itself, still score from it, and say in your comments that the teacher should confirm against the work.`;
 
             prompt = `### System Instructions for Science Content Assessment (${categoryName})
 
@@ -446,7 +471,8 @@ You are a STEAM Education Expert and Project Assessment AI. Your job is to evalu
 
 ${knowledge}
 
-You are evaluating content from the student's Google Doc. The Google Doc has 2 tabs: one for the cover and one for the body where all the project information is located. For the C2 Assessment, focus specifically on **Section 1 (Background)** and **Section 2 (STEAM Element)** from the document body tab.
+You are evaluating content from the student's Google Doc. The Google Doc has 2 tabs: one for the cover and one for the body where all the project information is located. C2 assesses **Chapter 1 (Background)** and **Chapter 2 (STEAM Element)** of the document body only.
+${docScope}
 
 **Student Project Info**
 * Title: ${project.title}
@@ -454,7 +480,7 @@ You are evaluating content from the student's Google Doc. The Google Doc has 2 t
 * Solution Summary: ${solutionDesc || 'See document content below.'}
 * Key Concepts: ${JSON.stringify(keyConcepts || {})}
 
-**Student Document Content (from Google Doc — focus on Section 1: Background & Section 2: STEAM Element):**
+**Student Document Content (from Google Doc — Chapter 1: Background & Chapter 2: STEAM Element):**
 <DOCUMENT>
 ${docText || 'No document content available. Assess based on the project data provided above.'}
 </DOCUMENT>
@@ -496,7 +522,8 @@ You are a sharp, objective STEAM Education Expert and Project Assessment AI. You
 
 ${knowledge}
 
-You are evaluating content from the student's written document, focusing specifically on **Bab 3 (Solution Design & Planning)** and **Bab 4 (Prototype Execution & Build)**.
+You are evaluating content from the student's written document. C3 assesses **Chapter 3 (Solution Design & Planning)** and **Chapter 4 (Prototype Execution & Build)** only.
+${docScope}
 
 **Student Project Info**
 * Title: ${project.title}
@@ -504,7 +531,7 @@ You are evaluating content from the student's written document, focusing specifi
 * Solution Summary: ${solutionDesc || 'See document content below.'}
 * Key Concepts: ${JSON.stringify(keyConcepts || {})}
 
-**Student Document Content (from Google Doc — focus on Bab 3 & Bab 4):**
+**Student Document Content (from Google Doc — Chapter 3 & Chapter 4):**
 <DOCUMENT>
 ${docText || 'No document content available. Assess based on the project data provided above.'}
 </DOCUMENT>
