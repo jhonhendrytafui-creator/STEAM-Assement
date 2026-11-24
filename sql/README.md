@@ -27,12 +27,23 @@ noted, so re-running in this order is safe.
 | 17 | `group_activity_1_table.sql` -> `_2_project_triggers` -> `_3_logbook_triggers` | The group activity log: who in each group did what. **Three files, run in order.** |
 | 18 | `subject_rubrics_1_weights.sql` -> `_2_english` -> `_3_indonesian` -> `_4_check` | Criterion weights (admin-only) and the English / Bahasa Indonesia rubrics. **Four files, run in order.** |
 | 19 | `science_rubrics_1_seed.sql` -> `_2_check` | The Science rubrics (Writing, Presentation). Needs **18**. **Two files, run in order.** |
+| 20 | `revise_c2_wording_2026.sql` | New wording for C2 indikator 1, 2, 4 and 7, keeping every C2 score. **Never re-run `seed_c2_rubric.sql` for this: it deletes all C2 scores.** |
 
 ## Existing database
 
 Run **9**, **10**, **11**, **12**, **13**, **14**, **15**'s four parts, then
 **16**'s and **17**'s three parts, then **18**'s four parts, then **19**'s two
 parts, in order. All are safe to re-run.
+
+**20 revises the C2 wording** (proposed by the SMA teachers). It rewrites the
+text of indikator 1, 2, 4 and 7 in place, so every C2 score already given stays
+attached; the 1-4 level descriptions do not change, so those scores stay valid.
+#2 keeps "measurable" and the Success Criteria note, because C3, C4 and C5 test
+the project against these constraints. It also removes the note "The limits
+listed here become the project's official Success Criteria" that
+`revise_c2_c5_rubrics.sql` added to #2, #4 and #7 once per run (it matched
+"position 2" in every dimension); the note is now on #2 only. If an indikator
+is not found exactly once, it changes nothing and says which.
 
 **19 adds the Science rubrics.** Two rubrics from the school's Science content
 rubrics (kelas 7-9), for science teachers: Science Writing (`SCI-WRT`, semester
